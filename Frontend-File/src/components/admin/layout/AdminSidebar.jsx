@@ -16,6 +16,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
     { name: 'Data Pelanggan', path: '/admin/users', key: 'users', icon: <Users size={20} /> },
     { name: 'Finance', path: '/admin/finance', key: 'finance', icon: <TrendingUp size={20} /> },
     { name: 'Manajemen Armada', path: '/admin/armada', key: 'armada', icon: <Bike size={20} /> },
+    { name: 'Fleet Inventory', path: '/admin/fleet', key: 'armada', icon: <Bike size={20} /> },
     { name: 'Manajemen Loker', path: '/admin/loker', key: 'loker', icon: <Package size={20} /> },
     { name: 'Dynamic Pricing', path: '/admin/pricing', key: 'pricing', icon: <TrendingUp size={20} /> },
     { name: 'Konten Artikel', path: '/admin/artikel', key: 'artikel', icon: <FileText size={20} /> },

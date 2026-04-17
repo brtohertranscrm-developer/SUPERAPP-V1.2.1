@@ -3,6 +3,8 @@ import { useArmada } from '../../hooks/useArmada';
 import ArmadaTable from '../../components/admin/armada/ArmadaTable';
 import ArmadaModal from '../../components/admin/armada/ArmadaModal';
 import UnitModal from '../../components/admin/armada/UnitModal'; // IMPORT BARU
+import FleetInventoryTable from '../../components/admin/armada/FleetInventoryTable';
+
 
 const AdminArmada = () => {
   const { armada, loading, addArmada, editArmada, deleteArmada, fetchUnits, addUnit, updateUnit, deleteUnit } = useArmada();

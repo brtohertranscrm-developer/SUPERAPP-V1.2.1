@@ -32,6 +32,7 @@ import ReferralPage from '../pages/user/ReferralPage';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import AdminBooking from '../pages/admin/AdminBooking';
 import AdminArmada from '../pages/admin/AdminArmada';
+import AdminFleet from '../pages/admin/AdminFleet';
 import AdminLoker from '../pages/admin/AdminLoker';
 import AdminUsers from '../pages/admin/AdminUsers';
 import AdminKyc from '../pages/admin/AdminKyc';
@@ -89,6 +90,7 @@ const AppRoutes = () => {
           <Route path="settings" element={<AdminSettings />} />
           <Route path="finance" element={<AdminFinance />} />
           <Route path="referral" element={<AdminReferral />} />
+          <Route path="fleet" element={<AdminFleet />} />
           
         </Route>
 
@@ -98,5 +100,7 @@ const AppRoutes = () => {
     </Router>
   );
 };
+
+
 
 export default AppRoutes;

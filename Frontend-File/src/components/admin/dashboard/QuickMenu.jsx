@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign } from 'lucide-react';
+import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign, Calendar } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
 const QuickMenu = () => {
@@ -8,16 +8,16 @@ const QuickMenu = () => {
   const { user } = useContext(AuthContext) || {};
 
   const adminMenus = [
-    { name: 'Data Pesanan',   path: '/admin/booking',    key: 'booking', icon: ClipboardList, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-    { name: 'Finance',        path: '/admin/finance',    key: 'finance', icon: DollarSign,    color: 'text-green-500',  bg: 'bg-green-50' },
-    { name: 'Armada Motor',   path: '/admin/armada',     key: 'armada',  icon: Bike,          color: 'text-rose-500',   bg: 'bg-rose-50' },
-    { name: 'Smart Loker',    path: '/admin/loker',      key: 'loker',   icon: Package,       color: 'text-blue-500',   bg: 'bg-blue-50' },
-    { name: 'Harga Dinamis',  path: '/admin/pricing',    key: 'pricing', icon: TrendingUp,    color: 'text-orange-500', bg: 'bg-orange-50' },
-    { name: 'Banner Promo',   path: '/admin/promotions', key: 'pricing', icon: Ticket,        color: 'text-emerald-500',bg: 'bg-emerald-50' },
-    { name: 'Konten Artikel', path: '/admin/artikel',    key: 'artikel', icon: FileText,      color: 'text-cyan-500',   bg: 'bg-cyan-50' },
-    { name: 'Data Pelanggan', path: '/admin/users',      key: 'users',   icon: Users,         color: 'text-purple-500', bg: 'bg-purple-50' },
-    { name: 'Tiket Bantuan',  path: '/admin/support',    key: 'users',   icon: LifeBuoy,      color: 'text-amber-500',  bg: 'bg-amber-50' },
-    { name: 'Referral',       path: '/admin/referral',   key: 'referral', icon: TrendingUp,    color: 'text-teal-500',   bg: 'bg-teal-50' },
+    { name: 'Data Pesanan',   path: '/admin/booking',    key: 'booking',  icon: ClipboardList, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+    { name: 'Finance',        path: '/admin/finance',    key: 'finance',  icon: DollarSign,    color: 'text-green-500',  bg: 'bg-green-50' },
+    { name: 'Armada Motor',   path: '/admin/armada',     key: 'armada',   icon: Bike,          color: 'text-rose-500',   bg: 'bg-rose-50' },
+    { name: 'Fleet Inventory',path: '/admin/fleet',      key: 'fleet',    icon: Calendar,      color: 'text-teal-500',   bg: 'bg-teal-50' },  // ← key unik
+    { name: 'Smart Loker',    path: '/admin/loker',      key: 'loker',    icon: Package,       color: 'text-blue-500',   bg: 'bg-blue-50' },
+    { name: 'Harga Dinamis',  path: '/admin/pricing',    key: 'pricing',  icon: TrendingUp,    color: 'text-orange-500', bg: 'bg-orange-50' },
+    { name: 'Banner Promo',   path: '/admin/promotions', key: 'promo',    icon: Ticket,        color: 'text-emerald-500',bg: 'bg-emerald-50' },
+    { name: 'Konten Artikel', path: '/admin/artikel',    key: 'artikel',  icon: FileText,      color: 'text-cyan-500',   bg: 'bg-cyan-50' },
+    { name: 'Data Pelanggan', path: '/admin/users',      key: 'users',    icon: Users,         color: 'text-purple-500', bg: 'bg-purple-50' },
+    { name: 'Tiket Bantuan',  path: '/admin/support',    key: 'support',  icon: LifeBuoy,      color: 'text-amber-500',  bg: 'bg-amber-50' },
   ];
 
   let userPermissions = [];
