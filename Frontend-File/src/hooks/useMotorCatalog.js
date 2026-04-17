@@ -1,0 +1,73 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+export const useMotorCatalog = () => {
+  const navigate = useNavigate();
+  const searchRef = useRef(null);
+
+  const [searchParams, setSearchParams] = useState({
+    location: 'Stasiun Lempuyangan',
+    startDate: '',
+    endDate: ''
+  });
+
+  const [activeFilter, setActiveFilter] = useState('Semua'); 
+  const [motors, setMotors] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/motors`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Gagal terhubung ke server');
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success) {
+          setMotors(data.data); 
+        } else {
+          setError(data.error);
+        }
+        setIsLoading(false); 
+      })
+      .catch((err) => {
+        setError('Gagal mengambil data dari server. Pastikan Backend menyala.');
+        setIsLoading(false);
+      });
+  }, [API_URL]); 
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (!searchParams.startDate || !searchParams.endDate) {
+      alert('Tentukan tanggal perjalanan Anda terlebih dahulu.');
+      return;
+    }
+    navigate('/search-page', { 
+      state: { 
+        startDate: searchParams.startDate, 
+        endDate: searchParams.endDate, 
+        pickupLocation: searchParams.location 
+      } 
+    });
+  };
+
+  const handleCardClick = () => {
+    searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const displayedMotors = motors.filter(motor => {
+    if (activeFilter === 'Semua') return true;
+    if (activeFilter === 'Yogyakarta') return motor.id % 2 !== 0; // Simulasi logic area
+    if (activeFilter === 'Solo') return motor.id % 2 === 0;       
+    return true;
+  });
+
+  return { 
+    searchParams, setSearchParams, 
+    activeFilter, setActiveFilter, 
+    isLoading, error, displayedMotors, 
+    handleSearchSubmit, handleCardClick, searchRef 
+  };
+};
