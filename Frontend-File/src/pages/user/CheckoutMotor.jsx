@@ -1,238 +1,623 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Wallet, Tag, ShieldAlert } from 'lucide-react';
-import { useCheckoutMotor } from '../../hooks/useCheckoutMotor';
-import RenterForm from '../../components/user/checkout/RenterForm';
-import OrderSummary from '../../components/user/checkout/OrderSummary';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../../context/AuthContext';
+import {
+  ChevronLeft, Tag, ShieldAlert, CheckCircle2, XCircle,
+  Loader2, MapPin, Calendar, Bike, CreditCard, Wallet,
+  AlertTriangle, Info, Percent, X, Clock, Users, CloudRain, Settings2
+} from 'lucide-react';
 
-export default function CheckoutMotor() {
-  const {
-    isReady, user, navigate, bookingData, isLoading,
-    paymentMethod, setPaymentMethod,
-    subTotal, adminFee, insuranceFee, grandTotal,
-    handleCheckout
-  } = useCheckoutMotor();
+// ─── Constants ────────────────────────────────────────────────────────────────
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const INSURANCE_PER_DAY = 15000;
+const SERVICE_FEE = 2500;
 
-  // === 1. STATE UNTUK FITUR PROMO ===
-  const [promoCode, setPromoCode] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState(null);
-  const [promoError, setPromoError] = useState('');
-  const [isCheckingPromo, setIsCheckingPromo] = useState(false);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const fmtRp = (n) =>
+  `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const generateOrderId = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+  return `BTM-${y}${m}${d}-${rand}`;
+};
 
-  // === 2. TAHAP GAMIFIKASI ONBOARDING OTOMATIS ===
-  useEffect(() => {
-    // Deteksi: Jika user login, miles di bawah 1000, dan belum ada promo yang terpasang
-    if (user && user.miles < 1000 && !appliedPromo) {
-      setAppliedPromo({
-        code: 'ONBOARDING',
-        discount_percent: 5, // Diskon 5%
-        max_discount: 5000   // Maksimal diskon Rp 5.000
-      });
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+/** KYC Warning Banner */
+const KycBanner = ({ status, onNavigate }) => (
+  <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="flex items-start gap-3">
+      <div className="bg-rose-100 p-2.5 rounded-xl text-rose-600 shrink-0 mt-0.5">
+        <ShieldAlert size={20} />
+      </div>
+      <div>
+        <h3 className="text-rose-700 font-black text-base">Verifikasi Identitas Diperlukan</h3>
+        <p className="text-rose-600 text-sm font-medium mt-0.5">
+          Status KYC kamu saat ini:{' '}
+          <span className="uppercase font-black">{status || 'UNVERIFIED'}</span>.
+          Selesaikan verifikasi terlebih dahulu untuk melanjutkan pesanan.
+        </p>
+      </div>
+    </div>
+    <button
+      onClick={onNavigate}
+      className="bg-rose-600 hover:bg-rose-700 text-white font-black px-5 py-2.5 rounded-xl text-sm transition-colors whitespace-nowrap w-full sm:w-auto active:scale-95"
+    >
+      Verifikasi Sekarang
+    </button>
+  </div>
+);
+
+/** Payment Method Selector */
+const PaymentMethodPicker = ({ value, onChange }) => {
+  const methods = [
+    {
+      id: 'bca',
+      label: 'Bank BCA',
+      detail: 'No. Rek: 8012 3456 7890',
+      icon: <CreditCard size={20} className="text-blue-700" />,
+      badge: 'BCA',
+      badgeCls: 'bg-blue-50 text-blue-800 border-blue-200',
+    },
+    {
+      id: 'mandiri',
+      label: 'Bank Mandiri',
+      detail: 'No. Rek: 137 000 123 4567',
+      icon: <CreditCard size={20} className="text-amber-600" />,
+      badge: 'MANDIRI',
+      badgeCls: 'bg-amber-50 text-amber-800 border-amber-200',
+    },
+    {
+      id: 'qris',
+      label: 'QRIS / E-Wallet',
+      detail: 'GoPay, OVO, Dana, ShopeePay',
+      icon: <Wallet size={20} className="text-purple-600" />,
+      badge: 'QRIS',
+      badgeCls: 'bg-purple-50 text-purple-800 border-purple-200',
+    },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {methods.map((m) => (
+        <label
+          key={m.id}
+          className={`flex items-center gap-4 p-4 border-2 rounded-2xl cursor-pointer transition-all select-none ${
+            value === m.id
+              ? 'border-slate-900 bg-slate-50 shadow-sm'
+              : 'border-slate-200 hover:border-slate-300 bg-white'
+          }`}
+        >
+          <input
+            type="radio"
+            name="paymentMethod"
+            value={m.id}
+            checked={value === m.id}
+            onChange={() => onChange(m.id)}
+            className="w-4 h-4 accent-slate-900"
+          />
+          <div className="flex items-center gap-3 flex-1 overflow-hidden">
+            <div className="p-2 bg-white border border-slate-100 rounded-xl shadow-sm shrink-0">
+              {m.icon}
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-slate-900 text-sm">{m.label}</p>
+              <p className="text-xs text-slate-500 font-medium truncate">{m.detail}</p>
+            </div>
+          </div>
+          <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg border shrink-0 ${m.badgeCls}`}>
+            {m.badge}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+};
+
+/** Promo Code Input */
+const PromoInput = ({ onApply, appliedPromo, onRemove, discountAmount, isChecking }) => {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+
+  const handleApply = async () => {
+    const trimmed = code.trim().toUpperCase();
+    if (!trimmed) return;
+    setError('');
+    const result = await onApply(trimmed);
+    if (!result.success) {
+      setError(result.error || 'Kode promo tidak valid.');
+    } else {
+      setCode('');
     }
-  }, [user]);
+  };
 
-  // === 3. FUNGSI VALIDASI KODE PROMO ===
-  const handleApplyPromo = async () => {
-    if (!promoCode.trim()) return;
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleApply();
+  };
+
+  if (appliedPromo) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center">
+            <CheckCircle2 size={18} className="text-white" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-0.5">Promo Aktif</p>
+            <p className="font-black text-emerald-900 font-mono">{appliedPromo.code}</p>
+            {discountAmount > 0 && (
+              <p className="text-xs text-emerald-600 font-medium">Hemat {fmtRp(discountAmount)}</p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onRemove}
+          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+          aria-label="Hapus promo"
+        >
+          <X size={16} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); }}
+          onKeyDown={handleKeyDown}
+          placeholder="Masukkan kode promo..."
+          className={`flex-1 px-4 py-3 border rounded-xl text-sm font-bold uppercase focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all ${
+            error ? 'border-rose-300 bg-rose-50/50' : 'border-slate-200 bg-white'
+          }`}
+          disabled={isChecking}
+          maxLength={20}
+        />
+        <button
+          onClick={handleApply}
+          disabled={isChecking || !code.trim()}
+          className="px-5 py-3 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-rose-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+        >
+          {isChecking ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
+          <span>{isChecking ? 'Cek...' : 'Pasang'}</span>
+        </button>
+      </div>
+      {error && (
+        <p className="text-rose-600 text-xs font-bold flex items-center gap-1.5 px-1">
+          <XCircle size={12} /> {error}
+        </p>
+      )}
+    </div>
+  );
+};
+
+/** Price Breakdown Row */
+const PriceRow = ({ label, value, isDiscount, isBold, isTotal }) => (
+  <div className={`flex justify-between items-center ${isBold || isTotal ? 'font-black' : 'font-medium'} ${isTotal ? 'text-base' : 'text-sm'}`}>
+    <span className={isDiscount ? 'text-emerald-700' : isTotal ? 'text-slate-900' : 'text-slate-600'}>
+      {label}
+    </span>
+    <span className={isDiscount ? 'text-emerald-700' : isTotal ? 'text-slate-900' : 'text-slate-700'}>
+      {isDiscount ? `− ${fmtRp(value)}` : fmtRp(value)}
+    </span>
+  </div>
+);
+
+/** Loading overlay during payment processing */
+const ProcessingOverlay = () => (
+  <div className="fixed inset-0 bg-slate-900/85 z-[100] backdrop-blur-sm flex flex-col items-center justify-center text-white px-4">
+    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+      <div className="w-16 h-16 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-5">
+        <Loader2 size={32} className="text-rose-500 animate-spin" />
+      </div>
+      <h2 className="text-xl font-black text-slate-900 mb-2">Memproses Pesanan</h2>
+      <p className="text-slate-500 text-sm font-medium">
+        Mohon jangan tutup atau muat ulang halaman ini. Pesanan kamu sedang dikonfirmasi.
+      </p>
+    </div>
+  </div>
+);
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function CheckoutMotor() {
+  const { user } = useContext(AuthContext) || {};
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Booking data from navigation state
+  const bookingData = location.state;
+
+  // Form state
+  const [paymentMethod, setPaymentMethod] = useState('bca');
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [isCheckingPromo, setIsCheckingPromo] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  // Redirect if no booking data
+  useEffect(() => {
+    if (!bookingData) {
+      navigate('/', { replace: true });
+      return;
+    }
+    // Redirect to login if not logged in, save pending checkout
+    if (!user) {
+      sessionStorage.setItem('pending_checkout', JSON.stringify(bookingData));
+      navigate('/login', { replace: true });
+    }
+  }, [bookingData, user, navigate]);
+
+  // Guard: if no data, don't render
+  if (!bookingData || !user) return null;
+
+  // ── Price Calculations ──────────────────────────────────────────────────────
+  const {
+    motorName = 'Motor',
+    pickupLocation = 'Lokasi tidak diketahui',
+    startDate = '',
+    endDate = '',
+    totalDays = 1,
+    basePrice = 0,
+  } = bookingData;
+
+  const safeDays = Math.max(1, Number(totalDays) || 1);
+  const safeBasePrice = Number(basePrice) || 0;
+  const subTotal = safeBasePrice * safeDays;
+  const insuranceFee = INSURANCE_PER_DAY * safeDays;
+  const serviceFee = SERVICE_FEE;
+  const beforeDiscount = subTotal + insuranceFee + serviceFee;
+  const safeDiscount = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
+  const grandTotal = beforeDiscount - safeDiscount;
+
+  const isKycVerified = user?.kyc_status === 'verified';
+
+  // ── Promo Handler ───────────────────────────────────────────────────────────
+  const handleApplyPromo = useCallback(async (code) => {
     setIsCheckingPromo(true);
-    setPromoError('');
-
     try {
       const res = await fetch(`${API_URL}/api/promotions/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoCode })
+        body: JSON.stringify({ code }),
       });
       const result = await res.json();
 
-      if (result.success) {
-        setAppliedPromo(result.data);
-        setPromoError('');
-        setPromoCode(''); // Kosongkan input setelah berhasil
+      if (result.success && result.data) {
+        const promo = result.data;
+        const rawDiscount = Math.floor((subTotal * (promo.discount_percent || 0)) / 100);
+        const capped = promo.max_discount > 0 ? Math.min(rawDiscount, promo.max_discount) : rawDiscount;
+        setAppliedPromo(promo);
+        setDiscountAmount(capped);
+        return { success: true };
       } else {
-        setPromoError(result.message);
-        setAppliedPromo(null);
+        return { success: false, error: result.error || 'Kode promo tidak valid.' };
       }
-    } catch (err) {
-      setPromoError('Gagal memproses kode promo. Cek koneksi server Anda.');
-      setAppliedPromo(null);
+    } catch {
+      return { success: false, error: 'Gagal terhubung ke server.' };
     } finally {
       setIsCheckingPromo(false);
     }
-  };
+  }, [subTotal]);
 
   const handleRemovePromo = () => {
     setAppliedPromo(null);
-    setPromoCode('');
-    setPromoError('');
+    setDiscountAmount(0);
   };
 
-  // === 4. LOGIKA KALKULASI HARGA DISKON ===
-  const calculateDiscount = () => {
-    if (!appliedPromo) return 0;
-    // Diskon dihitung dari subTotal (harga sewa murni)
-    let discount = (subTotal * appliedPromo.discount_percent) / 100;
-    return Math.min(discount, appliedPromo.max_discount); 
-  };
+  // ── Submit Handler ──────────────────────────────────────────────────────────
+  const handleCheckout = async () => {
+    if (!isKycVerified) return;
+    setSubmitError('');
+    setIsSubmitting(true);
 
-  const discountAmount = calculateDiscount();
-  const finalPrice = grandTotal - discountAmount;
+    const token = localStorage.getItem('token');
+    const orderId = generateOrderId();
 
-  // === 5. LOGIKA PROTEKSI KYC & INCREMENT PROMO ===
-  const isKycVerified = user?.kyc_status === 'verified';
+    const payload = {
+      order_id: orderId,
+      item_type: 'motor',
+      item_name: motorName,
+      location: pickupLocation,
+      start_date: startDate,
+      end_date: endDate,
+      base_price: subTotal,
+      service_fee: serviceFee,
+      addon_fee: insuranceFee,
+      discount_amount: safeDiscount,
+      promo_code: appliedPromo?.code || null,
+      total_price: grandTotal,
+      payment_method: paymentMethod,
+    };
 
-  // Ubah fungsi ini menjadi async untuk menangani API increment
-  const handleSecureCheckout = async () => {
-    if (!isKycVerified) {
-      alert("Harap verifikasi identitas (KYC) Anda terlebih dahulu untuk dapat melanjutkan.");
-      return;
-    }
-    
-    // 1. Eksekusi proses checkout bawaan (Kirim data diskon ke hook)
-    await handleCheckout({
-      discountAmount: discountAmount,
-      appliedPromo: appliedPromo,
-      finalPrice: finalPrice
-    });
+    try {
+      const res = await fetch(`${API_URL}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
 
-    // 2. JIKA ADA PROMO TERPASANG, KIRIM SINYAL KE BACKEND UNTUK DITAMBAH 1 PENGGUNAANNYA
-    if (appliedPromo) {
-      try {
-        await fetch(`${API_URL}/api/promotions/increment`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}` // Sisipkan token auth
-          },
-          body: JSON.stringify({ code: appliedPromo.code })
-        });
-      } catch (error) {
-        console.error("Gagal melacak penggunaan promo:", error);
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Gagal membuat pesanan (${res.status})`);
       }
+
+      // Increment promo usage (fire-and-forget, don't block UI)
+      if (appliedPromo?.code) {
+        fetch(`${API_URL}/api/promotions/increment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ code: appliedPromo.code }),
+        }).catch(() => {/* silent fail */});
+      }
+
+      navigate('/dashboard', {
+        state: { successMessage: `Pesanan ${orderId} berhasil dibuat! Segera selesaikan pembayaran.` },
+        replace: true,
+      });
+    } catch (err) {
+      setSubmitError(err.message || 'Gagal membuat pesanan. Silakan coba lagi.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (!isReady) return null;
-
+  // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-slate-50 min-h-screen pt-24 pb-20 font-sans text-slate-900 animate-fade-in-up">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        
-        {/* Tombol Kembali */}
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-bold mb-8 transition-colors w-fit">
-          <ChevronLeft size={20} /> Kembali ke Pencarian
+    <div className="bg-slate-50 min-h-screen pt-20 pb-24 font-sans text-slate-900 animate-fade-in-up">
+      {isSubmitting && <ProcessingOverlay />}
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        {/* Back button */}
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-bold mb-6 transition-colors text-sm"
+        >
+          <ChevronLeft size={18} /> Kembali ke Pencarian
         </button>
 
-        <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-8">Selesaikan Pesanan Anda</h1>
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight mb-6">
+          Selesaikan Pesanan
+        </h1>
 
-        {/* --- BANNER PERINGATAN KYC --- */}
+        {/* KYC Warning */}
         {!isKycVerified && (
-          <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="bg-rose-100 p-3 rounded-full text-rose-600">
-                <ShieldAlert size={24} />
+          <KycBanner status={user?.kyc_status} onNavigate={() => navigate('/dashboard')} />
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+
+          {/* ── LEFT COLUMN ── */}
+          <div className={`flex-1 space-y-5 min-w-0 ${!isKycVerified ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+
+            {/* Booking Summary Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="bg-slate-900 px-5 py-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-rose-500 rounded-xl flex items-center justify-center shrink-0">
+                  <Bike size={20} className="text-white" />
+                </div>
+                <div>
+                  <p className="font-black text-white text-base leading-tight">{motorName}</p>
+                  <p className="text-slate-400 text-xs font-medium">Armada Sewa</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-rose-700 font-black text-lg">Verifikasi Identitas Diperlukan</h3>
-                <p className="text-rose-600 font-medium text-sm mt-1">
-                  Status identitas Anda saat ini: <span className="uppercase font-bold">{user?.kyc_status || 'UNVERIFIED'}</span>. Anda tidak dapat melanjutkan pesanan sebelum data diverifikasi oleh Admin.
+              <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-start gap-3">
+                  <MapPin size={16} className="text-rose-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Titik Ambil & Kembali</p>
+                    <p className="font-bold text-slate-800 text-sm">{pickupLocation}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Calendar size={16} className="text-rose-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
+                      Jadwal ({safeDays} Hari)
+                    </p>
+                    <p className="font-bold text-slate-800 text-sm">
+                      {startDate} <span className="text-slate-400 mx-1 font-normal">→</span> {endDate}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* Included items */}
+              <div className="px-5 pb-4 flex flex-wrap gap-2">
+                {[
+                  { icon: <Users size={12} />, label: '2 Helm SNI' },
+                  { icon: <CloudRain size={12} />, label: 'Jas Hujan' },
+                  { icon: <Settings2 size={12} />, label: 'Asuransi Dasar' },
+                ].map((item) => (
+                  <span
+                    key={item.label}
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg"
+                  >
+                    {item.icon} {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Renter Info */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <Users size={16} className="text-slate-500" /> Data Penyewa
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { label: 'Nama Lengkap', value: user.name },
+                  { label: 'Email', value: user.email },
+                  { label: 'No. WhatsApp', value: user.phone || '—' },
+                  {
+                    label: 'Status KYC',
+                    value: user.kyc_status || 'unverified',
+                    isStatus: true,
+                  },
+                ].map(({ label, value, isStatus }) => (
+                  <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                    {isStatus ? (
+                      <span
+                        className={`inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-lg border ${
+                          value === 'verified'
+                            ? 'bg-green-50 text-green-700 border-green-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        {value === 'verified' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}
+                        {value}
+                      </span>
+                    ) : (
+                      <p className="font-bold text-slate-800 text-sm truncate">{value}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3 flex items-start gap-2">
+                <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 font-medium">
+                  Data di atas diambil dari akun kamu. Pastikan nomor WhatsApp aktif untuk menerima konfirmasi dari tim kami.
                 </p>
               </div>
             </div>
-            {/* PERBAIKAN: path disesuaikan dengan AppRoutes.jsx yaitu '/dashboard' */}
-            <button 
-              onClick={() => navigate('/dashboard')} 
-              className="bg-rose-600 hover:bg-rose-700 text-white font-black px-6 py-3 rounded-xl transition-colors whitespace-nowrap w-full sm:w-auto"
-            >
-              Verifikasi Sekarang
-            </button>
-          </div>
-        )}
 
-        {/* --- KONTEN UTAMA (Akan blur/tidak bisa di-klik jika KYC belum verified) --- */}
-        <div className={`flex flex-col lg:flex-row gap-8 items-start transition-all duration-300 ${!isKycVerified ? 'opacity-50 pointer-events-none grayscale-[30%]' : ''}`}>
-          
-          {/* KIRI: Formulir Pembayaran & Detail User */}
-          <div className="w-full lg:w-2/3">
-            <RenterForm 
-              user={user} 
-              paymentMethod={paymentMethod} 
-              setPaymentMethod={setPaymentMethod} 
-            />
-          </div>
-
-          {/* KANAN: Kolom Promo & Ringkasan Pesanan (Sticky) */}
-          <div className="w-full lg:w-1/3 flex flex-col gap-6 sticky top-24">
-            
-            {/* --- KOTAK INPUT PROMO --- */}
-            <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100">
-              <h3 className="font-black text-brand-dark flex items-center gap-2 mb-4">
-                <Tag size={18} className="text-blue-600"/> Punya Kode Promo?
+            {/* Promo Code */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <Percent size={16} className="text-slate-500" /> Kode Promo
               </h3>
-
-              {!appliedPromo ? (
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={promoCode}
-                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                      placeholder="Contoh: MUDIKAMAN"
-                      className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-sm font-bold uppercase focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                    <button 
-                      onClick={handleApplyPromo}
-                      disabled={isCheckingPromo || !promoCode}
-                      className="bg-brand-dark text-white px-5 py-3 rounded-xl text-xs font-black hover:bg-amber-500 transition-colors disabled:opacity-50"
-                    >
-                      {isCheckingPromo ? 'CEK...' : 'PASANG'}
-                    </button>
-                  </div>
-                  {promoError && <p className="text-red-500 text-[10px] font-bold px-1">{promoError}</p>}
-                </div>
-              ) : (
-                // Tampilan jika promo berhasil terpasang
-                <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Promo Terpasang</div>
-                    <div className="font-bold text-slate-900 text-sm">{appliedPromo.code}</div>
-                    <div className="text-xs text-emerald-600 font-medium mt-0.5">Hemat Rp {discountAmount.toLocaleString('id-ID')}</div>
-                  </div>
-                  <button onClick={handleRemovePromo} className="text-[10px] font-black text-rose-500 hover:text-white hover:bg-rose-500 border border-rose-200 px-3 py-1.5 rounded-lg transition-colors">
-                    HAPUS
-                  </button>
-                </div>
-              )}
+              <PromoInput
+                onApply={handleApplyPromo}
+                appliedPromo={appliedPromo}
+                onRemove={handleRemovePromo}
+                discountAmount={safeDiscount}
+                isChecking={isCheckingPromo}
+              />
             </div>
 
-            {/* --- RINGKASAN PESANAN --- */}
-            <OrderSummary 
-              bookingData={bookingData}
-              subTotal={subTotal}
-              insuranceFee={insuranceFee}
-              adminFee={adminFee}
-              grandTotal={finalPrice} 
-              isLoading={isLoading}
-              handleCheckout={handleSecureCheckout} 
-            />
+            {/* Payment Method */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <CreditCard size={16} className="text-slate-500" /> Metode Pembayaran
+              </h3>
+              <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} />
+              <p className="text-xs text-slate-400 font-medium mt-3 flex items-center justify-center gap-1.5">
+                <Info size={11} /> Transfer tepat sesuai nominal hingga 3 digit terakhir untuk verifikasi otomatis.
+              </p>
+            </div>
 
+          </div>
+
+          {/* ── RIGHT COLUMN: Order Summary ── */}
+          <div className="w-full lg:w-[360px] shrink-0 sticky top-24">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+              {/* Header */}
+              <div className="bg-slate-900 px-5 py-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Ringkasan Pembayaran</p>
+                <p className="text-white font-black text-lg">{motorName}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <Clock size={12} className="text-slate-400" />
+                  <p className="text-slate-400 text-xs font-medium">{safeDays} Hari Sewa</p>
+                </div>
+              </div>
+
+              {/* Breakdown */}
+              <div className="p-5 space-y-3">
+                <PriceRow
+                  label={`Biaya sewa (${safeDays}x ${fmtRp(safeBasePrice)})`}
+                  value={subTotal}
+                />
+                <PriceRow
+                  label={`Asuransi & RSA (${safeDays}x ${fmtRp(INSURANCE_PER_DAY)})`}
+                  value={insuranceFee}
+                />
+                <PriceRow
+                  label="Biaya layanan & aplikasi"
+                  value={serviceFee}
+                />
+
+                {safeDiscount > 0 && appliedPromo && (
+                  <PriceRow
+                    label={`Diskon promo (${appliedPromo.code})`}
+                    value={safeDiscount}
+                    isDiscount
+                  />
+                )}
+
+                <div className="border-t border-slate-100 pt-3">
+                  <PriceRow
+                    label="Total Pembayaran"
+                    value={grandTotal}
+                    isBold
+                    isTotal
+                  />
+                </div>
+              </div>
+
+              {/* Submit Error */}
+              {submitError && (
+                <div className="mx-5 mb-3 bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start gap-2">
+                  <XCircle size={14} className="text-rose-500 shrink-0 mt-0.5" />
+                  <p className="text-rose-700 text-xs font-bold">{submitError}</p>
+                </div>
+              )}
+
+              {/* CTA */}
+              <div className="px-5 pb-5">
+                {isKycVerified ? (
+                  <button
+                    onClick={handleCheckout}
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-rose-500 transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  >
+                    {isSubmitting ? (
+                      <><Loader2 size={18} className="animate-spin" /> Memproses...</>
+                    ) : (
+                      <><CheckCircle2 size={18} /> Bayar Sekarang</>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="w-full py-4 bg-slate-200 text-slate-400 font-black rounded-xl cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                  >
+                    <ShieldAlert size={18} /> Verifikasi KYC Dulu
+                  </button>
+                )}
+                <p className="text-center text-[10px] font-medium text-slate-400 mt-3">
+                  Dengan melanjutkan, kamu menyetujui Syarat & Ketentuan Brother Trans.
+                </p>
+              </div>
+            </div>
+
+            {/* Trust indicators */}
+            <div className="mt-3 flex items-center justify-center gap-4">
+              {['Transfer Aman', 'Data Terenkripsi', 'Terpercaya'].map((t) => (
+                <span key={t} className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+                  <CheckCircle2 size={10} className="text-green-500" /> {t}
+                </span>
+              ))}
+            </div>
           </div>
 
         </div>
       </div>
-
-      {/* OVERLAY LOADING PEMBAYARAN */}
-      {isLoading && (
-        <div className="fixed inset-0 bg-slate-900/80 z-[100] backdrop-blur-sm flex flex-col items-center justify-center text-white">
-          <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center mb-6 shadow-2xl animate-bounce">
-            <Wallet size={40} className="text-rose-500" />
-          </div>
-          <h2 className="text-2xl font-black tracking-tight mb-2">Memproses Pembayaran...</h2>
-          <p className="text-slate-300 font-medium">Mohon jangan tutup atau muat ulang halaman ini.</p>
-        </div>
-      )}
-
     </div>
   );
 }

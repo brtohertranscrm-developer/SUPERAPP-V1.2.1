@@ -1,17 +1,3 @@
-/**
- * server.js — Brother Trans Backend
- * ====================================
- * Security improvements vs versi sebelumnya:
- *  - Helmet.js untuk security headers (XSS, clickjacking, MIME sniff, dll)
- *  - trust proxy agar rate limiter baca IP asli dari X-Forwarded-For
- *  - Body size limit 10mb (sudah ada) + explicit JSON type check
- *  - Request logging minimal (IP + method + path + status + ms)
- *  - Sembunyikan header X-Powered-By (Express)
- *
- * Dependensi:
- *   npm install helmet express-rate-limit
- */
-
 'use strict';
 
 const express  = require('express');
@@ -20,7 +6,7 @@ const path     = require('path');
 const fs       = require('fs');
 require('dotenv').config();
 
-// ─── Helmet (security headers) ────────────────────────────────────────────────
+// ─── Helmet (opsional, graceful fallback jika belum install) ──────────────────
 let helmet;
 try {
   helmet = require('helmet');
@@ -35,8 +21,6 @@ const PORT = process.env.PORT || 5001;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. TRUST PROXY
-// Wajib jika di-deploy di belakang reverse proxy (Nginx, Caddy, Railway, dsb)
-// agar express-rate-limit bisa baca IP asli dari X-Forwarded-For
 // ═══════════════════════════════════════════════════════════════════════════════
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
@@ -46,48 +30,49 @@ app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 if (helmet) {
   app.use(
     helmet({
-      // Content Security Policy — sesuaikan jika ada CDN/resource eksternal
       contentSecurityPolicy: {
         directives: {
           defaultSrc:  ["'self'"],
           scriptSrc:   ["'self'"],
-          styleSrc:    ["'self'", "'unsafe-inline'"], // inline style masih umum di React
-          imgSrc:      ["'self'", 'data:', 'https:'],
-          connectSrc:  ["'self'"],
+          styleSrc:    ["'self'", "'unsafe-inline'"],
+          imgSrc:      ["'self'", 'data:', 'https:', 'http://localhost:5001'],
+          connectSrc:  ["'self'", 'http://localhost:5001'],
           fontSrc:     ["'self'", 'https:'],
           objectSrc:   ["'none'"],
           upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
         },
       },
-      // Cegah browser menebak MIME type
-      noSniff: true,
-      // Cegah clickjacking
+      noSniff:    true,
       frameguard: { action: 'deny' },
-      // HSTS — aktifkan di production saja
-      hsts: process.env.NODE_ENV === 'production'
-        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-        : false,
-      // Sembunyikan X-Powered-By: Express
-      hidePoweredBy: true,
-      // XSS filter header
-      xssFilter: true,
-      // Referrer policy
+      hsts:       process.env.NODE_ENV === 'production'
+                    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+                    : false,
+      hidePoweredBy:  true,
+      xssFilter:      true,
       referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+      // FIX: default Helmet set CORP ke same-origin, blokir gambar dari port beda
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // FIX: matikan COEP agar gambar /uploads bisa tampil di frontend dev
+      crossOriginEmbedderPolicy: false,
     })
   );
 }
 
-// Selalu hapus X-Powered-By meskipun Helmet tidak terinstall
 app.disable('x-powered-by');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. CORS
+// 3. CORS — FIX: allowedHeaders eksplisit agar preflight tidak ditolak
 // ═══════════════════════════════════════════════════════════════════════════════
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'http://localhost:5173',
+  'http://localhost:4173',
   'http://127.0.0.1:5173',
 ].filter(Boolean);
+
+// Preflight OPTIONS ditangani otomatis oleh cors() middleware di bawah
+// app.options() TIDAK dipakai karena Express v5 + path-to-regexp v8
+// tidak support wildcard '*' maupun '(.*)' lagi
 
 app.use(
   cors({
@@ -97,11 +82,12 @@ app.use(
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`Origin "${origin}" tidak diizinkan oleh CORS.`));
     },
-    credentials:      true,
-    methods:          ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders:   ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposedHeaders:   ['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
-    maxAge:           86400, // preflight cache 24 jam
+    credentials:    true,
+    methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    // FIX UTAMA: daftarkan header yang boleh dikirim browser
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+    maxAge:         86400,
   })
 );
 
@@ -112,7 +98,7 @@ app.use(express.json({ limit: '10mb', strict: true }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 5. REQUEST LOGGER (minimal, hanya di non-production atau jika LOG_REQUESTS=true)
+// 5. REQUEST LOGGER
 // ═══════════════════════════════════════════════════════════════════════════════
 if (process.env.NODE_ENV !== 'production' || process.env.LOG_REQUESTS === 'true') {
   app.use((req, res, next) => {
@@ -134,7 +120,6 @@ if (process.env.NODE_ENV !== 'production' || process.env.LOG_REQUESTS === 'true'
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Serving upload files dengan header cache yang tepat
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Cache-Control', 'public, max-age=86400');
   next();
@@ -151,6 +136,7 @@ const financeRoutes     = require('./routes/financeRoutes');
 const referralRoutes    = require('./routes/referralRoutes');
 const lokerAdminRoutes  = require('./routes/lokerAdminRoutes');
 const lokerPublicRoutes = require('./routes/lokerPublicRoutes');
+const adminReferralRoutes = require('./routes/adminReferralRoutes');
 
 // Urutan penting: spesifik dulu, wildcard belakang
 app.use('/api/admin/loker',   lokerAdminRoutes);
@@ -158,9 +144,10 @@ app.use('/api/loker',         lokerPublicRoutes);
 app.use('/api/auth',          authRoutes);
 app.use('/api',               publicRoutes);
 app.use('/api',               userRoutes);
-app.use('/api',               referralRoutes);      // /api/referral/* (user)
+app.use('/api',               referralRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/admin/finance', financeRoutes);
+app.use('/api/admin/referral', adminReferralRoutes);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 8. HEALTH CHECK
@@ -189,7 +176,6 @@ app.use((req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  // Jangan log stack trace ke stdout di production kecuali DEBUG=true
   if (process.env.NODE_ENV !== 'production' || process.env.DEBUG === 'true') {
     console.error('❌ Unhandled Error:', err.stack || err.message);
   } else {
@@ -209,7 +195,6 @@ app.use((err, req, res, next) => {
   const statusCode = err.status || err.statusCode || 500;
   return res.status(statusCode).json({
     success: false,
-    // Di production: sembunyikan detail error internal
     error: process.env.NODE_ENV === 'production'
       ? 'Terjadi kesalahan pada server.'
       : err.message,
@@ -234,7 +219,6 @@ const shutdown = (signal) => {
       process.exit(0);
     });
   });
-  // Paksa shutdown setelah 10 detik jika ada koneksi yang menggantung
   setTimeout(() => {
     console.error('⚠️  Timeout — paksa shutdown.');
     process.exit(1);
@@ -244,7 +228,6 @@ const shutdown = (signal) => {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
 
-// Tangkap unhandled promise rejection agar server tidak crash diam-diam
 process.on('unhandledRejection', (reason) => {
   console.error('⚠️  Unhandled Promise Rejection:', reason);
 });

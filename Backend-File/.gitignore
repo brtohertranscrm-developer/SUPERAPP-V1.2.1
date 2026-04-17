@@ -1,0 +1,18 @@
+# 1. Folder raksasa yang tidak perlu di-upload (bisa diinstall ulang dengan npm install)
+node_modules/
+
+# 2. File Rahasia (SANGAT WAJIB DITULIS!)
+.env
+
+# 3. File Log Error
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 4. File sampah bawaan Mac OS (karena dari screenshot, kamu pakai Mac)
+.DS_Store
+
+# 5. Database SQLite Lokal
+*.db
+*.db-shm
+*.db-wal
