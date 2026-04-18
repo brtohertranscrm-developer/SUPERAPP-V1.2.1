@@ -1,0 +1,7 @@
+# 1. Folder raksasa yang tidak perlu di-upload (bisa diinstall ulang dengan npm install)
+node_modules/
+
+# 2. File Rahasia (SANGAT WAJIB DITULIS!)
+.env
+
+README.md

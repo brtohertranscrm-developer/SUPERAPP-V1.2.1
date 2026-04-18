@@ -14,7 +14,11 @@ export const useCheckoutLocker = () => {
   const [lockerSize, setLockerSize] = useState(passedData.size || 'Medium');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  const lockerLocation = passedData.location || 'Garasi Pusat Malioboro, Yogyakarta';
+  // FIX: normalize ke nama kota saja
+  const rawLoc = passedData.location || '';
+  const lockerLocation = rawLoc.toLowerCase().includes('solo') || rawLoc.toLowerCase().includes('balapan')
+    ? 'Solo'
+    : 'Yogyakarta';
   
   const priceMap = { Medium: 25000, Large: 40000 };
   const basePrice = priceMap[lockerSize];

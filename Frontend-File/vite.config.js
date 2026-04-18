@@ -6,12 +6,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Menyuruh Vite mengoper semua request berawalan /api ke backend
       '/api': {
         target: 'http://localhost:5001',
         changeOrigin: true,
         secure: false,
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
   }
 })

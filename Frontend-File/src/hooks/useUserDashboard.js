@@ -4,51 +4,70 @@ import { AuthContext } from '../context/AuthContext';
 
 export const useUserDashboard = () => {
   const navigate = useNavigate();
-  // Tambahkan 'logout' dari AuthContext jika Anda memilikinya di sana
-  const { user, token, updateKycStatus, logout } = useContext(AuthContext) || {}; 
+  const { user, token, updateKycStatus, logout } = useContext(AuthContext) || {};
   const authToken = token || localStorage.getItem('token');
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-  const [dashboardData, setDashboardData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  const [kycStatus, setKycStatus] = useState('unverified'); 
-  const [bannerUrl, setBannerUrl] = useState('https://images.unsplash.com/photo-1533105079780-92b9be482077?q=80&w=1600&auto=format&fit=crop');
-  const [topTravellers, setTopTravellers] = useState([]); 
+  const [dashboardData, setDashboardData]   = useState(null);
+  const [isLoading, setIsLoading]           = useState(true);
+  const [kycStatus, setKycStatus]           = useState('unverified');
+  const [bannerUrl, setBannerUrl]           = useState(
+    'https://images.unsplash.com/photo-1533105079780-92b9be482077?q=80&w=1600&auto=format&fit=crop'
+  );
+  const [topTravellers, setTopTravellers]   = useState([]);
+
+  // FIX: header helper tanpa Cache-Control
+  // Cache-Control tidak ada di CORS allowedHeaders backend → preflight ditolak
+  // Cache busting sudah cukup via ?_t=timestamp di URL
+  const getHeaders = () => ({
+    'Authorization': `Bearer ${authToken}`,
+    'Content-Type': 'application/json',
+  });
 
   const fetchDashboardData = async () => {
-    if (!authToken) { setIsLoading(false); return; }
-    try {
-      const timestamp = new Date().getTime(); 
-      const response = await fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, {
-        headers: { 'Authorization': `Bearer ${authToken}`, 'Cache-Control': 'no-cache, no-store' }
-      });
+    if (!authToken) {
+      setIsLoading(false);
+      return;
+    }
 
-      // ---> PERBAIKAN 1: TANGANI ERROR 401 (UNAUTHORIZED) <---
-      if (response.status === 401 || response.status === 403) {
-        console.warn("Token expired atau tidak valid. Mengalihkan ke halaman login...");
-        localStorage.removeItem('token'); // Hapus token yang rusak
-        if (logout) logout();             // Bersihkan state global jika ada
-        navigate('/login');               // Tendang kembali ke login
-        return;                           // Hentikan eksekusi kode di bawahnya
+    try {
+      const timestamp = Date.now();
+
+      const [resMe, resTop] = await Promise.all([
+        fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, {
+          headers: getHeaders(),
+        }),
+        fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, {
+          headers: getHeaders(),
+        }),
+      ]);
+
+      // Handle token expired / unauthorized
+      if (resMe.status === 401 || resMe.status === 403) {
+        console.warn('Token expired — redirect ke login');
+        localStorage.removeItem('token');
+        if (logout) logout();
+        navigate('/login');
+        return;
       }
 
-      const result = await response.json();
-      
-      const responseTop = await fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      const resultTop = await responseTop.json();
+      const resultMe  = await resMe.json();
+      const resultTop = await resTop.json();
 
-      if (result.success) {
-        setDashboardData(result.data);
-        if (result.data.user.profile_banner) setBannerUrl(result.data.user.profile_banner);
-        const freshKyc = String(result.data.user.kyc_status || 'unverified').toLowerCase();
+      if (resultMe.success) {
+        setDashboardData(resultMe.data);
+        if (resultMe.data.user?.profile_banner) {
+          setBannerUrl(resultMe.data.user.profile_banner);
+        }
+        const freshKyc = String(resultMe.data.user?.kyc_status || 'unverified').toLowerCase();
         setKycStatus(freshKyc);
         if (updateKycStatus) updateKycStatus(freshKyc);
       }
-      if (resultTop.success) setTopTravellers(resultTop.data);
+
+      if (resultTop.success) {
+        setTopTravellers(resultTop.data);
+      }
     } catch (error) {
       console.error('Gagal mengambil data dashboard:', error);
     } finally {
@@ -56,29 +75,24 @@ export const useUserDashboard = () => {
     }
   };
 
-  // ---> PERBAIKAN 2: BERSIHKAN INTERVAL DENGAN BENAR <---
-  useEffect(() => { 
-    let isMounted = true;
-    let interval; // Simpan ID interval ke variabel
-
-    if (authToken) {
-      fetchDashboardData(); 
-      interval = setInterval(() => {
-        if(isMounted) fetchDashboardData();
-      }, 3000);
-    } else {
+  useEffect(() => {
+    if (!authToken) {
       setIsLoading(false);
       navigate('/login');
+      return;
     }
 
-    // Fungsi Cleanup: Hentikan interval saat user pindah halaman / logout
-    return () => {
-      isMounted = false;
-      if (interval) clearInterval(interval); 
-    };
-  }, [authToken, navigate]); 
+    // Fetch pertama kali
+    fetchDashboardData();
 
-  // FUNGSI UPDATE KYC CODE (Tetap mempertahankan otomatisasi 'BT-')
+    // Polling setiap 10 detik (bukan 3 detik — terlalu agresif dan spam CORS error)
+    const interval = setInterval(fetchDashboardData, 10_000);
+
+    return () => clearInterval(interval);
+  }, [authToken]);
+
+  // ── Fungsi-fungsi helper ────────────────────────────────────────────────────
+
   const verifyKycCode = async (accessCode) => {
     try {
       let finalCode = accessCode.trim().toUpperCase();
@@ -88,94 +102,99 @@ export const useUserDashboard = () => {
 
       const response = await fetch(`${API_URL}/api/users/kyc/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-        body: JSON.stringify({ code: finalCode })
+        headers: getHeaders(),
+        body: JSON.stringify({ code: finalCode }),
       });
-      
+
       const textResult = await response.text();
       let result;
       try {
         result = JSON.parse(textResult);
-      } catch (e) {
-        return { success: false, error: 'Endpoint API tidak valid (404) atau Server Error.' };
+      } catch {
+        return { success: false, error: 'Endpoint API tidak valid atau Server Error.' };
       }
 
       if (response.ok && result.success) {
         setKycStatus('verified');
         if (updateKycStatus) updateKycStatus('verified');
-        fetchDashboardData(); 
+        fetchDashboardData();
         return { success: true };
       }
-      return { success: false, error: result.error || 'Kode verifikasi tidak valid / salah.' };
-    } catch (error) {
+      return { success: false, error: result.error || 'Kode verifikasi tidak valid.' };
+    } catch {
       return { success: false, error: 'Terjadi kesalahan jaringan.' };
     }
   };
 
-  // FUNGSI UPDATE PROFIL
   const saveProfile = async (editForm) => {
     try {
-      const response = await fetch(`${API_URL}/api/users/profile`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-        body: JSON.stringify(editForm)
+      const response = await fetch(`${API_URL}/api/profile`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(editForm),
       });
       const result = await response.json();
       if (result.success) {
-        fetchDashboardData(); 
+        fetchDashboardData();
         return true;
       }
       return false;
-    } catch (error) { return false; }
+    } catch {
+      return false;
+    }
   };
 
-  // FUNGSI UPLOAD BANNER
   const updateBanner = async (base64String) => {
     try {
-      await fetch(`${API_URL}/api/users/update-banner`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` }, 
-        body: JSON.stringify({ bannerUrl: base64String }) 
+      await fetch(`${API_URL}/api/users/update-banner`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ bannerUrl: base64String }),
       });
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error('Gagal update banner:', error);
+    }
   };
 
-  // FUNGSI PERPANJANG SEWA
   const handleExtend = async (orderId) => {
-    const days = prompt("Berapa hari Anda ingin memperpanjang masa sewa?");
+    const days = prompt('Berapa hari Anda ingin memperpanjang masa sewa?');
     if (!days || isNaN(days) || parseInt(days) <= 0) return;
 
     try {
       const response = await fetch(`${API_URL}/api/bookings/${orderId}/extend`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
-        body: JSON.stringify({ additional_days: days })
+        headers: getHeaders(),
+        body: JSON.stringify({ additional_days: days }),
       });
       const result = await response.json();
-      
+
       if (result.success) {
-        alert(`Berhasil! Tanggal kembali menjadi ${result.new_end_date}.\nMohon siapkan pembayaran tambahan Rp ${result.extra_cost.toLocaleString('id-ID')} via transfer/admin lapangan.`);
-        fetchDashboardData(); 
+        alert(
+          `Berhasil! Tanggal kembali menjadi ${result.new_end_date}.\n` +
+          `Mohon siapkan pembayaran tambahan Rp ${result.extra_cost.toLocaleString('id-ID')}.`
+        );
+        fetchDashboardData();
       } else {
         alert('Gagal memperpanjang pesanan: ' + result.error);
       }
-    } catch (error) {
+    } catch {
       alert('Terjadi kesalahan jaringan.');
     }
   };
 
   return {
-    dashboardData, 
-    isLoading, 
-    kycStatus, 
-    bannerUrl, 
-    setBannerUrl, 
+    dashboardData,
+    isLoading,
+    kycStatus,
+    bannerUrl,
+    setBannerUrl,
     topTravellers,
     user: dashboardData?.user || user,
     activeOrder: dashboardData?.activeOrder || null,
-    verifyKycCode, 
-    saveProfile, 
-    updateBanner, 
+    verifyKycCode,
+    saveProfile,
+    updateBanner,
     navigate,
-    handleExtend
+    handleExtend,
   };
 };

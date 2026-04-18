@@ -33,7 +33,13 @@ const TripCard = ({ trip, onOpenTicket }) => {
             <h3 className="text-xl font-black text-brand-dark mb-2 group-hover:text-brand-primary transition-colors">{trip.item_name}</h3>
             <div className="flex items-center gap-2 text-gray-500 text-xs font-bold">
               <MapPin size={16} className={isMotor ? 'text-brand-primary' : 'text-blue-500'} /> 
-              {trip.location || 'Garasi Pusat Brother Trans'}
+              {(() => {
+                const loc = trip.location || '';
+                if (!loc) return 'Yogyakarta';
+                const l = loc.toLowerCase();
+                if (l.includes('solo') || l.includes('balapan')) return 'Solo';
+                return 'Yogyakarta';
+              })()}
             </div>
           </div>
           <div className="flex flex-col justify-center sm:items-end gap-1">

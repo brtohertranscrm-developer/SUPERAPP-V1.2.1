@@ -33,7 +33,14 @@ const TripTicketModal = ({ ticket, onClose, user }) => {
           
           <div className="text-center mb-6">
             <h3 className="text-2xl font-black text-brand-dark mb-1">{ticket.item_name}</h3>
-            <p className="text-xs font-bold text-gray-500 flex items-center justify-center gap-1.5"><MapPin size={12} className="text-brand-primary"/> {ticket.location || 'Garasi Pusat'}</p>
+            <p className="text-xs font-bold text-gray-500 flex items-center justify-center gap-1.5"><MapPin size={12} className="text-brand-primary"/>
+              {(() => {
+                const loc = ticket.location || '';
+                const l = loc.toLowerCase();
+                if (l.includes('solo') || l.includes('balapan')) return 'Solo';
+                return 'Yogyakarta';
+              })()}
+            </p>
           </div>
 
           <div className="bg-gray-50 p-4 rounded-2xl flex justify-center items-center border border-gray-200 mb-6 shadow-inner">

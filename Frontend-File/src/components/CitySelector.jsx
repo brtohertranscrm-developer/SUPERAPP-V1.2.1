@@ -18,8 +18,7 @@ export default function CitySelector() {
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {/* Tombol Yogyakarta */}
-          <button 
+          <button
             onClick={() => changeCity('Yogyakarta')}
             className="group p-8 border-2 border-gray-50 rounded-3xl hover:border-brand-primary hover:bg-rose-50/30 transition-all duration-300"
           >
@@ -30,8 +29,7 @@ export default function CitySelector() {
             <span className="text-sm text-gray-400 mt-1 uppercase tracking-wider">Kota Gudeg</span>
           </button>
 
-          {/* Tombol Solo */}
-          <button 
+          <button
             onClick={() => changeCity('Solo')}
             className="group p-8 border-2 border-gray-50 rounded-3xl hover:border-brand-primary hover:bg-rose-50/30 transition-all duration-300"
           >

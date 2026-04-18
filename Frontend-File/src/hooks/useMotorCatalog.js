@@ -2,41 +2,38 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 export const useMotorCatalog = () => {
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const searchRef = useRef(null);
 
   const [searchParams, setSearchParams] = useState({
-    location: 'Stasiun Lempuyangan',
+    location:  'Yogyakarta',
     startDate: '',
-    endDate: ''
+    endDate:   '',
   });
 
-  const [activeFilter, setActiveFilter] = useState('Semua'); 
-  const [motors, setMotors] = useState([]);
+  const [activeFilter, setActiveFilter] = useState('Semua');
+  const [motors,    setMotors]    = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error,     setError]     = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
   useEffect(() => {
     fetch(`${API_URL}/api/motors`)
-      .then((res) => {
+      .then(res => {
         if (!res.ok) throw new Error('Gagal terhubung ke server');
         return res.json();
       })
-      .then((data) => {
-        if (data.success) {
-          setMotors(data.data); 
-        } else {
-          setError(data.error);
-        }
-        setIsLoading(false); 
+      .then(data => {
+        if (data.success) setMotors(data.data);
+        else setError(data.error);
+        setIsLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         setError('Gagal mengambil data dari server. Pastikan Backend menyala.');
         setIsLoading(false);
       });
-  }, [API_URL]); 
+  }, [API_URL]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -44,12 +41,12 @@ export const useMotorCatalog = () => {
       alert('Tentukan tanggal perjalanan Anda terlebih dahulu.');
       return;
     }
-    navigate('/search-page', { 
-      state: { 
-        startDate: searchParams.startDate, 
-        endDate: searchParams.endDate, 
-        pickupLocation: searchParams.location 
-      } 
+    navigate('/search-page', {
+      state: {
+        startDate:      searchParams.startDate,
+        endDate:        searchParams.endDate,
+        pickupLocation: searchParams.location,
+      }
     });
   };
 
@@ -57,17 +54,20 @@ export const useMotorCatalog = () => {
     searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
+  // Filter by kota (Yogyakarta / Solo) atau Semua
   const displayedMotors = motors.filter(motor => {
     if (activeFilter === 'Semua') return true;
-    if (activeFilter === 'Yogyakarta') return motor.id % 2 !== 0; // Simulasi logic area
-    if (activeFilter === 'Solo') return motor.id % 2 === 0;       
+    // normalize lokasi motor dari DB
+    const loc = (motor.location || '').toLowerCase();
+    if (activeFilter === 'Solo') return loc.includes('solo') || loc.includes('balapan');
+    if (activeFilter === 'Yogyakarta') return !loc.includes('solo') && !loc.includes('balapan');
     return true;
   });
 
-  return { 
-    searchParams, setSearchParams, 
-    activeFilter, setActiveFilter, 
-    isLoading, error, displayedMotors, 
-    handleSearchSubmit, handleCardClick, searchRef 
+  return {
+    searchParams, setSearchParams,
+    activeFilter, setActiveFilter,
+    isLoading, error, displayedMotors,
+    handleSearchSubmit, handleCardClick, searchRef,
   };
 };

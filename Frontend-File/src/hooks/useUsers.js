@@ -3,63 +3,90 @@ import { useState, useEffect, useCallback } from 'react';
 export const useUsers = () => {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-  // 1. Fungsi penarik token yang selalu fresh (segar)
   const getAuthHeaders = () => {
     const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${token}`,
+      // NOTE: Cache-Control DIHAPUS — header ini tidak ada di Access-Control-Allow-Headers
+      // backend sehingga preflight OPTIONS request ditolak dengan CORS error.
+      // Cache busting sudah cukup via query string ?_t=timestamp
     };
   };
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const timestamp = new Date().getTime(); 
-      const res = await fetch(`${API_URL}/api/admin/kyc?_t=${timestamp}`, {
-        headers: { 
-          ...getAuthHeaders(), // Gunakan spread operator untuk menggabungkan header
-          'Cache-Control': 'no-cache, no-store' 
-        }
+      // FIX: endpoint yang benar adalah /api/admin/kyc
+      // tapi kita tambah cache buster dan error handling yang lebih baik
+      const res = await fetch(`${API_URL}/api/admin/kyc?_t=${Date.now()}`, {
+        headers: getAuthHeaders(),
       });
-      
+
+      if (!res.ok) {
+        console.error(`HTTP ${res.status}: Gagal mengambil data pelanggan`);
+        setUsers([]);
+        return;
+      }
+
       const data = await res.json();
-      if (data.success) {
+
+      if (data.success && Array.isArray(data.data)) {
         setUsers(data.data);
       } else {
-        console.error("Server menjawab gagal:", data.message || data.error);
+        console.error('Format response tidak valid:', data);
+        setUsers([]);
       }
     } catch (error) {
       console.error('Gagal mengambil data pelanggan:', error);
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
-  }, [API_URL]); // authToken dihapus dari dependency
+  }, [API_URL]);
 
+  // FIX: status yang dikirim harus sesuai validStatuses di backend:
+  // 'unverified' | 'pending' | 'verified' | 'rejected'
   const updateKyc = async (id, name, newStatus) => {
-    const actionText = newStatus === 'verified' ? 'ACC MANUAL' : 
-                       newStatus === 'rejected' ? 'TOLAK / BEKUKAN' : 
-                       newStatus === 'unverified' ? 'CABUT VERIFIKASI' : newStatus;
+    const validStatuses = ['unverified', 'pending', 'verified', 'rejected'];
+    if (!validStatuses.includes(newStatus)) {
+      console.error('Status KYC tidak valid:', newStatus);
+      return;
+    }
+
+    const actionText = {
+      verified:   'VERIFIKASI MANUAL',
+      rejected:   'TOLAK / BEKUKAN',
+      unverified: 'CABUT VERIFIKASI',
+      pending:    'SET KE PENDING',
+    }[newStatus] || newStatus;
 
     if (!window.confirm(`Yakin ingin ${actionText} akun ${name}?`)) return;
 
     try {
       const res = await fetch(`${API_URL}/api/admin/kyc/${id}`, {
         method: 'PUT',
-        headers: getAuthHeaders(), // Gunakan header dinamis
-        body: JSON.stringify({ status: newStatus })
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert('Gagal mengupdate status KYC: ' + (errData.error || res.status));
+        return;
+      }
+
       const data = await res.json();
-      
       if (data.success) {
-        fetchUsers(); 
+        fetchUsers();
       } else {
-        alert('Gagal mengupdate status KYC: ' + (data.message || ''));
+        alert('Gagal mengupdate status KYC: ' + (data.error || ''));
       }
     } catch (error) {
+      console.error('Update KYC error:', error);
       alert('Koneksi ke server gagal.');
     }
   };
@@ -68,24 +95,31 @@ export const useUsers = () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/kyc/${id}/code`, {
         method: 'POST',
-        headers: getAuthHeaders() // Gunakan header dinamis
+        headers: getAuthHeaders(),
       });
+
+      if (!res.ok) {
+        alert('Gagal membuat kode KYC.');
+        return;
+      }
+
       const data = await res.json();
       if (data.success) {
-        navigator.clipboard.writeText(data.code);
-        alert(`Kode KYC untuk ${name}:\n\n${data.code}\n\n✅ Disalin otomatis.`);
-        fetchUsers(); 
+        navigator.clipboard.writeText(data.code).catch(() => {});
+        alert(`Kode KYC untuk ${name}:\n\n${data.code}\n\n✅ Disalin ke clipboard.`);
+        fetchUsers();
       } else {
-        alert('Gagal membuat kode unik.');
+        alert('Gagal membuat kode unik: ' + (data.error || ''));
       }
     } catch (err) {
+      console.error('Generate code error:', err);
       alert('Gagal terhubung ke server.');
     }
   };
 
   useEffect(() => {
     fetchUsers();
-  }, [fetchUsers]); // Hanya bergantung pada fetchUsers
+  }, [fetchUsers]);
 
-  return { users, isLoading, updateKyc, generateCode };
+  return { users, isLoading, updateKyc, generateCode, refetch: fetchUsers };
 };
