@@ -17,7 +17,7 @@ db.run("PRAGMA foreign_keys = ON");
 db.run("PRAGMA journal_mode = WAL");
 
 // ==========================================
-// 2. HELPER: Tambah kolom jika belum ada (untuk migrasi)
+// 2. HELPER: Tambah kolom jika belum ada
 // ==========================================
 const addColumnIfNotExists = (tableName, columnName, columnDef) => {
   db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`, (err) => {
@@ -56,7 +56,35 @@ db.serialize(() => {
       has_completed_tc_gamification INTEGER DEFAULT 0,
       bank_account TEXT,
       bank_name TEXT,
+      login_attempts INTEGER DEFAULT 0,
+      locked_until INTEGER DEFAULT NULL,
+      last_login TEXT DEFAULT NULL,
       join_date TEXT NOT NULL
+    )
+  `);
+
+  // --- LOGIN LOGS (audit trail) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS login_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      success INTEGER DEFAULT 0,
+      reason TEXT,
+      attempted_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // --- TOKEN BLACKLIST (JWT revoke saat logout) ---
+  // TTL = waktu expired token, agar bisa di-cleanup otomatis
+  db.run(`
+    CREATE TABLE IF NOT EXISTS token_blacklist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      blacklisted_at TEXT DEFAULT (datetime('now')),
+      expires_at INTEGER NOT NULL
     )
   `);
 
@@ -106,6 +134,7 @@ db.serialize(() => {
   `);
 
   // --- BOOKINGS ---
+  // [FIX 3] Kolom rincian harga ditambahkan langsung ke schema
   db.run(`
     CREATE TABLE IF NOT EXISTS bookings (
       order_id TEXT PRIMARY KEY,
@@ -115,6 +144,15 @@ db.serialize(() => {
       location TEXT,
       start_date TEXT NOT NULL,
       end_date TEXT NOT NULL,
+      base_price INTEGER DEFAULT 0,
+      discount_amount INTEGER DEFAULT 0,
+      promo_code TEXT,
+      service_fee INTEGER DEFAULT 0,
+      extend_fee INTEGER DEFAULT 0,
+      addon_fee INTEGER DEFAULT 0,
+      delivery_fee INTEGER DEFAULT 0,
+      paid_amount INTEGER DEFAULT 0,
+      price_notes TEXT,
       total_price INTEGER NOT NULL,
       status TEXT DEFAULT 'pending',
       payment_status TEXT DEFAULT 'paid',
@@ -159,15 +197,6 @@ db.serialize(() => {
   `);
 
   // --- REFERRAL LOGS ---
-  // Melacak setiap event referral per milestone.
-  //
-  // Kolom penting:
-  //   status           → 'registered' | 'first_booking'
-  //   miles_referee    → total miles yang diberikan ke referee (akumulasi semua milestone)
-  //   miles_referrer   → total miles yang diberikan ke referrer (termasuk tier bonus)
-  //   first_booking_at → kapan booking pertama referee selesai (NULL sampai terjadi)
-  //
-  // UNIQUE(referee_id) memastikan satu user hanya punya 1 referrer sepanjang waktu.
   db.run(`
     CREATE TABLE IF NOT EXISTS referral_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +252,7 @@ db.serialize(() => {
   `);
 
   // ==========================================
-  // [FINANCE] TABEL — Fase 1
+  // [FINANCE] TABEL
   // ==========================================
 
   // --- EXPENSES ---
@@ -301,8 +330,7 @@ db.serialize(() => {
   `);
 
   // ==========================================
-  // 4. MIGRASI — Tambah kolom baru untuk database lama
-  //    (Aman dijalankan berulang kali, diabaikan jika sudah ada)
+  // 4. MIGRASI — Tambah kolom baru (aman diulang)
   // ==========================================
 
   // Users — kolom lama
@@ -312,44 +340,59 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'has_completed_tc_gamification', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'bank_account', 'TEXT');
   addColumnIfNotExists('users', 'bank_name', 'TEXT');
-  // Users — [REFERRAL] kolom baru
-  addColumnIfNotExists('users', 'referred_by', 'TEXT');  // kode referral yang dipakai saat daftar
+  addColumnIfNotExists('users', 'referred_by', 'TEXT');
 
-  // Bookings
-  addColumnIfNotExists('bookings', 'payment_status', 'TEXT DEFAULT "paid"');
-  addColumnIfNotExists('bookings', 'unit_id', 'INTEGER');
-  addColumnIfNotExists('bookings', 'plate_number', 'TEXT');
-  addColumnIfNotExists('bookings', 'created_at', "TEXT");
-  addColumnIfNotExists('bookings', 'payment_method', "TEXT DEFAULT 'transfer'");
-  addColumnIfNotExists('bookings', 'duration_hours', 'INTEGER DEFAULT 1');
-  addColumnIfNotExists('bookings', 'pickup_fee', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('bookings', 'drop_fee', 'INTEGER DEFAULT 0');
+  // [FIX 3] Users — kolom auth yang sebelumnya hilang
+  addColumnIfNotExists('users', 'login_attempts', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'locked_until',   'INTEGER DEFAULT NULL');
+  addColumnIfNotExists('users', 'last_login',      'TEXT DEFAULT NULL');
+
+  // Bookings — kolom lama
+  addColumnIfNotExists('bookings', 'payment_status',  'TEXT DEFAULT "paid"');
+  addColumnIfNotExists('bookings', 'unit_id',          'INTEGER');
+  addColumnIfNotExists('bookings', 'plate_number',     'TEXT');
+  addColumnIfNotExists('bookings', 'created_at',       'TEXT');
+  addColumnIfNotExists('bookings', 'payment_method',   "TEXT DEFAULT 'transfer'");
+  addColumnIfNotExists('bookings', 'duration_hours',   'INTEGER DEFAULT 1');
+  addColumnIfNotExists('bookings', 'pickup_fee',       'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'drop_fee',         'INTEGER DEFAULT 0');
+
+  // [FIX 3] Bookings — kolom rincian harga yang sebelumnya hilang
+  addColumnIfNotExists('bookings', 'base_price',      'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'discount_amount', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'promo_code',      'TEXT');
+  addColumnIfNotExists('bookings', 'service_fee',     'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'extend_fee',      'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'addon_fee',       'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'delivery_fee',    'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'paid_amount',     'INTEGER DEFAULT 0');
+  addColumnIfNotExists('bookings', 'price_notes',     'TEXT');
 
   // Motors
-  addColumnIfNotExists('motors', 'location', 'TEXT DEFAULT "Lempuyangan"');
-  addColumnIfNotExists('motors', 'price_12h', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('motors', 'allow_dynamic_pricing', 'INTEGER DEFAULT 1');
-  addColumnIfNotExists('motors', 'vendor_user_id', 'TEXT');
-  addColumnIfNotExists('motors', 'vendor_rate', 'REAL DEFAULT 0');
+  addColumnIfNotExists('motors', 'location',               'TEXT DEFAULT "Lempuyangan"');
+  addColumnIfNotExists('motors', 'price_12h',              'INTEGER DEFAULT 0');
+  addColumnIfNotExists('motors', 'allow_dynamic_pricing',  'INTEGER DEFAULT 1');
+  addColumnIfNotExists('motors', 'vendor_user_id',         'TEXT');
+  addColumnIfNotExists('motors', 'vendor_rate',            'REAL DEFAULT 0');
 
   // Promotions
-  addColumnIfNotExists('promotions', 'usage_limit', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('promotions', 'current_usage', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('promotions', 'usage_limit',      'INTEGER DEFAULT 0');
+  addColumnIfNotExists('promotions', 'current_usage',    'INTEGER DEFAULT 0');
   addColumnIfNotExists('promotions', 'discount_percent', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('promotions', 'max_discount', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('promotions', 'max_discount',     'INTEGER DEFAULT 0');
 
   // Articles
-  addColumnIfNotExists('articles', 'slug', 'TEXT');
-  addColumnIfNotExists('articles', 'meta_title', 'TEXT');
-  addColumnIfNotExists('articles', 'meta_desc', 'TEXT');
+  addColumnIfNotExists('articles', 'slug',         'TEXT');
+  addColumnIfNotExists('articles', 'meta_title',   'TEXT');
+  addColumnIfNotExists('articles', 'meta_desc',    'TEXT');
   addColumnIfNotExists('articles', 'geo_location', 'TEXT');
-  addColumnIfNotExists('articles', 'views', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('articles', 'views',        'INTEGER DEFAULT 0');
 
   // Lockers
-  addColumnIfNotExists('lockers', 'type', "TEXT DEFAULT 'terbuka'");
-  addColumnIfNotExists('lockers', 'price_1h', 'INTEGER DEFAULT 5000');
-  addColumnIfNotExists('lockers', 'price_12h', 'INTEGER DEFAULT 35000');
-  addColumnIfNotExists('lockers', 'price_24h', 'INTEGER DEFAULT 50000');
+  addColumnIfNotExists('lockers', 'type',       "TEXT DEFAULT 'terbuka'");
+  addColumnIfNotExists('lockers', 'price_1h',   'INTEGER DEFAULT 5000');
+  addColumnIfNotExists('lockers', 'price_12h',  'INTEGER DEFAULT 35000');
+  addColumnIfNotExists('lockers', 'price_24h',  'INTEGER DEFAULT 50000');
   addColumnIfNotExists('lockers', 'dimensions', 'TEXT');
 
   // ==========================================
@@ -393,11 +436,19 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_locker_addons_type ON locker_addons(addon_type, is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_bookings_duration ON bookings(duration_hours)`);
 
-  // Referral indexes — query yang sering: cari by referrer, by status, by tanggal
+  // Referral indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_referral_logs_referrer ON referral_logs(referrer_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_referral_logs_referee  ON referral_logs(referee_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_referral_logs_status   ON referral_logs(status)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_referral_logs_date     ON referral_logs(registered_at)`);
+
+  // [FIX 1] Token blacklist indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_hash       ON token_blacklist(token_hash)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires_at ON token_blacklist(expires_at)`);
+
+  // Login logs indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_login_logs_user_id ON login_logs(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_login_logs_attempted_at ON login_logs(attempted_at)`);
 
   console.log('✅ Semua tabel, migrasi & index berhasil diverifikasi!');
 });

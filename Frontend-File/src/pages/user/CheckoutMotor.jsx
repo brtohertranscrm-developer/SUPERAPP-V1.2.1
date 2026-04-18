@@ -13,8 +13,7 @@ const INSURANCE_PER_DAY = 15000;
 const SERVICE_FEE = 2500;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const fmtRp = (n) =>
-  `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
+const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 const generateOrderId = () => {
   const now = new Date();
@@ -52,31 +51,37 @@ const KycBanner = ({ status, onNavigate }) => (
   </div>
 );
 
-/** Payment Method Selector */
-const PaymentMethodPicker = ({ value, onChange }) => {
+// [FIX 4] PaymentMethodPicker — nomor rekening diambil dari props (berasal dari API)
+// Tidak ada nomor rekening hardcoded di sini
+const PaymentMethodPicker = ({ value, onChange, paymentInfo }) => {
   const methods = [
     {
-      id: 'bca',
-      label: 'Bank BCA',
-      detail: 'No. Rek: 8012 3456 7890',
-      icon: <CreditCard size={20} className="text-blue-700" />,
-      badge: 'BCA',
+      id:       'bca',
+      label:    'Bank BCA',
+      // [FIX 4] Nomor dari API, fallback kosong jika API belum diset
+      detail:   paymentInfo?.bca?.number
+                  ? `No. Rek: ${paymentInfo.bca.number} (a/n ${paymentInfo.bca.name})`
+                  : 'Memuat info rekening...',
+      icon:     <CreditCard size={20} className="text-blue-700" />,
+      badge:    'BCA',
       badgeCls: 'bg-blue-50 text-blue-800 border-blue-200',
     },
     {
-      id: 'mandiri',
-      label: 'Bank Mandiri',
-      detail: 'No. Rek: 137 000 123 4567',
-      icon: <CreditCard size={20} className="text-amber-600" />,
-      badge: 'MANDIRI',
+      id:       'mandiri',
+      label:    'Bank Mandiri',
+      detail:   paymentInfo?.mandiri?.number
+                  ? `No. Rek: ${paymentInfo.mandiri.number} (a/n ${paymentInfo.mandiri.name})`
+                  : 'Memuat info rekening...',
+      icon:     <CreditCard size={20} className="text-amber-600" />,
+      badge:    'MANDIRI',
       badgeCls: 'bg-amber-50 text-amber-800 border-amber-200',
     },
     {
-      id: 'qris',
-      label: 'QRIS / E-Wallet',
-      detail: 'GoPay, OVO, Dana, ShopeePay',
-      icon: <Wallet size={20} className="text-purple-600" />,
-      badge: 'QRIS',
+      id:       'qris',
+      label:    'QRIS / E-Wallet',
+      detail:   paymentInfo?.qris?.name || 'GoPay, OVO, Dana, ShopeePay',
+      icon:     <Wallet size={20} className="text-purple-600" />,
+      badge:    'QRIS',
       badgeCls: 'bg-purple-50 text-purple-800 border-purple-200',
     },
   ];
@@ -229,18 +234,19 @@ const ProcessingOverlay = () => (
 export default function CheckoutMotor() {
   const { user } = useContext(AuthContext) || {};
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
 
-  // Booking data from navigation state
   const bookingData = location.state;
 
-  // Form state
-  const [paymentMethod, setPaymentMethod] = useState('bca');
-  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [paymentMethod, setPaymentMethod]   = useState('bca');
+  const [appliedPromo, setAppliedPromo]     = useState(null);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [isCheckingPromo, setIsCheckingPromo] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [isSubmitting, setIsSubmitting]     = useState(false);
+  const [submitError, setSubmitError]       = useState('');
+
+  // [FIX 4] State untuk info rekening dari API
+  const [paymentInfo, setPaymentInfo]       = useState(null);
 
   // Redirect if no booking data
   useEffect(() => {
@@ -248,34 +254,41 @@ export default function CheckoutMotor() {
       navigate('/', { replace: true });
       return;
     }
-    // Redirect to login if not logged in, save pending checkout
     if (!user) {
       sessionStorage.setItem('pending_checkout', JSON.stringify(bookingData));
       navigate('/login', { replace: true });
     }
   }, [bookingData, user, navigate]);
 
-  // Guard: if no data, don't render
+  // [FIX 4] Fetch info rekening dari backend saat komponen mount
+  // Nomor rekening tidak hardcoded — diambil dari API yang baca dari .env
+  useEffect(() => {
+    fetch(`${API_URL}/api/payment-info`)
+      .then((r) => r.json())
+      .then((data) => { if (data.success) setPaymentInfo(data.data); })
+      .catch(() => {/* silent fail — UI tetap jalan, hanya info rekening kosong */});
+  }, []);
+
   if (!bookingData || !user) return null;
 
   // ── Price Calculations ──────────────────────────────────────────────────────
   const {
-    motorName = 'Motor',
+    motorName     = 'Motor',
     pickupLocation = 'Lokasi tidak diketahui',
-    startDate = '',
-    endDate = '',
-    totalDays = 1,
-    basePrice = 0,
+    startDate     = '',
+    endDate       = '',
+    totalDays     = 1,
+    basePrice     = 0,
   } = bookingData;
 
-  const safeDays = Math.max(1, Number(totalDays) || 1);
+  const safeDays      = Math.max(1, Number(totalDays) || 1);
   const safeBasePrice = Number(basePrice) || 0;
-  const subTotal = safeBasePrice * safeDays;
-  const insuranceFee = INSURANCE_PER_DAY * safeDays;
-  const serviceFee = SERVICE_FEE;
+  const subTotal      = safeBasePrice * safeDays;
+  const insuranceFee  = INSURANCE_PER_DAY * safeDays;
+  const serviceFee    = SERVICE_FEE;
   const beforeDiscount = subTotal + insuranceFee + serviceFee;
-  const safeDiscount = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
-  const grandTotal = beforeDiscount - safeDiscount;
+  const safeDiscount  = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
+  const grandTotal    = beforeDiscount - safeDiscount;
 
   const isKycVerified = user?.kyc_status === 'verified';
 
@@ -284,9 +297,9 @@ export default function CheckoutMotor() {
     setIsCheckingPromo(true);
     try {
       const res = await fetch(`${API_URL}/api/promotions/validate`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body:    JSON.stringify({ code }),
       });
       const result = await res.json();
 
@@ -318,31 +331,31 @@ export default function CheckoutMotor() {
     setSubmitError('');
     setIsSubmitting(true);
 
-    const token = localStorage.getItem('token');
+    const token   = localStorage.getItem('token');
     const orderId = generateOrderId();
 
     const payload = {
-      order_id: orderId,
-      item_type: 'motor',
-      item_name: motorName,
-      location: pickupLocation,
-      start_date: startDate,
-      end_date: endDate,
-      base_price: subTotal,
-      service_fee: serviceFee,
-      addon_fee: insuranceFee,
+      order_id:        orderId,
+      item_type:       'motor',
+      item_name:       motorName,
+      location:        pickupLocation,
+      start_date:      startDate,
+      end_date:        endDate,
+      base_price:      subTotal,
+      service_fee:     serviceFee,
+      addon_fee:       insuranceFee,
       discount_amount: safeDiscount,
-      promo_code: appliedPromo?.code || null,
-      total_price: grandTotal,
-      payment_method: paymentMethod,
+      promo_code:      appliedPromo?.code || null,
+      total_price:     grandTotal,
+      payment_method:  paymentMethod,
     };
 
     try {
       const res = await fetch(`${API_URL}/api/bookings`, {
-        method: 'POST',
+        method:  'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization:  `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -353,20 +366,16 @@ export default function CheckoutMotor() {
         throw new Error(data.error || `Gagal membuat pesanan (${res.status})`);
       }
 
-      // Increment promo usage (fire-and-forget, don't block UI)
       if (appliedPromo?.code) {
         fetch(`${API_URL}/api/promotions/increment`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ code: appliedPromo.code }),
-        }).catch(() => {/* silent fail */});
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body:    JSON.stringify({ code: appliedPromo.code }),
+        }).catch(() => {});
       }
 
       navigate('/dashboard', {
-        state: { successMessage: `Pesanan ${orderId} berhasil dibuat! Segera selesaikan pembayaran.` },
+        state:   { successMessage: `Pesanan ${orderId} berhasil dibuat! Segera selesaikan pembayaran.` },
         replace: true,
       });
     } catch (err) {
@@ -383,7 +392,6 @@ export default function CheckoutMotor() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* Back button */}
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-slate-500 hover:text-slate-900 font-bold mb-6 transition-colors text-sm"
@@ -395,7 +403,6 @@ export default function CheckoutMotor() {
           Selesaikan Pesanan
         </h1>
 
-        {/* KYC Warning */}
         {!isKycVerified && (
           <KycBanner status={user?.kyc_status} onNavigate={() => navigate('/dashboard')} />
         )}
@@ -436,7 +443,6 @@ export default function CheckoutMotor() {
                   </div>
                 </div>
               </div>
-              {/* Included items */}
               <div className="px-5 pb-4 flex flex-wrap gap-2">
                 {[
                   { icon: <Users size={12} />, label: '2 Helm SNI' },
@@ -463,22 +469,16 @@ export default function CheckoutMotor() {
                   { label: 'Nama Lengkap', value: user.name },
                   { label: 'Email', value: user.email },
                   { label: 'No. WhatsApp', value: user.phone || '—' },
-                  {
-                    label: 'Status KYC',
-                    value: user.kyc_status || 'unverified',
-                    isStatus: true,
-                  },
+                  { label: 'Status KYC', value: user.kyc_status || 'unverified', isStatus: true },
                 ].map(({ label, value, isStatus }) => (
                   <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
                     {isStatus ? (
-                      <span
-                        className={`inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-lg border ${
-                          value === 'verified'
-                            ? 'bg-green-50 text-green-700 border-green-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
+                      <span className={`inline-flex items-center gap-1 text-xs font-black uppercase px-2 py-0.5 rounded-lg border ${
+                        value === 'verified'
+                          ? 'bg-green-50 text-green-700 border-green-200'
+                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                      }`}>
                         {value === 'verified' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />}
                         {value}
                       </span>
@@ -510,12 +510,16 @@ export default function CheckoutMotor() {
               />
             </div>
 
-            {/* Payment Method */}
+            {/* [FIX 4] Payment Method — paymentInfo dari API, bukan hardcoded */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
                 <CreditCard size={16} className="text-slate-500" /> Metode Pembayaran
               </h3>
-              <PaymentMethodPicker value={paymentMethod} onChange={setPaymentMethod} />
+              <PaymentMethodPicker
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                paymentInfo={paymentInfo}
+              />
               <p className="text-xs text-slate-400 font-medium mt-3 flex items-center justify-center gap-1.5">
                 <Info size={11} /> Transfer tepat sesuai nominal hingga 3 digit terakhir untuk verifikasi otomatis.
               </p>
@@ -527,7 +531,6 @@ export default function CheckoutMotor() {
           <div className="w-full lg:w-[360px] shrink-0 sticky top-24">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
 
-              {/* Header */}
               <div className="bg-slate-900 px-5 py-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Ringkasan Pembayaran</p>
                 <p className="text-white font-black text-lg">{motorName}</p>
@@ -537,20 +540,10 @@ export default function CheckoutMotor() {
                 </div>
               </div>
 
-              {/* Breakdown */}
               <div className="p-5 space-y-3">
-                <PriceRow
-                  label={`Biaya sewa (${safeDays}x ${fmtRp(safeBasePrice)})`}
-                  value={subTotal}
-                />
-                <PriceRow
-                  label={`Asuransi & RSA (${safeDays}x ${fmtRp(INSURANCE_PER_DAY)})`}
-                  value={insuranceFee}
-                />
-                <PriceRow
-                  label="Biaya layanan & aplikasi"
-                  value={serviceFee}
-                />
+                <PriceRow label={`Biaya sewa (${safeDays}x ${fmtRp(safeBasePrice)})`} value={subTotal} />
+                <PriceRow label={`Asuransi & RSA (${safeDays}x ${fmtRp(INSURANCE_PER_DAY)})`} value={insuranceFee} />
+                <PriceRow label="Biaya layanan & aplikasi" value={serviceFee} />
 
                 {safeDiscount > 0 && appliedPromo && (
                   <PriceRow
@@ -561,16 +554,10 @@ export default function CheckoutMotor() {
                 )}
 
                 <div className="border-t border-slate-100 pt-3">
-                  <PriceRow
-                    label="Total Pembayaran"
-                    value={grandTotal}
-                    isBold
-                    isTotal
-                  />
+                  <PriceRow label="Total Pembayaran" value={grandTotal} isBold isTotal />
                 </div>
               </div>
 
-              {/* Submit Error */}
               {submitError && (
                 <div className="mx-5 mb-3 bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start gap-2">
                   <XCircle size={14} className="text-rose-500 shrink-0 mt-0.5" />
@@ -578,7 +565,6 @@ export default function CheckoutMotor() {
                 </div>
               )}
 
-              {/* CTA */}
               <div className="px-5 pb-5">
                 {isKycVerified ? (
                   <button
@@ -606,7 +592,6 @@ export default function CheckoutMotor() {
               </div>
             </div>
 
-            {/* Trust indicators */}
             <div className="mt-3 flex items-center justify-center gap-4">
               {['Transfer Aman', 'Data Terenkripsi', 'Terpercaya'].map((t) => (
                 <span key={t} className="flex items-center gap-1 text-[10px] font-bold text-slate-400">

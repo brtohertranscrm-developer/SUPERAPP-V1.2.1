@@ -1,3 +1,4 @@
+const { notifyPaymentConfirmed } = require('../utils/telegram');
 const express = require('express');
 const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
@@ -23,7 +24,6 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
 
 // ==========================================
 // FILE UPLOAD — Bukti transfer & struk pengeluaran
-// Mengikuti pola upload di adminRoutes.js
 // ==========================================
 const ALLOWED_FINANCE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_FINANCE_FILE = 5 * 1024 * 1024; // 5MB
@@ -107,7 +107,6 @@ router.post('/reconciliations', requirePermission('finance'), (req, res) => {
         return res.status(400).json({ success: false, error: 'Order ID, bank, nominal, dan tanggal transfer wajib diisi.' });
       }
 
-      // Validasi order_id exist
       const booking = await dbGet('SELECT order_id, total_price FROM bookings WHERE order_id = ?', [order_id.trim()]);
       if (!booking) {
         return res.status(404).json({ success: false, error: 'Order ID tidak ditemukan di sistem.' });
@@ -139,7 +138,15 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
       return res.status(400).json({ success: false, error: 'Hanya rekonsiliasi berstatus pending yang bisa dikonfirmasi.' });
     }
 
-    const booking = await dbGet('SELECT total_price FROM bookings WHERE order_id = ?', [recon.order_id]);
+    // Ambil data booking + info pelanggan sekaligus (dipakai validasi & notif Telegram)
+    const booking = await dbGet(
+      `SELECT b.total_price, b.item_name,
+              u.name as customer_name, u.phone as customer_phone
+       FROM bookings b
+       LEFT JOIN users u ON b.user_id = u.id
+       WHERE b.order_id = ?`,
+      [recon.order_id]
+    );
     if (!booking) return res.status(404).json({ success: false, error: 'Booking terkait tidak ditemukan.' });
 
     if (recon.transfer_amount < booking.total_price) {
@@ -154,11 +161,16 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
       `UPDATE payment_reconciliations SET status = 'matched', reconciled_by = ?, reconciled_at = ? WHERE id = ?`,
       [req.user.id, now, req.params.id]
     );
-    // Update booking menjadi paid
     await dbRun(
       `UPDATE bookings SET payment_status = 'paid' WHERE order_id = ?`,
       [recon.order_id]
     );
+
+    // ── TELEGRAM: Notifikasi pembayaran dikonfirmasi ───────────────────────────
+    // Fire and forget — tidak blokir response
+    notifyPaymentConfirmed(recon, booking, req.user.name)
+      .catch((err) => console.error('[Telegram] payment notify error:', err.message));
+    // ──────────────────────────────────────────────────────────────────────────
 
     res.json({ success: true, message: 'Pembayaran berhasil dikonfirmasi dan status booking diperbarui.' });
   } catch (err) {

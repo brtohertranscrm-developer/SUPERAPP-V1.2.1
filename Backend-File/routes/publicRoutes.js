@@ -224,4 +224,15 @@ router.post('/promotions/increment', async (req, res) => {
   }
 });
 
+router.get('/payment-info', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      bca:     { bank: 'BCA',     number: process.env.PAYMENT_BCA_NUMBER     || '', name: process.env.PAYMENT_BCA_NAME     || '' },
+      mandiri: { bank: 'Mandiri', number: process.env.PAYMENT_MANDIRI_NUMBER || '', name: process.env.PAYMENT_MANDIRI_NAME || '' },
+      qris:    { bank: 'QRIS',    number: '', name: process.env.PAYMENT_QRIS_INFO || 'GoPay, OVO, Dana, ShopeePay' },
+    },
+  });
+});
+
 module.exports = router;

@@ -1,7 +1,20 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, CheckCircle2 } from 'lucide-react';
 
+// [FIX 4] Ambil API_URL dari env — sama seperti file checkout lainnya
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
+  // [FIX 4] Fetch info rekening dari backend — tidak ada nomor rekening hardcoded
+  const [paymentInfo, setPaymentInfo] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/payment-info`)
+      .then((r) => r.json())
+      .then((data) => { if (data.success) setPaymentInfo(data.data); })
+      .catch(() => {/* silent fail */});
+  }, []);
+
   return (
     <div className="flex flex-col gap-6">
       
@@ -58,6 +71,7 @@ const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
       </div>
 
       {/* --- METODE PEMBAYARAN --- */}
+      {/* [FIX 4] Nomor rekening diambil dari paymentInfo (API), bukan hardcoded */}
       <div className="bg-white p-6 sm:p-8 rounded-[2rem] shadow-sm border border-slate-100">
         <h3 className="text-xl font-black text-brand-dark mb-6 border-b border-slate-100 pb-4">
           Pilih Rekening Tujuan
@@ -79,7 +93,6 @@ const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
               <CheckCircle2 className="absolute top-4 right-4 text-blue-600" size={20} />
             )}
             
-            {/* CSS Tiru Logo BCA */}
             <div className="italic font-black text-2xl text-blue-800 tracking-tighter mb-4 ml-1">
               BCA
             </div>
@@ -89,10 +102,14 @@ const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
                 Transfer Bank BCA
               </span>
               <div className="flex items-center gap-2">
+                {/* [FIX 4] Nomor dari API — tampil loading jika belum dimuat */}
                 <span className="text-sm text-slate-600 font-black tracking-widest bg-white border border-slate-200 px-3 py-1.5 rounded-lg w-full">
-                  8012 3456 7890
+                  {paymentInfo?.bca?.number || '—'}
                 </span>
               </div>
+              {paymentInfo?.bca?.name && (
+                <span className="text-xs text-slate-400 mt-1 block">a/n {paymentInfo.bca.name}</span>
+              )}
             </div>
           </button>
 
@@ -110,7 +127,6 @@ const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
               <CheckCircle2 className="absolute top-4 right-4 text-blue-500" size={20} />
             )}
             
-            {/* CSS Tiru Logo Mandiri */}
             <div className="flex items-center gap-1.5 mb-4 ml-1">
                <div className="w-7 h-7 bg-amber-400 rounded-full flex items-center justify-center">
                  <div className="w-3.5 h-3.5 bg-blue-900 rounded-full"></div>
@@ -123,10 +139,14 @@ const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
                 Transfer Bank Mandiri
               </span>
               <div className="flex items-center gap-2">
+                {/* [FIX 4] Nomor dari API */}
                 <span className="text-sm text-slate-600 font-black tracking-widest bg-white border border-slate-200 px-3 py-1.5 rounded-lg w-full">
-                  137 000 123 4567
+                  {paymentInfo?.mandiri?.number || '—'}
                 </span>
               </div>
+              {paymentInfo?.mandiri?.name && (
+                <span className="text-xs text-slate-400 mt-1 block">a/n {paymentInfo.mandiri.name}</span>
+              )}
             </div>
           </button>
 

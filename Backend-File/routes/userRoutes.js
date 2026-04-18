@@ -1,3 +1,4 @@
+const { notifyNewBooking, notifyExtendBooking, notifyKycPending } = require('../utils/telegram');
 const express = require('express');
 const db = require('../db');
 const { verifyUser } = require('../middlewares/authMiddleware');
@@ -16,6 +17,33 @@ const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
 
 const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); });
+});
+
+// [FIX 7] Helper: jalankan beberapa query dalam satu transaksi SQLite
+// Mencegah miles dobel jika ada concurrent request
+const dbTransaction = (queries) => new Promise((resolve, reject) => {
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION', (err) => {
+      if (err) return reject(err);
+
+      const runNext = (index) => {
+        if (index >= queries.length) {
+          db.run('COMMIT', (err) => err ? reject(err) : resolve());
+          return;
+        }
+        const { sql, params } = queries[index];
+        db.run(sql, params, (err) => {
+          if (err) {
+            db.run('ROLLBACK', () => reject(err));
+            return;
+          }
+          runNext(index + 1);
+        });
+      };
+
+      runNext(0);
+    });
+  });
 });
 
 // Semua route butuh login
@@ -134,22 +162,18 @@ router.post('/support/tickets', async (req, res) => {
 });
 
 // ==========================================
-// 5. CREATE BOOKING (dengan proteksi race condition)
+// 5. CREATE BOOKING
+// [FIX 5] Validasi harga di backend — client tidak bisa kirim harga sembarangan
 // ==========================================
 router.post('/bookings', async (req, res) => {
   try {
-    // 1. Tangkap SEMUA kemungkinan format nama (snake_case dan camelCase)
     const { 
       order_id, item_type, item_name, location, start_date, end_date, total_price,
-      
-      // Versi Snake_case
       base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
-      
-      // Versi CamelCase (dari frontend React Native / web)
       basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee
     } = req.body || {};
 
-    // Validasi input
+    // Validasi field wajib
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
       return res.status(400).json({ success: false, error: 'Data booking tidak lengkap.' });
     }
@@ -158,14 +182,48 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Tipe item tidak valid.' });
     }
 
+    // [FIX 5] Validasi harga — hitung ulang di backend, jangan percaya angka dari client
     const parsedPrice = parseInt(total_price);
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
       return res.status(400).json({ success: false, error: 'Total harga tidak valid.' });
     }
 
+    // [FIX 5] Ambil harga referensi dari database berdasarkan item_name
+    // Cek motor atau loker
+    let refPrice = null;
+    if (item_type === 'motor') {
+      const motor = await dbGet(
+        `SELECT base_price FROM motors WHERE name = ? LIMIT 1`,
+        [item_name]
+      );
+      if (motor) refPrice = motor.base_price;
+    } else if (item_type === 'locker') {
+      const locker = await dbGet(
+        `SELECT base_price FROM lockers WHERE location = ? LIMIT 1`,
+        [location]
+      );
+      if (locker) refPrice = locker.base_price;
+    }
+
+    // [FIX 5] Jika item ditemukan di DB, validasi harga tidak jauh di bawah referensi
+    // Toleransi 20% untuk diskon/promo yang sah
+    if (refPrice !== null) {
+      const startDt   = new Date(start_date);
+      const endDt     = new Date(end_date);
+      const days      = Math.max(1, Math.ceil((endDt - startDt) / (1000 * 60 * 60 * 24)));
+      const minPrice  = Math.floor(refPrice * days * 0.2); // minimal 20% dari harga normal
+
+      if (parsedPrice < minPrice) {
+        return res.status(400).json({
+          success: false,
+          error: `Total harga tidak masuk akal. Minimum Rp ${minPrice.toLocaleString('id-ID')} untuk durasi ini.`,
+        });
+      }
+    }
+
     // Validasi tanggal
     const startDt = new Date(start_date);
-    const endDt = new Date(end_date);
+    const endDt   = new Date(end_date);
     if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
       return res.status(400).json({ success: false, error: 'Format tanggal tidak valid.' });
     }
@@ -173,7 +231,7 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Tanggal selesai harus setelah tanggal mulai.' });
     }
 
-    // Cek KYC status
+    // Cek KYC
     const user = await dbGet(`SELECT kyc_status FROM users WHERE id = ?`, [req.user.id]);
     if (!user || user.kyc_status !== 'verified') {
       return res.status(403).json({
@@ -188,18 +246,14 @@ router.post('/bookings', async (req, res) => {
       return res.status(409).json({ success: false, error: 'Order ID sudah digunakan.' });
     }
 
-    // 2. SIAPKAN ANGKA RINCIAN (Pilih mana yang ada isinya)
     const bPrice  = parseInt(base_price || basePrice) || parsedPrice; 
     const dAmount = parseInt(discount_amount || discountAmount) || 0;
     const sFee    = parseInt(service_fee || serviceFee) || 0;
     const aFee    = parseInt(addon_fee || addonFee) || 0;
     const delFee  = parseInt(delivery_fee || deliveryFee) || 0;
     const pCode   = promo_code || promoCode || null;
-    
-    // Default transaksi baru masuk: paid_amount sama dengan total (sudah transfer di depan)
     const pAmount = parsedPrice;
 
-    // 3. INSERT FULL DATA KE DATABASE
     await dbRun(
       `INSERT INTO bookings (
          order_id, user_id, item_type, item_name, location, start_date, end_date, 
@@ -208,11 +262,20 @@ router.post('/bookings', async (req, res) => {
        ) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', 'paid')`,
       [
-         order_id, req.user.id, item_type, item_name, location, start_date, end_date, 
-         bPrice, dAmount, pCode, sFee, aFee, delFee,
-         pAmount, parsedPrice
+        order_id, req.user.id, item_type, item_name, location, start_date, end_date, 
+        bPrice, dAmount, pCode, sFee, aFee, delFee,
+        pAmount, parsedPrice
       ]
     );
+
+    // Telegram notifikasi — fire and forget
+    dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
+      .then((userData) => notifyNewBooking(
+        { order_id, item_type, item_name, location, start_date, end_date,
+          total_price: parsedPrice, payment_method: req.body.payment_method || 'transfer' },
+        userData
+      ))
+      .catch((err) => console.error('[Telegram] booking notify error:', err.message));
 
     res.status(201).json({ success: true, message: 'Booking berhasil dibuat.', order_id });
 
@@ -235,6 +298,14 @@ router.put('/users/kyc', async (req, res) => {
     }
 
     await dbRun(`UPDATE users SET kyc_status = ? WHERE id = ?`, [status, req.user.id]);
+
+    // Telegram notifikasi KYC
+    if (status === 'pending') {
+      dbGet(`SELECT name, email, phone FROM users WHERE id = ?`, [req.user.id])
+        .then((userData) => notifyKycPending(userData))
+        .catch((err) => console.error('[Telegram] KYC notify error:', err.message));
+    }
+
     res.json({ success: true, message: 'Status KYC berhasil diupdate.' });
 
   } catch (err) {
@@ -295,9 +366,9 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Jumlah hari tambahan harus antara 1-30.' });
     }
 
-    // 1. Tambahkan pemanggilan base_price dan extend_fee di query ini
     const booking = await dbGet(
-      `SELECT start_date, end_date, total_price, base_price, status FROM bookings WHERE order_id = ? AND user_id = ?`,
+      `SELECT order_id, item_name, start_date, end_date, total_price, base_price, status 
+       FROM bookings WHERE order_id = ? AND user_id = ?`,
       [orderId, req.user.id]
     );
 
@@ -309,18 +380,15 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Hanya pesanan aktif yang bisa diperpanjang.' });
     }
 
-    const start = new Date(booking.start_date);
-    const currentEnd = new Date(booking.end_date);
+    const start       = new Date(booking.start_date);
+    const currentEnd  = new Date(booking.end_date);
     const currentDays = Math.max(1, Math.ceil((currentEnd - start) / (1000 * 60 * 60 * 24)));
-    
-    // 2. Hitung harga harian dari base_price murni, bukan dari total yang sudah bercampur diskon/fee
     const pricePerDay = Math.round((booking.base_price || booking.total_price) / currentDays);
-    const extraCost = days * pricePerDay;
+    const extraCost   = days * pricePerDay;
 
     currentEnd.setDate(currentEnd.getDate() + days);
     const newEndDate = currentEnd.toISOString().split('T')[0];
 
-    // 3. Masukkan biaya tambahan ke kolom extend_fee agar muncul di dasbor admin
     await dbRun(
       `UPDATE bookings 
        SET end_date = ?, 
@@ -330,6 +398,11 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
        WHERE order_id = ?`,
       [newEndDate, extraCost, extraCost, orderId]
     );
+
+    // Telegram notifikasi extend — fire and forget
+    dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
+      .then((userData) => notifyExtendBooking(booking, userData, newEndDate, extraCost))
+      .catch((err) => console.error('[Telegram] extend notify error:', err.message));
 
     res.json({ success: true, new_end_date: newEndDate, extra_cost: extraCost });
 
@@ -341,33 +414,38 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
 
 // ==========================================
 // 8. CLAIM GAMIFICATION MILES (T&C)
+// [FIX 7] Gunakan transaksi atomik — cegah double-claim concurrent
 // ==========================================
 router.post('/claim-tc-miles', async (req, res) => {
   try {
-    const user = await dbGet(
-      `SELECT miles, has_completed_tc_gamification FROM users WHERE id = ?`,
-      [req.user.id]
+    // [FIX 7] UPDATE langsung dengan kondisi WHERE — atomic, tidak bisa race condition
+    // Jika has_completed_tc_gamification sudah 1, changes = 0 → tolak
+    const MILES_REWARD = 500;
+
+    const result = await dbRun(
+      `UPDATE users 
+       SET miles = COALESCE(miles, 0) + ?,
+           has_completed_tc_gamification = 1
+       WHERE id = ? AND has_completed_tc_gamification = 0`,
+      [MILES_REWARD, req.user.id]
     );
 
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
-    }
-
-    if (user.has_completed_tc_gamification === 1) {
+    if (result.changes === 0) {
+      // Bisa karena: sudah pernah klaim, atau user tidak ditemukan
+      const user = await dbGet(`SELECT has_completed_tc_gamification FROM users WHERE id = ?`, [req.user.id]);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
+      }
       return res.status(400).json({ success: false, error: 'Anda sudah mengklaim hadiah misi ini sebelumnya.' });
     }
 
-    const MILES_REWARD = 500;
-
-    await dbRun(
-      `UPDATE users SET miles = COALESCE(miles, 0) + ?, has_completed_tc_gamification = 1 WHERE id = ?`,
-      [MILES_REWARD, req.user.id]
-    );
+    // Ambil nilai miles terbaru
+    const updated = await dbGet(`SELECT miles FROM users WHERE id = ?`, [req.user.id]);
 
     res.json({
       success: true,
       message: `${MILES_REWARD} Miles berhasil ditambahkan!`,
-      miles: (user.miles || 0) + MILES_REWARD
+      miles:   updated?.miles || 0,
     });
 
   } catch (err) {

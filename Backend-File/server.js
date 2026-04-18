@@ -61,7 +61,24 @@ if (helmet) {
 app.disable('x-powered-by');
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. CORS — FIX: allowedHeaders eksplisit agar preflight tidak ditolak
+// 3. HTTPS ENFORCEMENT (Peringatan 6)
+// Redirect HTTP → HTTPS di production. Di development, skip.
+// ═══════════════════════════════════════════════════════════════════════════════
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    // x-forwarded-proto diset oleh Nginx / reverse proxy
+    const proto = req.headers['x-forwarded-proto'] || req.protocol;
+    if (proto !== 'https') {
+      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+    }
+    next();
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. CORS (Peringatan 2)
+// Request tanpa origin (Postman, mobile app native, curl) diizinkan tapi
+// di production dicatat ke log agar bisa dimonitor jika ada penyalahgunaan.
 // ═══════════════════════════════════════════════════════════════════════════════
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -70,21 +87,22 @@ const allowedOrigins = [
   'http://127.0.0.1:5173',
 ].filter(Boolean);
 
-// Preflight OPTIONS ditangani otomatis oleh cors() middleware di bawah
-// app.options() TIDAK dipakai karena Express v5 + path-to-regexp v8
-// tidak support wildcard '*' maupun '(.*)' lagi
-
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Izinkan request tanpa origin (Postman, mobile app, curl)
-      if (!origin) return callback(null, true);
+      // Request tanpa origin: mobile app, Postman, curl — izinkan
+      // Di production, log sebagai peringatan untuk monitoring
+      if (!origin) {
+        if (process.env.NODE_ENV === 'production' && process.env.LOG_NO_ORIGIN === 'true') {
+          console.warn(`⚠️  CORS: request tanpa origin diterima — ${new Date().toISOString()}`);
+        }
+        return callback(null, true);
+      }
       if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`Origin "${origin}" tidak diizinkan oleh CORS.`));
     },
     credentials:    true,
     methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    // FIX UTAMA: daftarkan header yang boleh dikirim browser
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
     exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
     maxAge:         86400,
@@ -209,6 +227,9 @@ const server = app.listen(PORT, () => {
   console.log(`   Environment        →  ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Trust Proxy        →  ${process.env.TRUST_PROXY === 'true' ? 'yes' : 'no'}`);
 });
+
+const { testConnection } = require('./utils/telegram');
+testConnection();
 
 const shutdown = (signal) => {
   console.log(`\n⚠️  ${signal} diterima. Menutup server...`);

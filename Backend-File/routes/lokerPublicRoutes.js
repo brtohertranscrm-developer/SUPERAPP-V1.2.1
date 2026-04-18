@@ -1,23 +1,18 @@
 /**
  * PUBLIC LOKER ROUTES — Brothers Trans
  * =====================================
- * Tidak butuh auth untuk GET katalog & kalkulasi harga.
- * Checkout butuh verifyToken.
+ * [FIX 6] Tidak ada upload di route ini, tapi checkout di-hardened:
+ *         - Validasi harga dari DB bukan dari client
+ *         - Race condition stok sudah di-fix dengan atomic UPDATE
  *
  * Mount di server.js: app.use('/api/loker', lokerPublicRoutes)
- *
- * Endpoint:
- *   GET  /catalog                    — list loker by location + type
- *   GET  /addons                     — list addon aktif (pickup/drop)
- *   POST /calculate                  — hitung harga berdasarkan durasi + addon
- *   POST /checkout                   — buat booking loker (butuh auth)
  */
 
 const express = require('express');
-const { v4: uuidv4 } = require('crypto');
-const db = require('../db');
+const crypto  = require('crypto');
+const db      = require('../db');
 const { calculateLockerPrice, MIN_HOURS } = require('../utils/lockerPricing');
-const router = express.Router();
+const router  = express.Router();
 
 const dbGet = (sql, params = []) => new Promise((resolve, reject) =>
   db.get(sql, params, (err, row) => err ? reject(err) : resolve(row))
@@ -32,7 +27,6 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) =>
 // ==========================================
 // KATALOG LOKER
 // ==========================================
-
 router.get('/catalog', async (req, res) => {
   try {
     const { location, type } = req.query;
@@ -61,7 +55,6 @@ router.get('/catalog', async (req, res) => {
 // ==========================================
 // ADDON LIST (Pickup & Drop)
 // ==========================================
-
 router.get('/addons', async (req, res) => {
   try {
     const rows = await dbAll(
@@ -77,15 +70,9 @@ router.get('/addons', async (req, res) => {
 // ==========================================
 // KALKULASI HARGA
 // ==========================================
-
 router.post('/calculate', async (req, res) => {
   try {
-    const {
-      locker_id,
-      duration_hours,
-      pickup_addon_id,
-      drop_addon_id
-    } = req.body || {};
+    const { locker_id, duration_hours, pickup_addon_id, drop_addon_id } = req.body || {};
 
     if (!locker_id || !duration_hours) {
       return res.status(400).json({ success: false, error: 'Loker ID dan durasi wajib diisi.' });
@@ -99,7 +86,6 @@ router.post('/calculate', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Loker tidak tersedia.' });
     }
 
-    // Hitung harga sewa loker
     const pricing = calculateLockerPrice(
       duration_hours,
       locker.price_1h,
@@ -111,9 +97,8 @@ router.post('/calculate', async (req, res) => {
     }
 
     let pickupFee = 0;
-    let dropFee = 0;
+    let dropFee   = 0;
 
-    // Ambil harga addon jika dipilih
     if (pickup_addon_id) {
       const addon = await dbGet(
         `SELECT price FROM locker_addons WHERE id = ? AND is_active = 1 AND addon_type = 'pickup'`,
@@ -129,18 +114,16 @@ router.post('/calculate', async (req, res) => {
       if (addon) dropFee = addon.price;
     }
 
-    const total = pricing.total + pickupFee + dropFee;
-
     res.json({
       success: true,
       data: {
-        locker_type: locker.type,
+        locker_type:    locker.type,
         duration_hours: parseInt(duration_hours),
-        locker_cost: pricing.total,
-        pickup_fee: pickupFee,
-        drop_fee: dropFee,
-        total_price: total,
-        breakdown: pricing.breakdown
+        locker_cost:    pricing.total,
+        pickup_fee:     pickupFee,
+        drop_fee:       dropFee,
+        total_price:    pricing.total + pickupFee + dropFee,
+        breakdown:      pricing.breakdown
       }
     });
   } catch (err) {
@@ -151,11 +134,10 @@ router.post('/calculate', async (req, res) => {
 
 // ==========================================
 // CHECKOUT LOKER (butuh auth)
+// [FIX 6] Harga dihitung dari DB, bukan dari body request
+// [FIX RACE CONDITION] Kurangi stok atomic — tolak jika stok = 0
 // ==========================================
-
 router.post('/checkout', async (req, res) => {
-  // Middleware auth dipasang di server.js untuk route ini
-  // req.user sudah tersedia dari verifyToken
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Login terlebih dahulu.' });
@@ -166,8 +148,6 @@ router.post('/checkout', async (req, res) => {
       start_date,
       pickup_addon_id,
       drop_addon_id,
-      renter_name,
-      renter_phone,
       payment_method = 'transfer'
     } = req.body || {};
 
@@ -179,14 +159,14 @@ router.post('/checkout', async (req, res) => {
     }
 
     const h = parseInt(duration_hours);
-    if (h < MIN_HOURS) {
+    if (isNaN(h) || h < MIN_HOURS) {
       return res.status(400).json({
         success: false,
         error: `Minimal pemesanan adalah ${MIN_HOURS} jam.`
       });
     }
 
-    // Cek ketersediaan loker
+    // Cek ketersediaan loker — ambil harga dari DB, bukan dari client
     const locker = await dbGet(
       `SELECT * FROM lockers WHERE id = ? AND stock > 0`,
       [locker_id]
@@ -195,12 +175,12 @@ router.post('/checkout', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Loker tidak tersedia atau stok habis.' });
     }
 
-    // Hitung harga
+    // [FIX 6] Hitung harga dari DB — client tidak bisa manipulasi harga
     const pricing = calculateLockerPrice(h, locker.price_1h, locker.price_12h, locker.price_24h);
     if (!pricing.isValid) return res.status(400).json({ success: false, error: pricing.error });
 
     let pickupFee = 0;
-    let dropFee = 0;
+    let dropFee   = 0;
 
     if (pickup_addon_id) {
       const addon = await dbGet(
@@ -217,38 +197,54 @@ router.post('/checkout', async (req, res) => {
       if (addon) dropFee = addon.price;
     }
 
+    // Total dihitung murni dari DB — tidak ada angka dari client yang dipakai
     const totalPrice = pricing.total + pickupFee + dropFee;
 
-    // Hitung end_date dari duration_hours
     const startMs = new Date(start_date).getTime();
     const endDate = new Date(startMs + h * 60 * 60 * 1000).toISOString();
 
-    // Buat order ID
-    const now = new Date();
+    const now     = new Date();
     const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const rand = Math.floor(Math.random() * 9000) + 1000;
+    const rand    = Math.floor(Math.random() * 9000) + 1000;
     const orderId = `BTL-${dateStr}-${rand}`;
 
-    await dbRun(
-      `INSERT INTO bookings (order_id, user_id, item_type, item_name, location, start_date, end_date,
-       total_price, status, payment_status, duration_hours, pickup_fee, drop_fee, payment_method)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        orderId, userId, 'locker',
-        `Loker ${locker.type.charAt(0).toUpperCase() + locker.type.slice(1)}`,
-        locker.location, start_date, endDate,
-        totalPrice, 'pending', 'unpaid',
-        h, pickupFee, dropFee, payment_method
-      ]
+    // [FIX RACE CONDITION] Kurangi stok secara atomic
+    // Jika dua request masuk bersamaan, hanya satu yang berhasil (stok tidak bisa negatif)
+    const stockResult = await dbRun(
+      `UPDATE lockers SET stock = stock - 1 WHERE id = ? AND stock > 0`,
+      [locker_id]
     );
 
-    // Kurangi stok sementara (akan dikembalikan jika dibatalkan)
-    await dbRun('UPDATE lockers SET stock = stock - 1 WHERE id = ?', [locker_id]);
+    if (stockResult.changes === 0) {
+      return res.status(409).json({ success: false, error: 'Stok loker habis. Silakan pilih loker lain.' });
+    }
+
+    // Buat booking — jika INSERT gagal, kembalikan stok
+    try {
+      await dbRun(
+        `INSERT INTO bookings (order_id, user_id, item_type, item_name, location, start_date, end_date,
+         base_price, total_price, status, payment_status, duration_hours, pickup_fee, drop_fee, payment_method)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId, userId, 'locker',
+          `Loker ${locker.type.charAt(0).toUpperCase() + locker.type.slice(1)}`,
+          locker.location, start_date, endDate,
+          pricing.total,   // base_price = harga loker tanpa addon
+          totalPrice,      // total_price = loker + addon
+          'pending', 'unpaid',
+          h, pickupFee, dropFee, payment_method
+        ]
+      );
+    } catch (insertErr) {
+      // Rollback stok jika INSERT gagal
+      await dbRun(`UPDATE lockers SET stock = stock + 1 WHERE id = ?`, [locker_id]).catch(() => {});
+      throw insertErr;
+    }
 
     res.status(201).json({
-      success: true,
-      message: 'Booking loker berhasil dibuat.',
-      order_id: orderId,
+      success:     true,
+      message:     'Booking loker berhasil dibuat.',
+      order_id:    orderId,
       total_price: totalPrice
     });
   } catch (err) {

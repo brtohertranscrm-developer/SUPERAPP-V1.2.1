@@ -5,6 +5,7 @@ const { verifyAdmin, requirePermission } = require('../middlewares/authMiddlewar
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
 
 // ==========================================
 // HELPER: Promisify DB
@@ -22,16 +23,35 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
 });
 
 // ==========================================
-// FILE UPLOAD — dengan validasi tipe & ukuran
+// FILE UPLOAD — [FIX 6] Sanitasi ketat ekstensi & MIME type
+// Cegah path traversal via ekstensi ganda (shell.php.jpg)
 // ==========================================
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
+// [FIX 6] Whitelist ekstensi yang diizinkan — hanya ekstensi ini, tidak ada yang lain
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+
+// [FIX 6] Fungsi sanitasi nama file — ambil HANYA ekstensi terakhir dan validasi
+const getSafeExtension = (originalname) => {
+  // Ambil ekstensi paling akhir saja (cegah shell.php.jpg → .jpg)
+  const ext = path.extname(originalname).toLowerCase();
+  // Pastikan ekstensi ada di whitelist
+  if (!ALLOWED_EXTENSIONS.includes(ext)) return null;
+  return ext;
+};
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `artikel-${Date.now()}${ext}`);
+    // [FIX 6] Nama file = random hex + ekstensi yang sudah disanitasi
+    // Tidak ada nama file asli yang ikut tersimpan — cegah path traversal
+    const ext = getSafeExtension(file.originalname);
+    if (!ext) {
+      return cb(new Error('Tipe file tidak diizinkan.'));
+    }
+    const randomName = crypto.randomBytes(16).toString('hex');
+    cb(null, `artikel-${randomName}${ext}`);
   }
 });
 
@@ -39,7 +59,12 @@ const upload = multer({
   storage,
   limits: { fileSize: MAX_FILE_SIZE },
   fileFilter: (req, file, cb) => {
-    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+    // [FIX 6] Validasi GANDA: MIME type + ekstensi
+    // Keduanya harus valid — tidak cukup salah satu saja
+    const mimeOk = ALLOWED_IMAGE_TYPES.includes(file.mimetype);
+    const extOk  = getSafeExtension(file.originalname) !== null;
+
+    if (mimeOk && extOk) {
       cb(null, true);
     } else {
       cb(new Error('Tipe file tidak diizinkan. Gunakan JPG, PNG, WebP, atau GIF.'));
@@ -199,7 +224,6 @@ router.put('/motors/:id', requirePermission('armada'), async (req, res) => {
 
 router.delete('/motors/:id', requirePermission('armada'), async (req, res) => {
   try {
-    // CASCADE di FK akan menghapus motor_units otomatis
     await dbRun('DELETE FROM motors WHERE id=?', [req.params.id]);
     res.json({ success: true, message: 'Motor beserta semua unit berhasil dihapus.' });
 
@@ -288,7 +312,6 @@ router.delete('/units/:unitId', requirePermission('armada'), async (req, res) =>
 // ==========================================
 router.get('/bookings', requirePermission('booking'), async (req, res) => {
   try {
-    // UPDATED: Menggunakan IFNULL untuk mencegah data React menjadi 0
     const rows = await dbAll(`
       SELECT b.*, 
              IFNULL(b.base_price, 0) as base_price,
@@ -303,15 +326,14 @@ router.get('/bookings', requirePermission('booking'), async (req, res) => {
       ORDER BY b.start_date DESC
     `);
     
-    // UPDATED: Hitung ulang secara sistem jika total_price salah/0
     const formattedData = rows.map(b => {
       const calc_total = 
         (Number(b.base_price) || 0) - (Number(b.discount_amount) || 0) + 
         (Number(b.service_fee) || 0) + (Number(b.extend_fee) || 0) + 
         (Number(b.addon_fee) || 0) + (Number(b.delivery_fee) || 0);
         
-      const final_total = calc_total > 0 ? calc_total : (Number(b.total_price) || 0);
-      const outstanding = Math.max(0, final_total - (Number(b.paid_amount) || 0));
+      const final_total  = calc_total > 0 ? calc_total : (Number(b.total_price) || 0);
+      const outstanding  = Math.max(0, final_total - (Number(b.paid_amount) || 0));
 
       return { ...b, total_price: final_total, outstanding_amount: outstanding };
     });
@@ -325,7 +347,6 @@ router.get('/bookings', requirePermission('booking'), async (req, res) => {
 
 router.get('/bookings/:orderId', requirePermission('booking'), async (req, res) => {
   try {
-    // UPDATED: Tambahkan handler IFNULL untuk detail pesanan
     const row = await dbGet(`
       SELECT b.*, 
              IFNULL(b.base_price, 0) as base_price,
@@ -359,7 +380,6 @@ router.get('/bookings/:orderId', requirePermission('booking'), async (req, res) 
   }
 });
 
-// UPDATED: Rute baru untuk menyimpan rincian harga (Dipanggil oleh BookingPricePanel.jsx)
 router.put('/bookings/:orderId/pricing', requirePermission('booking'), async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -395,23 +415,22 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
   try {
     const { status, payment_status, unit_id, plate_number } = req.body || {};
 
-    if (!status) {
-      return res.status(400).json({ success: false, error: 'Status wajib diisi.' });
+    const validStatuses = ['pending', 'active', 'completed', 'cancelled', 'selesai'];
+    if (!status || !validStatuses.includes(status.toLowerCase())) {
+      return res.status(400).json({ success: false, error: 'Status tidak valid.' });
     }
 
-    // Build dynamic query
     let setClauses = ['status = ?'];
     let params = [status];
 
     if (payment_status) { setClauses.push('payment_status = ?'); params.push(payment_status); }
-    if (unit_id) { setClauses.push('unit_id = ?'); params.push(unit_id); }
-    if (plate_number) { setClauses.push('plate_number = ?'); params.push(plate_number); }
+    if (unit_id)        { setClauses.push('unit_id = ?');        params.push(unit_id); }
+    if (plate_number)   { setClauses.push('plate_number = ?');   params.push(plate_number); }
 
     params.push(req.params.orderId);
 
     await dbRun(`UPDATE bookings SET ${setClauses.join(', ')} WHERE order_id = ?`, params);
 
-    // Award miles jika status selesai
     const completedStatuses = ['completed', 'selesai'];
     if (completedStatuses.includes(status.toLowerCase())) {
       try {
@@ -460,7 +479,7 @@ router.put('/pricing/surge', requirePermission('pricing'), async (req, res) => {
     }
 
     const isActiveInt = is_active ? 1 : 0;
-    const markupInt = parseInt(markup_percentage);
+    const markupInt   = parseInt(markup_percentage);
 
     if (isNaN(markupInt) || markupInt < 0 || markupInt > 200) {
       return res.status(400).json({ success: false, error: 'Markup harus antara 0-200%.' });
@@ -502,21 +521,18 @@ router.post('/pricing/seasonal', requirePermission('pricing'), async (req, res) 
   try {
     const { rules } = req.body || {};
 
-    // Hapus semua seasonal lama
     await dbRun(`DELETE FROM price_rules WHERE rule_type = 'seasonal'`);
 
     if (!rules || !Array.isArray(rules) || rules.length === 0) {
       return res.json({ success: true, message: 'Semua event seasonal berhasil dikosongkan.' });
     }
 
-    // Validasi setiap rule
     for (const rule of rules) {
       if (!rule.name || !rule.startDate || !rule.endDate || !rule.markup) {
         return res.status(400).json({ success: false, error: 'Setiap event harus memiliki nama, tanggal mulai, tanggal selesai, dan markup.' });
       }
     }
 
-    // Insert semua sekaligus
     const placeholders = rules.map(() => `('seasonal', ?, ?, ?, ?)`).join(',');
     const values = [];
     rules.forEach(rule => values.push(rule.name, rule.startDate, rule.endDate, parseInt(rule.markup)));
@@ -637,7 +653,6 @@ router.post('/articles', requirePermission('artikel'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'Judul dan konten artikel wajib diisi.' });
     }
 
-    // Auto-generate slug jika kosong
     const articleSlug = slug 
       ? slug.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
       : title.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '-' + Date.now();
@@ -693,7 +708,7 @@ router.delete('/articles/:id', requirePermission('artikel'), async (req, res) =>
   }
 });
 
-// UPLOAD GAMBAR (Akses: artikel)
+// [FIX 6] UPLOAD GAMBAR — validasi MIME type + ekstensi ganda
 router.post('/upload', requirePermission('artikel'), (req, res) => {
   upload.single('image')(req, res, (err) => {
     if (err) {

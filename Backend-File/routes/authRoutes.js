@@ -1,25 +1,11 @@
 /**
  * authRoutes.js — Brother Trans
  * ===============================
- * Security improvements:
- *  - Rate limiting per IP (express-rate-limit) untuk login & forgot-password
- *  - Account lockout setelah 5x gagal login (in-DB, kolom login_attempts + locked_until)
- *  - Input sanitasi (strip karakter berbahaya sebelum masuk DB)
- *  - Pesan error yang tidak membocorkan info sistem
- *  - Login activity log ke tabel login_logs (IP, user-agent, sukses/gagal)
- *  - JWT expiry 8 jam + kolom last_login di users
- *  - bcrypt cost factor 12 (lebih kuat dari default 10)
- *  - Reset token SHA-256 hash sebelum simpan
- *  - CORS-safe: tidak kirim stack trace ke client di production
- *
- * Dependensi yang perlu di-install jika belum ada:
- *   npm install express-rate-limit
- *
- * Kolom DB tambahan (tambahkan ke db.js jika belum ada):
- *   users.login_attempts  INTEGER DEFAULT 0
- *   users.locked_until    INTEGER DEFAULT NULL  (unix timestamp ms)
- *   users.last_login      TEXT DEFAULT NULL
- *   tabel login_logs      (lihat bagian bawah)
+ * [FIX 1] JWT Revoke Mechanism:
+ *   - Token blacklist disimpan di tabel token_blacklist (SQLite)
+ *   - Logout menyimpan hash token ke blacklist
+ *   - authMiddleware.js perlu dicek blacklist saat verifikasi token
+ *   - Cleanup otomatis token expired via setInterval setiap 1 jam
  */
 
 'use strict';
@@ -35,24 +21,26 @@ require('dotenv').config();
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 const JWT_SECRET       = process.env.JWT_SECRET;
-const BCRYPT_ROUNDS    = 12;                    // lebih kuat dari 10
-const JWT_EXPIRY       = '8h';                  // lebih pendek dari 24h
-const MAX_LOGIN_FAILS  = 5;                     // berapa kali gagal sebelum dikunci
-const LOCKOUT_DURATION = 15 * 60 * 1000;       // 15 menit dalam ms
-const RESET_TOKEN_TTL  = 60 * 60 * 1000;       // 1 jam dalam ms
+const BCRYPT_ROUNDS    = 12;
+const JWT_EXPIRY       = '8h';
+const MAX_LOGIN_FAILS  = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000;        // ms — untuk locked_until (dibandingkan Date.now() ms)
+// [FIX P1] Reset token TTL dalam DETIK bukan ms
+// SQLite INTEGER max = 2^63 tapi SQLite3 Node.js pakai JS Number (max safe = 2^53)
+// Date.now() ms (~1.7 triliun) aman, tapi simpan dalam detik lebih konvensional
+// dan menghindari potensi float conversion saat read/write
+const RESET_TOKEN_TTL_SEC = 60 * 60; // 1 jam dalam detik
 
 if (!JWT_SECRET) {
   console.error('❌ FATAL: JWT_SECRET belum di-set di .env. Server akan exit.');
   process.exit(1);
 }
 
-// ─── Rate Limiting ───────────────────────────────────────────────────────────
-// Coba load express-rate-limit. Jika belum install, skip (beri warning).
+// ─── Rate Limiting ────────────────────────────────────────────────────────────
 let rateLimit, ipKeyGenerator;
 try {
   const rl      = require('express-rate-limit');
   rateLimit     = rl.rateLimit || rl.default || rl;
-  // express-rate-limit v7+ menyediakan ipKeyGenerator yang IPv6-safe
   ipKeyGenerator = rl.ipKeyGenerator || null;
 } catch {
   console.warn('⚠️  express-rate-limit belum terinstall. Jalankan: npm install express-rate-limit');
@@ -60,46 +48,38 @@ try {
   ipKeyGenerator = null;
 }
 
-// Helper: buat keyGenerator yang aman untuk IPv6
-// - Jika tersedia ipKeyGenerator dari library, pakai itu
-// - Jika tidak, pakai req.ip saja (Express sudah normalize IPv6 jika trust proxy aktif)
 const makeKeyGen = () => {
   if (ipKeyGenerator) return ipKeyGenerator;
-  // Fallback manual: tidak perlu custom keyGenerator, biarkan library pakai default
   return undefined;
 };
 
 const baseRateOpts = (extra = {}) => ({
   standardHeaders: true,
   legacyHeaders:   false,
-  // Jangan set keyGenerator kustom — biarkan library pakai default IPv6-safe
   ...(makeKeyGen() ? { keyGenerator: makeKeyGen() } : {}),
   ...extra,
 });
 
-// Rate limit untuk endpoint login: max 10 request / 15 menit per IP
 const loginLimiter = rateLimit(baseRateOpts({
-  windowMs:             15 * 60 * 1000,
-  max:                  10,
-  skipSuccessfulRequests: true, // hanya hitung request yang gagal
+  windowMs:               15 * 60 * 1000,
+  max:                    10,
+  skipSuccessfulRequests: true,
   message: { success: false, error: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
 }));
 
-// Rate limit untuk forgot-password: max 5 request / jam per IP
 const forgotLimiter = rateLimit(baseRateOpts({
   windowMs: 60 * 60 * 1000,
   max:      5,
   message:  { success: false, error: 'Terlalu banyak permintaan reset password. Coba lagi dalam 1 jam.' },
 }));
 
-// Rate limit untuk register: max 10 request / jam per IP
 const registerLimiter = rateLimit(baseRateOpts({
   windowMs: 60 * 60 * 1000,
   max:      10,
   message:  { success: false, error: 'Terlalu banyak percobaan registrasi. Coba lagi dalam 1 jam.' },
 }));
 
-// ─── DB Helpers ──────────────────────────────────────────────────────────────
+// ─── DB Helpers ───────────────────────────────────────────────────────────────
 const dbGet = (sql, params = []) =>
   new Promise((resolve, reject) =>
     db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)))
@@ -112,18 +92,13 @@ const dbRun = (sql, params = []) =>
     })
   );
 
-// ─── Input Sanitizer ─────────────────────────────────────────────────────────
-// Strip karakter yang bisa digunakan untuk XSS atau SQL injection di layer app
-// (SQLite sudah pakai parameterized query, ini defense-in-depth)
+// ─── Input Sanitizer ──────────────────────────────────────────────────────────
 const sanitize = (str) => {
   if (typeof str !== 'string') return '';
-  return str
-    .trim()
-    .replace(/[<>"'`\\]/g, '')   // strip karakter HTML/JS berbahaya
-    .substring(0, 500);           // batas panjang
+  return str.trim().replace(/[<>"'`\\]/g, '').substring(0, 500);
 };
 
-// ─── Validators ──────────────────────────────────────────────────────────────
+// ─── Validators ───────────────────────────────────────────────────────────────
 const isValidEmail = (email) =>
   typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 
@@ -132,7 +107,6 @@ const isValidPhone = (phone) =>
 
 // ─── Referral Code Generator ──────────────────────────────────────────────────
 const generateReferralCode = () => {
-  // Tanpa 0, O, 1, I agar tidak ambigu saat dibaca
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'BR-';
   for (let i = 0; i < 8; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -140,7 +114,6 @@ const generateReferralCode = () => {
 };
 
 // ─── Login Activity Logger ────────────────────────────────────────────────────
-// Simpan ke tabel login_logs untuk audit trail
 const logLoginAttempt = async (userId, ip, userAgent, success, reason = null) => {
   try {
     await dbRun(
@@ -209,7 +182,6 @@ const processTierBonus = async (referrerId) => {
 };
 
 // ─── Middleware: pastikan DB punya kolom baru ─────────────────────────────────
-// Jalankan sekali saat server start (migrasi soft)
 const ensureAuthColumns = async () => {
   const migrations = [
     `ALTER TABLE users ADD COLUMN login_attempts INTEGER DEFAULT 0`,
@@ -222,15 +194,74 @@ const ensureAuthColumns = async () => {
        user_agent   TEXT,
        success      INTEGER DEFAULT 0,
        reason       TEXT,
-       attempted_at TEXT
+       attempted_at TEXT DEFAULT (datetime('now'))
+     )`,
+    // [FIX 1] Tabel token blacklist
+    `CREATE TABLE IF NOT EXISTS token_blacklist (
+       id             INTEGER PRIMARY KEY AUTOINCREMENT,
+       token_hash     TEXT UNIQUE NOT NULL,
+       user_id        TEXT NOT NULL,
+       blacklisted_at TEXT DEFAULT (datetime('now')),
+       expires_at     INTEGER NOT NULL
      )`,
   ];
   for (const sql of migrations) {
     try { await dbRun(sql); } catch { /* kolom/tabel sudah ada, skip */ }
   }
 };
-// Jalankan saat modul di-load
 ensureAuthColumns().catch(console.error);
+
+// ─── [FIX 1] JWT Blacklist Helpers ───────────────────────────────────────────
+// Hash token sebelum simpan ke DB — agar token asli tidak tersimpan di server
+const hashToken = (token) =>
+  crypto.createHash('sha256').update(token).digest('hex');
+
+// Tambahkan token ke blacklist saat logout
+const blacklistToken = async (token, userId, expiresAt) => {
+  const tokenHash = hashToken(token);
+  try {
+    await dbRun(
+      `INSERT OR IGNORE INTO token_blacklist (token_hash, user_id, expires_at)
+       VALUES (?, ?, ?)`,
+      [tokenHash, userId, expiresAt]
+    );
+  } catch (err) {
+    console.error('Blacklist token error:', err.message);
+  }
+};
+
+// Cek apakah token sudah di-blacklist (dipanggil dari authMiddleware)
+const isTokenBlacklisted = async (token) => {
+  const tokenHash = hashToken(token);
+  const row = await dbGet(
+    `SELECT id FROM token_blacklist WHERE token_hash = ? AND expires_at > ?`,
+    [tokenHash, Date.now()]
+  );
+  return !!row;
+};
+
+// Cleanup token blacklist yang sudah expired — jalan setiap 1 jam
+const cleanupBlacklist = async () => {
+  try {
+    const result = await dbRun(
+      `DELETE FROM token_blacklist WHERE expires_at <= ?`,
+      [Date.now()]
+    );
+    if (result.changes > 0) {
+      console.log(`🧹 Token blacklist cleanup: ${result.changes} token expired dihapus.`);
+    }
+  } catch (err) {
+    console.error('Blacklist cleanup error:', err.message);
+  }
+};
+
+// Jalankan cleanup setiap 1 jam
+setInterval(cleanupBlacklist, 60 * 60 * 1000);
+// Jalankan sekali saat server start
+cleanupBlacklist();
+
+// Export isTokenBlacklisted agar bisa dipakai di authMiddleware.js
+module.exports.isTokenBlacklisted = isTokenBlacklisted;
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -241,14 +272,12 @@ router.post('/register', registerLimiter, async (req, res) => {
   try {
     const raw = req.body || {};
 
-    // Sanitize semua input
     const name       = sanitize(raw.name       || '');
     const email      = sanitize(raw.email      || '').toLowerCase();
     const phone      = sanitize(raw.phone      || '');
     const password   = typeof raw.password === 'string' ? raw.password : '';
     const referredBy = raw.referred_by ? sanitize(raw.referred_by).toUpperCase() : null;
 
-    // ── Validasi ──────────────────────────────────────────────────────────────
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ success: false, error: 'Semua field wajib diisi.' });
     }
@@ -268,15 +297,12 @@ router.post('/register', registerLimiter, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Password terlalu panjang.' });
     }
 
-    // ── Cek duplikat email ────────────────────────────────────────────────────
     const existingUser = await dbGet(`SELECT id FROM users WHERE email = ?`, [email]);
     if (existingUser) {
-      // Delay kecil agar tidak bisa di-brute-force enumerate email
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
       return res.status(409).json({ success: false, error: 'Email sudah terdaftar.' });
     }
 
-    // ── Hash password & buat user ─────────────────────────────────────────────
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId         = crypto.randomUUID();
     const joinDate       = new Date().toISOString();
@@ -288,7 +314,6 @@ router.post('/register', registerLimiter, async (req, res) => {
       [userId, name, email, phone, hashedPassword, joinDate, referralCode, referredBy]
     );
 
-    // ── Proses Referral Milestone 1 ───────────────────────────────────────────
     let referralBonus = 0;
     if (referredBy) {
       try {
@@ -328,8 +353,8 @@ router.post('/register', registerLimiter, async (req, res) => {
     }
 
     return res.status(201).json({
-      success:       true,
-      message:       'Registrasi berhasil. Silakan login.',
+      success:        true,
+      message:        'Registrasi berhasil. Silakan login.',
       referral_bonus: referralBonus,
     });
 
@@ -353,17 +378,14 @@ router.post('/login', loginLimiter, async (req, res) => {
     const email    = sanitize(raw.email    || '').toLowerCase();
     const password = typeof raw.password === 'string' ? raw.password : '';
 
-    // ── Validasi dasar ────────────────────────────────────────────────────────
     if (!email || !password) {
       return res.status(400).json({ success: false, error: 'Email dan password wajib diisi.' });
     }
     if (!isValidEmail(email)) {
       await logLoginAttempt(null, ip, userAgent, false, 'invalid_email_format');
-      // Tetap balas dengan pesan yang tidak membocorkan info
       return res.status(401).json({ success: false, error: 'Email atau password salah.' });
     }
 
-    // ── Cari user ─────────────────────────────────────────────────────────────
     const user = await dbGet(
       `SELECT id, name, email, password, role, permissions, miles, kyc_status,
               profile_picture, profile_banner, referral_code, phone, join_date,
@@ -372,14 +394,12 @@ router.post('/login', loginLimiter, async (req, res) => {
       [email]
     );
 
-    // Jika user tidak ada: delay & balas generic error (cegah user enumeration)
     if (!user) {
       await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
       await logLoginAttempt(null, ip, userAgent, false, 'user_not_found');
       return res.status(401).json({ success: false, error: 'Email atau password salah.' });
     }
 
-    // ── Cek account lockout ───────────────────────────────────────────────────
     if (user.locked_until && Date.now() < user.locked_until) {
       const remainSecs = Math.ceil((user.locked_until - Date.now()) / 1000);
       await logLoginAttempt(user.id, ip, userAgent, false, 'account_locked');
@@ -390,7 +410,6 @@ router.post('/login', loginLimiter, async (req, res) => {
       });
     }
 
-    // ── Verifikasi password ───────────────────────────────────────────────────
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
       await incrementLoginFails(user.id);
@@ -413,25 +432,26 @@ router.post('/login', loginLimiter, async (req, res) => {
       });
     }
 
-    // ── Login berhasil ────────────────────────────────────────────────────────
     await resetLoginFails(user.id);
     await logLoginAttempt(user.id, ip, userAgent, true, null);
+
+    // Hitung kapan token expired (untuk disimpan ke blacklist saat logout)
+    const expiresAt = Date.now() + (8 * 60 * 60 * 1000); // 8 jam
 
     const token = jwt.sign(
       {
         id:          user.id,
         role:        user.role,
         permissions: user.permissions,
+        exp:         Math.floor(expiresAt / 1000), // exp dalam detik (standard JWT)
       },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRY }
+      JWT_SECRET
     );
 
-    // Strip semua field sensitif sebelum kirim ke frontend
     const {
-      password:           _pwd,
-      login_attempts:     _la,
-      locked_until:       _lu,
+      password:       _pwd,
+      login_attempts: _la,
+      locked_until:   _lu,
       ...safeUser
     } = user;
 
@@ -446,7 +466,50 @@ router.post('/login', loginLimiter, async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 3. FORGOT PASSWORD
+// [FIX 1] 3. LOGOUT — Revoke JWT dengan blacklist
+// POST /api/auth/logout
+// Header: Authorization: Bearer <token>
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/logout', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'] || '';
+    const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      // Tidak ada token = sudah "logout", tetap balas sukses
+      return res.json({ success: true, message: 'Logout berhasil.' });
+    }
+
+    // Decode token untuk ambil user_id dan exp tanpa verifikasi penuh
+    // (token mungkin sudah expired tapi masih perlu di-blacklist)
+    let decoded = null;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        // Token expired — tidak perlu di-blacklist, sudah tidak valid
+        return res.json({ success: true, message: 'Logout berhasil.' });
+      }
+      // Token invalid — tetap logout
+      return res.json({ success: true, message: 'Logout berhasil.' });
+    }
+
+    // Simpan token ke blacklist sampai waktu expired-nya
+    const expiresAt = (decoded.exp || 0) * 1000; // konversi detik → ms
+    await blacklistToken(token, decoded.id, expiresAt);
+
+    return res.json({ success: true, message: 'Logout berhasil.' });
+
+  } catch (error) {
+    console.error('POST /logout error:', error.message);
+    // Tetap balas sukses — logout tidak boleh gagal dari sisi UX
+    return res.json({ success: true, message: 'Logout berhasil.' });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. FORGOT PASSWORD
 // POST /api/auth/forgot-password
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post('/forgot-password', forgotLimiter, async (req, res) => {
@@ -460,16 +523,15 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
 
     const user = await dbGet(`SELECT id FROM users WHERE email = ?`, [email]);
 
-    // SELALU balas sukses meskipun email tidak terdaftar (cegah user enumeration)
     if (!user) {
       await new Promise((r) => setTimeout(r, 500 + Math.random() * 300));
       return res.json({ success: true, message: 'Jika email terdaftar, tautan reset akan dikirim.' });
     }
 
-    // Generate token plaintext + simpan hashed
-    const resetToken     = crypto.randomBytes(32).toString('hex');
-    const resetTokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
-    const resetTokenExpiry = Date.now() + RESET_TOKEN_TTL;
+    const resetToken      = crypto.randomBytes(32).toString('hex');
+    const resetTokenHash  = crypto.createHash('sha256').update(resetToken).digest('hex');
+    // [FIX P1] Simpan sebagai Unix detik — aman untuk SQLite INTEGER
+    const resetTokenExpiry = Math.floor(Date.now() / 1000) + RESET_TOKEN_TTL_SEC;
 
     await dbRun(
       `UPDATE users SET reset_token = ?, reset_token_expiry = ? WHERE id = ?`,
@@ -491,14 +553,14 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 4. RESET PASSWORD
+// 5. RESET PASSWORD
 // POST /api/auth/reset-password
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post('/reset-password', async (req, res) => {
   try {
-    const raw          = req.body || {};
-    const token        = typeof raw.token        === 'string' ? raw.token.trim()        : '';
-    const newPassword  = typeof raw.new_password === 'string' ? raw.new_password        : '';
+    const raw         = req.body || {};
+    const token       = typeof raw.token        === 'string' ? raw.token.trim()  : '';
+    const newPassword = typeof raw.new_password === 'string' ? raw.new_password  : '';
 
     if (!token || !newPassword) {
       return res.status(400).json({ success: false, error: 'Token dan password baru wajib diisi.' });
@@ -510,12 +572,12 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Password terlalu panjang.' });
     }
 
-    // Hash token untuk dicocokkan dengan yang di DB
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
+    // [FIX P1] Bandingkan dalam Unix detik — konsisten dengan cara simpan
     const user = await dbGet(
       `SELECT id FROM users WHERE reset_token = ? AND reset_token_expiry > ?`,
-      [tokenHash, Date.now()]
+      [tokenHash, Math.floor(Date.now() / 1000)]
     );
 
     if (!user) {
@@ -542,7 +604,7 @@ router.post('/reset-password', async (req, res) => {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 5. VALIDASI KODE REFERRAL
+// 6. VALIDASI KODE REFERRAL
 // GET /api/auth/referral/validate?code=BR-XXXXXXXX
 // ═══════════════════════════════════════════════════════════════════════════════
 router.get('/referral/validate', async (req, res) => {
@@ -579,3 +641,4 @@ router.get('/referral/validate', async (req, res) => {
 
 
 module.exports = router;
+module.exports.isTokenBlacklisted = isTokenBlacklisted;
