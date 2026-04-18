@@ -156,6 +156,27 @@ router.put('/kyc/:id', requirePermission('users'), async (req, res) => {
 });
 
 // ==========================================
+// MOTOR UNITS — ALL (untuk FleetInventoryTable)
+// [FIX P8] Endpoint baru — ambil semua unit beserta nama motor & kategori
+// ==========================================
+router.get('/motor-units-all', requirePermission('armada'), async (req, res) => {
+  try {
+    const rows = await dbAll(`
+      SELECT mu.id, mu.motor_id, mu.plate_number, mu.status, mu.condition_notes,
+             m.name  AS motor_name,
+             m.category AS motor_category
+      FROM motor_units mu
+      JOIN motors m ON mu.motor_id = m.id
+      ORDER BY m.category ASC, m.name ASC, mu.plate_number ASC
+    `);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/motor-units-all error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data unit.' });
+  }
+});
+
+// ==========================================
 // ARMADA MOTOR (Akses: armada)
 // ==========================================
 router.get('/motors', requirePermission('armada'), async (req, res) => {

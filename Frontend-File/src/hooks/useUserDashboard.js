@@ -9,17 +9,16 @@ export const useUserDashboard = () => {
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-  const [dashboardData, setDashboardData]   = useState(null);
-  const [isLoading, setIsLoading]           = useState(true);
-  const [kycStatus, setKycStatus]           = useState('unverified');
-  const [bannerUrl, setBannerUrl]           = useState(
+  const [dashboardData, setDashboardData]     = useState(null);
+  const [isLoading, setIsLoading]             = useState(true);
+  const [kycStatus, setKycStatus]             = useState('unverified');
+  const [bannerUrl, setBannerUrl]             = useState(
     'https://images.unsplash.com/photo-1533105079780-92b9be482077?q=80&w=1600&auto=format&fit=crop'
   );
-  const [topTravellers, setTopTravellers]   = useState([]);
+  const [topTravellers, setTopTravellers]     = useState([]);
+  // [FIX] Index untuk navigasi swipe antar booking aktif
+  const [currentOrderIndex, setCurrentOrderIndex] = useState(0);
 
-  // FIX: header helper tanpa Cache-Control
-  // Cache-Control tidak ada di CORS allowedHeaders backend → preflight ditolak
-  // Cache busting sudah cukup via ?_t=timestamp di URL
   const getHeaders = () => ({
     'Authorization': `Bearer ${authToken}`,
     'Content-Type': 'application/json',
@@ -35,15 +34,10 @@ export const useUserDashboard = () => {
       const timestamp = Date.now();
 
       const [resMe, resTop] = await Promise.all([
-        fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, {
-          headers: getHeaders(),
-        }),
-        fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, {
-          headers: getHeaders(),
-        }),
+        fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, { headers: getHeaders() }),
       ]);
 
-      // Handle token expired / unauthorized
       if (resMe.status === 401 || resMe.status === 403) {
         console.warn('Token expired — redirect ke login');
         localStorage.removeItem('token');
@@ -63,6 +57,9 @@ export const useUserDashboard = () => {
         const freshKyc = String(resultMe.data.user?.kyc_status || 'unverified').toLowerCase();
         setKycStatus(freshKyc);
         if (updateKycStatus) updateKycStatus(freshKyc);
+
+        // Reset ke index 0 saat data di-refresh agar tidak out of bounds
+        setCurrentOrderIndex(0);
       }
 
       if (resultTop.success) {
@@ -82,17 +79,22 @@ export const useUserDashboard = () => {
       return;
     }
 
-    // Fetch pertama kali
     fetchDashboardData();
-
-    // Polling setiap 10 detik (bukan 3 detik — terlalu agresif dan spam CORS error)
     const interval = setInterval(fetchDashboardData, 10_000);
-
     return () => clearInterval(interval);
   }, [authToken]);
 
-  // ── Fungsi-fungsi helper ────────────────────────────────────────────────────
+  // ── Navigasi booking ────────────────────────────────────────────────────────
+  const activeOrders = dashboardData?.activeOrders || [];
 
+  const goToPrevOrder = () => {
+    setCurrentOrderIndex(i => Math.max(0, i - 1));
+  };
+  const goToNextOrder = () => {
+    setCurrentOrderIndex(i => Math.min(activeOrders.length - 1, i + 1));
+  };
+
+  // ── Helper functions ────────────────────────────────────────────────────────
   const verifyKycCode = async (accessCode) => {
     try {
       let finalCode = accessCode.trim().toUpperCase();
@@ -189,8 +191,14 @@ export const useUserDashboard = () => {
     bannerUrl,
     setBannerUrl,
     topTravellers,
-    user: dashboardData?.user || user,
-    activeOrder: dashboardData?.activeOrder || null,
+    user:               dashboardData?.user || user,
+    // [FIX] activeOrders = semua booking aktif, activeOrder = booking yang sedang ditampilkan
+    activeOrders,
+    activeOrder:        activeOrders[currentOrderIndex] || null,
+    currentOrderIndex,
+    totalOrders:        activeOrders.length,
+    goToPrevOrder,
+    goToNextOrder,
     verifyKycCode,
     saveProfile,
     updateBanner,

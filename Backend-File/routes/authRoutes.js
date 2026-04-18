@@ -17,6 +17,7 @@ const jwt      = require('jsonwebtoken');
 const crypto   = require('crypto');
 const db       = require('../db');
 const REFERRAL_CONFIG = require('../utils/referralConfig');
+const { sendResetPasswordEmail } = require('../utils/mailer'); // [FIX P7]
 require('dotenv').config();
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -540,8 +541,20 @@ router.post('/forgot-password', forgotLimiter, async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
-    // TODO: Ganti dengan Nodemailer / layanan email sesungguhnya
-    console.log(`\n=== RESET PASSWORD ===\nEmail: ${email}\nLink : ${resetLink}\n=====================\n`);
+    // [FIX P7] Kirim email sungguhan via Nodemailer (Gmail)
+    // Fire-and-forget — jika email gagal, tetap balas sukses ke user
+    // (tidak bocorkan info apakah email terdaftar atau tidak)
+    sendResetPasswordEmail(email, resetLink)
+      .then((result) => {
+        if (!result.success) {
+          // Fallback: log ke console jika email gagal terkirim
+          console.warn(`⚠️  Reset password email gagal ke ${email}:`, result.reason);
+          console.warn(`   Fallback link: ${resetLink}`);
+        }
+      })
+      .catch(() => {
+        console.warn(`⚠️  Reset password email error. Fallback link: ${resetLink}`);
+      });
 
     return res.json({ success: true, message: 'Jika email terdaftar, tautan reset akan dikirim.' });
 

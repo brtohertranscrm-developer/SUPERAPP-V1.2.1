@@ -66,16 +66,18 @@ router.get('/dashboard/me', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
     }
 
-    const activeOrder = await dbGet(
-      `SELECT order_id as id, item_name as item, status, location, 
-              start_date as startDate, end_date as endDate, total_price 
-       FROM bookings 
-       WHERE user_id = ? AND status IN ('pending', 'active') 
-       ORDER BY start_date DESC LIMIT 1`,
+    // [FIX] Ambil SEMUA booking aktif — motor + loker + semua tipe
+    const activeOrders = await dbAll(
+      `SELECT order_id as id, item_name as item, item_type, status, location,
+              start_date as startDate, end_date as endDate, total_price,
+              payment_status
+       FROM bookings
+       WHERE user_id = ? AND status IN ('pending', 'active')
+       ORDER BY start_date ASC`,
       [req.user.id]
     );
 
-    res.json({ success: true, data: { user, activeOrder: activeOrder || null } });
+    res.json({ success: true, data: { user, activeOrders } });
 
   } catch (err) {
     console.error('GET /dashboard/me error:', err.message);
@@ -355,6 +357,7 @@ router.post('/users/kyc/verify', async (req, res) => {
 
 // ==========================================
 // 7. EXTEND BOOKING
+// [FIX P4] Tambah batas maksimum total durasi booking
 // ==========================================
 router.put('/bookings/:orderId/extend', async (req, res) => {
   try {
@@ -380,9 +383,27 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Hanya pesanan aktif yang bisa diperpanjang.' });
     }
 
-    const start       = new Date(booking.start_date);
-    const currentEnd  = new Date(booking.end_date);
+    const start      = new Date(booking.start_date);
+    const currentEnd = new Date(booking.end_date);
     const currentDays = Math.max(1, Math.ceil((currentEnd - start) / (1000 * 60 * 60 * 24)));
+
+    // [FIX P4] Batas maksimum total durasi booking = 90 hari
+    // Cegah user extend terus sampai berbulan-bulan
+    const MAX_TOTAL_DAYS = 90;
+    if (currentDays + days > MAX_TOTAL_DAYS) {
+      const remainingAllowed = MAX_TOTAL_DAYS - currentDays;
+      if (remainingAllowed <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: `Booking sudah mencapai batas maksimum ${MAX_TOTAL_DAYS} hari. Tidak bisa diperpanjang lagi.`,
+        });
+      }
+      return res.status(400).json({
+        success: false,
+        error: `Maksimum total sewa ${MAX_TOTAL_DAYS} hari. Kamu hanya bisa menambah ${remainingAllowed} hari lagi.`,
+      });
+    }
+
     const pricePerDay = Math.round((booking.base_price || booking.total_price) / currentDays);
     const extraCost   = days * pricePerDay;
 

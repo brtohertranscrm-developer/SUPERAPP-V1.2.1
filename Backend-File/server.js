@@ -62,14 +62,20 @@ app.disable('x-powered-by');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 3. HTTPS ENFORCEMENT (Peringatan 6)
-// Redirect HTTP → HTTPS di production. Di development, skip.
+// Redirect HTTP → HTTPS di production, KECUALI di localhost/127.0.0.1
 // ═══════════════════════════════════════════════════════════════════════════════
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {
+    const host = req.headers.host || '';
+
+    // Jangan redirect jika akses dari localhost (development di mesin production)
+    const isLocalhost = host.startsWith('localhost') || host.startsWith('127.0.0.1');
+    if (isLocalhost) return next();
+
     // x-forwarded-proto diset oleh Nginx / reverse proxy
     const proto = req.headers['x-forwarded-proto'] || req.protocol;
     if (proto !== 'https') {
-      return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+      return res.redirect(301, `https://${host}${req.originalUrl}`);
     }
     next();
   });

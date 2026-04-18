@@ -329,6 +329,43 @@ db.serialize(() => {
     )
   `);
 
+  // --- PROMO USAGE (cegah duplikat pemakaian promo per user) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS promo_usage (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      promo_id INTEGER NOT NULL,
+      user_id  TEXT NOT NULL,
+      order_id TEXT,
+      used_at  TEXT DEFAULT (datetime('now')),
+      UNIQUE(promo_id, user_id),
+      FOREIGN KEY (promo_id) REFERENCES promotions(id)
+    )
+  `);
+
+  // --- TOKEN BLACKLIST (JWT revoke saat logout) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS token_blacklist (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash     TEXT UNIQUE NOT NULL,
+      user_id        TEXT NOT NULL,
+      blacklisted_at TEXT DEFAULT (datetime('now')),
+      expires_at     INTEGER NOT NULL
+    )
+  `);
+
+  // --- LOGIN LOGS (audit trail) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS login_logs (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      TEXT,
+      ip_address   TEXT,
+      user_agent   TEXT,
+      success      INTEGER DEFAULT 0,
+      reason       TEXT,
+      attempted_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // ==========================================
   // 4. MIGRASI — Tambah kolom baru (aman diulang)
   // ==========================================
@@ -447,8 +484,11 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires_at ON token_blacklist(expires_at)`);
 
   // Login logs indexes
-  db.run(`CREATE INDEX IF NOT EXISTS idx_login_logs_user_id ON login_logs(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_login_logs_user_id      ON login_logs(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_login_logs_attempted_at ON login_logs(attempted_at)`);
+
+  // [FIX P3] Promo usage index
+  db.run(`CREATE INDEX IF NOT EXISTS idx_promo_usage_promo_user ON promo_usage(promo_id, user_id)`);
 
   console.log('✅ Semua tabel, migrasi & index berhasil diverifikasi!');
 });

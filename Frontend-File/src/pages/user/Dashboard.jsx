@@ -17,9 +17,11 @@ import { Trophy, Gift, Navigation, MapPin, ChevronRight, Headset, MessageCircle,
 export default function Dashboard() {
   // PASTIKAN 'navigate' ADA DI SINI
   const {
-    isLoading, kycStatus, bannerUrl, setBannerUrl, topTravellers,
-    user, activeOrder, saveProfile, updateBanner, navigate, verifyKycCode, handleExtend
-  } = useUserDashboard();
+  isLoading, kycStatus, bannerUrl, setBannerUrl, topTravellers,
+  user, activeOrder, activeOrders, currentOrderIndex, totalOrders,
+  goToPrevOrder, goToNextOrder,
+  saveProfile, updateBanner, navigate, verifyKycCode, handleExtend
+} = useUserDashboard();
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -98,7 +100,17 @@ export default function Dashboard() {
             )}
 
             {/* Pesanan Aktif */}
-            <ActiveBookingCard order={activeOrder} navigate={navigate} handleExtend={handleExtend} />
+            <ActiveBookingCard
+              order={activeOrder}
+              activeOrder={activeOrder}
+              navigate={navigate}
+              handleExtend={handleExtend}
+              currentOrderIndex={currentOrderIndex}
+              totalOrders={totalOrders}
+              goToPrevOrder={goToPrevOrder}
+              goToNextOrder={goToNextOrder}
+            />
+
 
             {/* Status Miles */}
             <UserStats currentMiles={currentMiles} navigate={navigate} />

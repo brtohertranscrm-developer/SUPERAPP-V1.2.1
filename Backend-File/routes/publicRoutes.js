@@ -153,7 +153,13 @@ router.get('/articles/:id', async (req, res) => {
 
 // ==========================================
 // PROMO VALIDATION & TRACKING
+// [FIX P3] Cek duplikat pemakaian promo per user
+// Satu kode promo hanya bisa dipakai 1x per user
+// Tabel promo_usage dibuat di db.js
 // ==========================================
+
+// POST /api/promotions/validate
+// Butuh token agar bisa cek duplikat per user — baca user_id dari JWT jika ada
 router.post('/promotions/validate', async (req, res) => {
   try {
     const { code } = req.body || {};
@@ -171,18 +177,41 @@ router.post('/promotions/validate', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Kode promo tidak ditemukan atau sudah tidak aktif.' });
     }
 
-    // Cek limit penggunaan (0 = unlimited)
+    // Cek limit penggunaan global (0 = unlimited)
     if (promo.usage_limit > 0 && promo.current_usage >= promo.usage_limit) {
       return res.status(400).json({ success: false, error: 'Kuota kode promo ini sudah habis.' });
+    }
+
+    // [FIX P3] Cek duplikat per user — ambil user_id dari JWT jika ada
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const alreadyUsed = await dbGet(
+          `SELECT id FROM promo_usage WHERE promo_id = ? AND user_id = ?`,
+          [promo.id, decoded.id]
+        );
+        if (alreadyUsed) {
+          return res.status(400).json({
+            success: false,
+            error: 'Kode promo ini sudah pernah kamu gunakan sebelumnya.',
+          });
+        }
+      } catch {
+        // Token invalid/expired — lanjut tanpa cek per-user
+      }
     }
 
     res.json({
       success: true,
       data: {
-        code: promo.code,
+        id:               promo.id,
+        code:             promo.code,
         discount_percent: promo.discount_percent,
-        max_discount: promo.max_discount
-      }
+        max_discount:     promo.max_discount,
+      },
     });
   } catch (err) {
     console.error('POST /promotions/validate error:', err.message);
@@ -190,9 +219,11 @@ router.post('/promotions/validate', async (req, res) => {
   }
 });
 
+// POST /api/promotions/increment
+// Dipanggil setelah booking berhasil — catat usage per user + increment global counter
 router.post('/promotions/increment', async (req, res) => {
   try {
-    const { code } = req.body || {};
+    const { code, order_id } = req.body || {};
 
     if (!code || typeof code !== 'string' || code.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'Kode promo wajib diisi.' });
@@ -207,11 +238,35 @@ router.post('/promotions/increment', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Kode promo tidak ditemukan.' });
     }
 
-    // Double-check: cegah increment melebihi limit
+    // Double-check limit global
     if (promo.usage_limit > 0 && promo.current_usage >= promo.usage_limit) {
       return res.status(400).json({ success: false, error: 'Kuota kode promo sudah habis.' });
     }
 
+    // [FIX P3] Ambil user_id dari JWT untuk catat usage per user
+    let userId = null;
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        userId = decoded.id;
+      } catch { /* skip */ }
+    }
+
+    // [FIX P3] INSERT OR IGNORE — jika sudah ada, tidak error tapi juga tidak dobel
+    if (userId) {
+      await new Promise((resolve) => {
+        db.run(
+          `INSERT OR IGNORE INTO promo_usage (promo_id, user_id, order_id) VALUES (?, ?, ?)`,
+          [promo.id, userId, order_id || null],
+          () => resolve()
+        );
+      });
+    }
+
+    // Increment global counter
     db.run(
       `UPDATE promotions SET current_usage = current_usage + 1 WHERE id = ?`,
       [promo.id]
