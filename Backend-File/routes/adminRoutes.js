@@ -1,4 +1,6 @@
 const bcrypt = require('bcrypt');
+const fs     = require('fs');
+const os     = require('os');
 const express = require('express');
 const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
@@ -822,6 +824,163 @@ router.delete('/admins/:id', requirePermission('settings'), async (req, res) => 
   } catch (err) {
     console.error('DELETE /admin/admins/:id error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal menghapus admin.' });
+  }
+});
+
+
+// ==========================================
+// DATABASE BACKUP & RESTORE
+// Hanya superadmin yang bisa akses
+// ==========================================
+
+// Multer untuk upload DB file
+const dbUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, os.tmpdir());
+  },
+  filename: (req, file, cb) => {
+    cb(null, 'restore_' + Date.now() + '.db');
+  },
+});
+const uploadDb = multer({
+  storage: dbUploadStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // max 100MB
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    ext === '.db' || ext === '.sqlite'
+      ? cb(null, true)
+      : cb(new Error('Hanya file .db atau .sqlite yang diizinkan.'));
+  },
+});
+
+// GET /api/admin/database/export — download file DB langsung
+router.get('/database/export', async (req, res) => {
+  try {
+    // Hanya superadmin
+    if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Akses ditolak.' });
+    }
+
+    const dbPath = require('path').resolve(__dirname, '../brother_trans.db');
+    if (!fs.existsSync(dbPath)) {
+      return res.status(404).json({ success: false, error: 'File database tidak ditemukan.' });
+    }
+
+    const timestamp  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename   = 'brother_trans_backup_' + timestamp + '.db';
+
+    res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', fs.statSync(dbPath).size);
+
+    const stream = fs.createReadStream(dbPath);
+    stream.pipe(res);
+
+    stream.on('error', (err) => {
+      console.error('Export DB stream error:', err.message);
+      if (!res.headersSent) res.status(500).json({ success: false, error: 'Gagal mengekspor database.' });
+    });
+
+  } catch (err) {
+    console.error('GET /admin/database/export error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengekspor database.' });
+  }
+});
+
+// POST /api/admin/database/restore — upload & replace DB
+router.post('/database/restore', (req, res) => {
+  // Hanya superadmin
+  if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Akses ditolak.' });
+  }
+
+  uploadDb.single('database')(req, res, async (err) => {
+    if (err) return res.status(400).json({ success: false, error: err.message });
+    if (!req.file) return res.status(400).json({ success: false, error: 'File database wajib diunggah.' });
+
+    const dbPath     = require('path').resolve(__dirname, '../brother_trans.db');
+    const backupPath = dbPath.replace('.db', '_pre_restore_' + Date.now() + '.db');
+    const uploadedPath = req.file.path;
+
+    try {
+      // 1. Validasi file yang diupload adalah SQLite yang valid
+      const { execSync } = require('child_process');
+      try {
+        execSync('sqlite3 "' + uploadedPath + '" "PRAGMA integrity_check;" 2>&1', { timeout: 10000 });
+      } catch {
+        fs.unlinkSync(uploadedPath);
+        return res.status(400).json({ success: false, error: 'File database tidak valid atau corrupt.' });
+      }
+
+      // 2. Backup DB saat ini sebelum diganti
+      if (fs.existsSync(dbPath)) {
+        fs.copyFileSync(dbPath, backupPath);
+      }
+
+      // 3. Replace DB dengan file yang diupload
+      fs.copyFileSync(uploadedPath, dbPath);
+      fs.unlinkSync(uploadedPath);
+
+      // 4. Restart server agar DB baru terbaca (pm2 restart)
+      // Kirim response dulu sebelum restart
+      res.json({
+        success: true,
+        message: 'Database berhasil direstore. Server akan restart otomatis dalam 2 detik.',
+        backup: path.basename(backupPath),
+      });
+
+      // Restart dengan delay agar response sempat terkirim
+      setTimeout(() => {
+        try {
+          require('child_process').exec('pm2 restart brother-backend');
+        } catch {
+          process.exit(1); // fallback: exit dan pm2 akan restart otomatis
+        }
+      }, 2000);
+
+    } catch (restoreErr) {
+      // Rollback: kembalikan backup jika ada error
+      if (fs.existsSync(backupPath)) {
+        fs.copyFileSync(backupPath, dbPath);
+        fs.unlinkSync(backupPath);
+      }
+      if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
+      console.error('POST /admin/database/restore error:', restoreErr.message);
+      res.status(500).json({ success: false, error: 'Gagal merestore database: ' + restoreErr.message });
+    }
+  });
+});
+
+// GET /api/admin/database/info — info DB saat ini
+router.get('/database/info', async (req, res) => {
+  try {
+    if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Akses ditolak.' });
+    }
+
+    const dbPath = require('path').resolve(__dirname, '../brother_trans.db');
+    const stat   = fs.existsSync(dbPath) ? fs.statSync(dbPath) : null;
+
+    const counts = await Promise.all([
+      dbGet('SELECT COUNT(*) as c FROM users'),
+      dbGet('SELECT COUNT(*) as c FROM bookings'),
+      dbGet('SELECT COUNT(*) as c FROM motors'),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        size_bytes: stat ? stat.size : 0,
+        size_mb:    stat ? (stat.size / 1024 / 1024).toFixed(2) : '0',
+        modified:   stat ? stat.mtime : null,
+        users:      counts[0]?.c || 0,
+        bookings:   counts[1]?.c || 0,
+        motors:     counts[2]?.c || 0,
+      },
+    });
+  } catch (err) {
+    console.error('GET /admin/database/info error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil info database.' });
   }
 });
 

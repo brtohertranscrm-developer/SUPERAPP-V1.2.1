@@ -224,6 +224,32 @@ const testConnection = async () => {
 };
 
 
+
+// =====================================================================
+// 5. REVIEW GOOGLE MAPS
+// =====================================================================
+const notifyGmapsReview = function(review, user) {
+  var lines = [
+    '*SUBMISSION REVIEW GOOGLE MAPS*',
+    '',
+    'Nama: ' + esc(user && user.name ? user.name : '-'),
+    'WA: ' + esc(user && user.phone ? user.phone : '-'),
+    'Order: ' + esc(review && review.order_id ? review.order_id : '-'),
+    '',
+    'Waktu: ' + esc(fmtTime()),
+    '[Verifikasi Dashboard](' + (ADMIN_URL || '') + '/reviews)',
+  ];
+  if (review && review.screenshot_url) {
+    lines.push('[Lihat Screenshot](' + review.screenshot_url + ')');
+  }
+  return notify({
+    chat_id: CHAT_ID,
+    parse_mode: 'MarkdownV2',
+    disable_web_page_preview: true,
+    text: lines.filter(Boolean).join('\n'),
+  });
+};
+
 module.exports = {
   notifyNewBooking,
   notifyExtendBooking,
@@ -231,4 +257,5 @@ module.exports = {
   notifyPaymentConfirmed,
   testConnection,
   isEnabled,
+  notifyGmapsReview,
 };

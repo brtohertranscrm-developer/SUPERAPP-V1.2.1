@@ -1,4 +1,8 @@
-const { notifyNewBooking, notifyExtendBooking, notifyKycPending } = require('../utils/telegram');
+const { notifyNewBooking, notifyExtendBooking, notifyKycPending, notifyGmapsReview } = require('../utils/telegram');
+const multer = require('multer');
+const path   = require('path');
+const crypto = require('crypto');
+const fs     = require('fs');
 const express = require('express');
 const db = require('../db');
 const { verifyUser } = require('../middlewares/authMiddleware');
@@ -66,18 +70,16 @@ router.get('/dashboard/me', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
     }
 
-    // [FIX] Ambil SEMUA booking aktif — motor + loker + semua tipe
-    const activeOrders = await dbAll(
-      `SELECT order_id as id, item_name as item, item_type, status, location,
-              start_date as startDate, end_date as endDate, total_price,
-              payment_status
-       FROM bookings
-       WHERE user_id = ? AND status IN ('pending', 'active')
-       ORDER BY start_date ASC`,
+    const activeOrder = await dbGet(
+      `SELECT order_id as id, item_name as item, status, location, 
+              start_date as startDate, end_date as endDate, total_price 
+       FROM bookings 
+       WHERE user_id = ? AND status IN ('pending', 'active') 
+       ORDER BY start_date DESC LIMIT 1`,
       [req.user.id]
     );
 
-    res.json({ success: true, data: { user, activeOrders } });
+    res.json({ success: true, data: { user, activeOrder: activeOrder || null } });
 
   } catch (err) {
     console.error('GET /dashboard/me error:', err.message);
@@ -473,6 +475,100 @@ router.post('/claim-tc-miles', async (req, res) => {
     console.error('POST /claim-tc-miles error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengklaim miles.' });
   }
+});
+
+
+// ==========================================
+// GMAPS REVIEW — Upload screenshot & submit
+// ==========================================
+const reviewStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/reviews/';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, 'review-' + crypto.randomBytes(12).toString('hex') + ext);
+  },
+});
+
+const uploadReview = multer({
+  storage: reviewStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const extOk  = ['.jpg','.jpeg','.png','.webp'].includes(path.extname(file.originalname).toLowerCase());
+    const mimeOk = ['image/jpeg','image/png','image/webp'].includes(file.mimetype);
+    mimeOk && extOk ? cb(null, true) : cb(new Error('Hanya JPG/PNG/WebP yang diizinkan.'));
+  },
+});
+
+// GET /api/reviews/gmaps/status
+router.get('/reviews/gmaps/status', async (req, res) => {
+  try {
+    const userData = await dbGet('SELECT has_reviewed_gmaps FROM users WHERE id = ?', [req.user.id]);
+    const latestReview = await dbGet(
+      'SELECT status, reject_reason, submitted_at, miles_awarded FROM gmaps_reviews WHERE user_id = ? ORDER BY submitted_at DESC LIMIT 1',
+      [req.user.id]
+    );
+    res.json({
+      success: true,
+      data: {
+        has_reviewed:  userData && userData.has_reviewed_gmaps === 1,
+        latest_review: latestReview || null,
+      },
+    });
+  } catch (err) {
+    console.error('GET /reviews/gmaps/status error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil status review.' });
+  }
+});
+
+// POST /api/reviews/gmaps
+router.post('/reviews/gmaps', function(req, res) {
+  uploadReview.single('screenshot')(req, res, async function(err) {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: 'Ukuran file maksimal 5MB.' });
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    try {
+      if (!req.file) return res.status(400).json({ success: false, error: 'Screenshot wajib diunggah.' });
+
+      const userData = await dbGet('SELECT has_reviewed_gmaps FROM users WHERE id = ?', [req.user.id]);
+      if (userData && userData.has_reviewed_gmaps === 1) {
+        return res.status(400).json({ success: false, error: 'Kamu sudah pernah mendapatkan reward review Google Maps.' });
+      }
+
+      const pending = await dbGet(
+        'SELECT id FROM gmaps_reviews WHERE user_id = ? AND status = ?',
+        [req.user.id, 'pending']
+      );
+      if (pending) {
+        return res.status(400).json({ success: false, error: 'Kamu sudah memiliki submission yang sedang ditinjau admin.' });
+      }
+
+      var order_id = (req.body || {}).order_id || null;
+      var screenshotUrl = req.protocol + '://' + req.get('host') + '/uploads/reviews/' + req.file.filename;
+
+      var result = await dbRun(
+        'INSERT INTO gmaps_reviews (user_id, order_id, screenshot_url) VALUES (?, ?, ?)',
+        [req.user.id, order_id, screenshotUrl]
+      );
+
+      dbGet('SELECT name, phone FROM users WHERE id = ?', [req.user.id])
+        .then(function(ud) { return notifyGmapsReview({ id: result.lastID, order_id: order_id, screenshot_url: screenshotUrl }, ud); })
+        .catch(function(e) { console.error('[Telegram] gmaps review notify error:', e.message); });
+
+      res.status(201).json({
+        success: true,
+        message: 'Screenshot berhasil dikirim. Admin akan memverifikasi dalam 1x24 jam.',
+        review_id: result.lastID,
+      });
+    } catch (err) {
+      console.error('POST /reviews/gmaps error:', err.message);
+      res.status(500).json({ success: false, error: 'Gagal mengirim review.' });
+    }
+  });
 });
 
 module.exports = router;

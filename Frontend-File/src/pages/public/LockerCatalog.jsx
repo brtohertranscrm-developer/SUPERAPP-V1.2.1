@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Package, Lock, MapPin } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useLockerCatalog } from '../../hooks/useLockerCatalog';
 import LockerCard from '../../components/public/catalog/LockerCard';
 import LockerHero from '../../components/public/catalog/LockerHero';
@@ -7,13 +8,14 @@ import LockerHero from '../../components/public/catalog/LockerHero';
 const FILTER_TYPES = [
   { value: 'all',      label: 'Semua Tipe' },
   { value: 'terbuka',  label: 'Rak Terbuka',  Icon: Package },
-  { value: 'tertutup', label: 'Rak Tertutup',  Icon: Lock }
+  { value: 'tertutup', label: 'Rak Tertutup',  Icon: Lock },
 ];
 
 const LockerCatalog = () => {
-  const [filterType, setFilterType] = useState('all');
+  const navigate = useNavigate();
+  const [filterType, setFilterType]       = useState('all');
   const [selectedLocker, setSelectedLocker] = useState(null);
-  const { lockers, isLoading } = useLockerCatalog();
+  const { lockers, isLoading }            = useLockerCatalog();
 
   const filtered = filterType === 'all'
     ? lockers
@@ -26,10 +28,19 @@ const LockerCatalog = () => {
     return acc;
   }, {});
 
+  // [FIX] Gunakan navigate() dari React Router — bukan window.location.href
+  // Pass data loker via state agar checkout bisa baca tanpa query string
   const handleSelect = (locker) => {
     setSelectedLocker(locker);
-    // Scroll ke form checkout atau navigate ke halaman checkout
-    window.location.href = `/checkout/locker?id=${locker.id}`;
+    navigate('/checkout-loker', {
+      state: {
+        lockerId:  locker.id,
+        location:  locker.location,
+        size:      locker.type || locker.size || 'Medium',
+        basePrice: locker.base_price || locker.price_24h || 0,
+        name:      locker.name || `Loker ${locker.type}`,
+      },
+    });
   };
 
   return (

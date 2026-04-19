@@ -366,6 +366,25 @@ db.serialize(() => {
     )
   `);
 
+  // --- GMAPS REVIEWS (submission bukti review Google Maps) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS gmaps_reviews (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         TEXT NOT NULL,
+      order_id        TEXT,
+      screenshot_url  TEXT NOT NULL,
+      status          TEXT DEFAULT 'pending',
+      reviewed_by     TEXT,
+      reviewed_at     TEXT,
+      reject_reason   TEXT,
+      miles_awarded   INTEGER DEFAULT 0,
+      submitted_at    TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id)     REFERENCES users(id),
+      FOREIGN KEY (order_id)    REFERENCES bookings(order_id),
+      FOREIGN KEY (reviewed_by) REFERENCES users(id)
+    )
+  `);
+
   // ==========================================
   // 4. MIGRASI — Tambah kolom baru (aman diulang)
   // ==========================================
@@ -378,6 +397,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'bank_account', 'TEXT');
   addColumnIfNotExists('users', 'bank_name', 'TEXT');
   addColumnIfNotExists('users', 'referred_by', 'TEXT');
+  addColumnIfNotExists('users', 'has_reviewed_gmaps', 'INTEGER DEFAULT 0');
 
   // [FIX 3] Users — kolom auth yang sebelumnya hilang
   addColumnIfNotExists('users', 'login_attempts', 'INTEGER DEFAULT 0');
@@ -489,6 +509,10 @@ db.serialize(() => {
 
   // [FIX P3] Promo usage index
   db.run(`CREATE INDEX IF NOT EXISTS idx_promo_usage_promo_user ON promo_usage(promo_id, user_id)`);
+
+  // GMaps reviews indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_gmaps_reviews_user_id ON gmaps_reviews(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_gmaps_reviews_status  ON gmaps_reviews(status)`);
 
   console.log('✅ Semua tabel, migrasi & index berhasil diverifikasi!');
 });
