@@ -29,8 +29,8 @@ const SearchHeader = ({
                   onChange={e => setFormData({...formData, pickupLocation: e.target.value})} 
                   className="w-full pl-11 pr-4 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-rose-500 appearance-none border border-slate-100"
                 >
-                  <option value="Stasiun Lempuyangan">Stasiun Lempuyangan</option>
-                  <option value="Stasiun Balapan Solo">Stasiun Balapan Solo</option>
+                  <option value="Yogyakarta">Yogyakarta</option>
+                  <option value="Solo">Solo</option>
                 </select>
               </div>
             </div>

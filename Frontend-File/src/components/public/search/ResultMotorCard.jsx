@@ -1,5 +1,6 @@
 import React from 'react';
-import { Flame, Settings2, ShieldCheck, CloudRain, Clock, ChevronRight } from 'lucide-react';
+// 1. PERBAIKAN IMPORT: Hapus 'listrik', ganti dengan BatteryCharging dan Zap
+import { Flame, Settings2, ShieldCheck, CloudRain, Clock, ChevronRight, BatteryCharging, Zap } from 'lucide-react';
 
 const ResultMotorCard = ({ 
   motor, motorCity, totalDays, 
@@ -10,8 +11,12 @@ const ResultMotorCard = ({
   const activePrice = currentPackage === '12' ? basePrice12h : basePrice24h;
   const totalPrice = activePrice * totalDays;
   
+  // 2. PERBAIKAN VARIABEL: Tambahkan definisi isManual dan isEV
   const categoryStr = motor.category || '';
   const isMatic = categoryStr.toLowerCase().includes('matic');
+  const isManual = categoryStr.toLowerCase().includes('manual');
+  const isEV = motor.cc === 'Listrik' || categoryStr.toLowerCase().includes('ev') || categoryStr.toLowerCase().includes('listrik');
+  
   const safeImageUrl = motor.image_url || 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800';
 
   return (
@@ -46,9 +51,23 @@ const ResultMotorCard = ({
         <h3 className="text-2xl lg:text-3xl font-black text-slate-900 mb-4 tracking-tight group-hover:text-rose-500 transition-colors duration-300">{motor.name}</h3>
         
         <div className="flex flex-wrap gap-2 mb-6">
+          {/* Badge CC (Hanya muncul jika bukan listrik dan datanya ada) */}
+          {motor.cc && motor.cc !== 'Listrik' && (
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100 shadow-inner">
+              <Zap size={16} className="text-yellow-500" /> {motor.cc} cc
+            </span>
+          )}
+
+          {/* 3. PERBAIKAN BADGE TRANSMISI/EV: Icon dan teks akan menyesuaikan secara dinamis */}
           <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100 shadow-inner">
-            <Settings2 size={16} className="text-rose-500" /> {isMatic ? 'Transmisi Matic' : 'Transmisi Manual'}
+            {isEV ? (
+              <BatteryCharging size={16} className="text-green-500" />
+            ) : (
+              <Settings2 size={16} className="text-rose-500" />
+            )}
+            {isEV ? 'Motor Listrik' : isMatic ? 'Transmisi Matic' : 'Transmisi Manual'}
           </span>
+
           <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100 shadow-inner">
             <ShieldCheck size={16} className="text-green-500" /> 2 Helm SNI
           </span>
@@ -58,7 +77,7 @@ const ResultMotorCard = ({
         </div>
         
         <p className="text-sm font-medium text-slate-500 leading-relaxed max-w-lg hidden sm:block">
-          Armada dirawat standar dealer resmi, bersih, dan prima. Harga sudah termasuk asuransi dasar & layanan Roadside Assistance 24/7.
+          Armada dirawat standar dealer resmi, bersih, dan prima. Serta layanan Roadside Assistance 24/7.
         </p>
       </div>
 

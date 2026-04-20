@@ -342,7 +342,7 @@ router.get('/summary', requirePermission('finance'), async (req, res) => {
       dbGet(
         `SELECT COALESCE(SUM(total_price), 0) as total, COUNT(*) as count
          FROM bookings
-         WHERE status = 'completed' AND strftime('%Y-%m', created_at) = ?`,
+         WHERE payment_status = 'paid' AND strftime('%Y-%m', created_at) = ?`,
         [datePrefix]
       ),
       dbGet(
@@ -392,7 +392,7 @@ router.get('/revenue-chart', requirePermission('finance'), async (req, res) => {
               COALESCE(SUM(total_price), 0) as revenue,
               COUNT(*) as bookings_count
        FROM bookings
-       WHERE status = 'completed' AND strftime('%Y-%m', created_at) = ?
+       WHERE payment_status = 'paid' AND strftime('%Y-%m', created_at) = ?
        GROUP BY strftime('%Y-%m-%d', created_at)
        ORDER BY date ASC`,
       [datePrefix]
@@ -583,7 +583,7 @@ router.get('/unit-profitability', requirePermission('finance'), async (req, res)
     const rows = await dbAll(
       `SELECT 
           mu.id, mu.plate_number, mu.name,
-          COALESCE((SELECT SUM(total_price) FROM bookings b WHERE b.motor_unit_id = mu.id AND b.status = 'completed' AND strftime('%Y-%m', b.created_at) = ?), 0) as total_revenue,
+          COALESCE((SELECT SUM(total_price) FROM bookings b WHERE b.motor_unit_id = mu.id AND b.payment_status = 'paid' AND strftime('%Y-%m', b.created_at) = ?), 0) as total_revenue,
           COALESCE((SELECT SUM(amount) FROM expenses e WHERE e.motor_unit_id = mu.id AND strftime('%Y-%m', e.expense_date) = ?), 0) as total_expense
        FROM motor_units mu
        ORDER BY total_revenue DESC`,

@@ -18,7 +18,7 @@ db.serialize(() => {
   // Update semua varian Yogyakarta/Lempuyangan/Tugu → 'Yogyakarta'
   db.run(
     `UPDATE motors SET location = 'Yogyakarta'
-     WHERE location IN ('Lempuyangan', 'Stasiun Lempuyangan', 'Tugu', 'Tugu / Malioboro', 'Yogyakarta')`,
+     WHERE location IN ('Yogyakarta', 'Stasiun Lempuyangan', 'Tugu', 'Tugu / Malioboro', 'Yogyakarta')`,
     (err) => { if (err) console.error('Update Yogyakarta error:', err); else console.log('✅ Motor Yogyakarta updated'); }
   );
 

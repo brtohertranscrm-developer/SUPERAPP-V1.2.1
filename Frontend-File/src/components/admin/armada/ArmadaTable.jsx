@@ -14,7 +14,7 @@ const ArmadaTable = ({ data, onEdit, onDelete, onManageUnit }) => {
 
   // PERBAIKAN BUG LOKASI: 
   // Menetapkan lokasi standar agar selalu muncul, lalu digabungkan dengan lokasi dinamis (jika ada tambahan lokasi baru di data)
-  const defaultLocations = ['Stasiun Lempuyangan', 'Stasiun Balapan Solo'];
+  const defaultLocations = ['Yogyakarta', 'Solo'];
   const dataLocations = data.map(item => item.location);
   const uniqueLocations = [...new Set([...defaultLocations, ...dataLocations])].filter(Boolean);
 

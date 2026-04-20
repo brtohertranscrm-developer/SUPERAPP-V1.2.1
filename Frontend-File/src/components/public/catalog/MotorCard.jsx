@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Users, CloudRain, Settings2, Clock, Flame } from 'lucide-react';
+import { Calendar, Users, CloudRain, Settings2, Clock, Flame, BatteryCharging, Zap } from 'lucide-react';
 
 const MotorCard = ({ motor, onClick }) => {
   // Ambil harga 24 jam final (dari current_price hasil backend)
@@ -10,6 +10,9 @@ const MotorCard = ({ motor, onClick }) => {
   const price12h = motor.current_price_12h || motor.price_12h || Math.round(price24h * 0.7);
   
   const isMatic = motor.category.toLowerCase().includes('matic');
+  const isManual = motor.category.toLowerCase().includes('manual');
+  const isEV = motor.category.toLowerCase().includes('ev');
+
 
   return (
     <div 
@@ -40,9 +43,29 @@ const MotorCard = ({ motor, onClick }) => {
         
         {/* LABEL FASILITAS */}
         <div className="flex flex-wrap gap-2 mb-6 mt-auto">
-          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100"><Users size={12} className="text-slate-400" /> 2 Helm</span>
-          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100"><CloudRain size={12} className="text-slate-400" /> Jas Hujan</span>
-          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100"><Settings2 size={12} className="text-slate-400" /> {isMatic ? 'Matic' : 'Manual'}</span>
+          {/* Badge CC Baru */}
+          {motor.cc && (
+            <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+              {motor.cc === 'Listrik' ? (
+                <>
+                  <BatteryCharging size={12} className="text-green-500" /> Listrik
+                </>
+              ) : (
+                <>
+                  <Zap size={12} className="text-slate-400" /> {motor.cc} cc
+                </>
+              )}
+            </span>
+          )}
+          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+            <Users size={12} className="text-slate-400" /> 2 Helm
+          </span>
+          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+            <CloudRain size={12} className="text-slate-400" /> Jas Hujan
+          </span>
+          <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+            <Settings2 size={12} className="text-slate-400" /> {isMatic ? 'Matic' : isManual ? 'Manual' : 'EV'}
+          </span>
         </div>
 
         {/* BOX HARGA */}

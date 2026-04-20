@@ -7,8 +7,8 @@ const HowItWorks = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center">
           <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6"><ShieldCheck size={32}/></div>
-          <h3 className="text-xl font-black mb-3 text-slate-900">Asuransi Perjalanan</h3>
-          <p className="text-slate-500 text-sm font-medium leading-relaxed">Setiap unit dilindungi asuransi dasar, memberikan ketenangan pikiran selama berkendara.</p>
+          <h3 className="text-xl font-black mb-3 text-slate-900">Harga Terjangkau & Transparan</h3>
+          <p className="text-slate-500 text-sm font-medium leading-relaxed">Nikmati perjalanan tanpa biaya tersembunyi dengan tarif yang jujur sejak awal.</p>
         </div>
         <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center text-center">
           <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-6"><Wrench size={32}/></div>

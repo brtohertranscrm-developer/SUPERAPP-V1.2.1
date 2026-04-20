@@ -66,7 +66,7 @@ export default function SearchResults() {
         {/* 4. DAFTAR MOTOR (LIST VIEW) */}
         <div className="space-y-6">
           {!isLoading && !error && filteredResults.map((motor) => {
-            const motorCity = motor.id % 2 !== 0 ? 'Stasiun Lempuyangan' : 'Stasiun Solo Balapan';
+            const motorCity = motor.id % 2 !== 0 ? 'Yogyakarta' : 'Solo'; // Contoh logika penentuan kota berdasarkan ID motor (sesuaikan dengan data sebenarnya)
             const currentPackage = selectedPackages[motor.id] || '24';
             
             return (

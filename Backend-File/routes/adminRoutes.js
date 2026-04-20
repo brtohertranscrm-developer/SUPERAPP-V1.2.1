@@ -201,7 +201,8 @@ router.get('/motors', requirePermission('armada'), async (req, res) => {
 
 router.post('/motors', requirePermission('armada'), async (req, res) => {
   try {
-    const { name, category, location, price_12h, base_price, image_url, allow_dynamic_pricing } = req.body || {};
+    // 1. Tambahkan cc di sini
+    const { name, cc, category, location, price_12h, base_price, image_url, allow_dynamic_pricing } = req.body || {};
 
     if (!name || !category || !base_price) {
       return res.status(400).json({ success: false, error: 'Nama, kategori, dan harga dasar wajib diisi.' });
@@ -209,9 +210,10 @@ router.post('/motors', requirePermission('armada'), async (req, res) => {
 
     const isDynamic = (allow_dynamic_pricing === false || allow_dynamic_pricing === 0 || allow_dynamic_pricing === '0') ? 0 : 1;
 
+    // 2. Tambahkan cc ke query INSERT
     const result = await dbRun(
-      `INSERT INTO motors (name, category, location, price_12h, base_price, stock, image_url, allow_dynamic_pricing) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-      [name.trim(), category, location || 'Lempuyangan', parseInt(price_12h) || 0, parseInt(base_price), image_url || null, isDynamic]
+      `INSERT INTO motors (name, cc, category, location, price_12h, base_price, stock, image_url, allow_dynamic_pricing) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      [name.trim(), cc === 'Listrik' ? 'Listrik' : (parseInt(cc) || 125), category, location || 'Lempuyangan', parseInt(price_12h) || 0, parseInt(base_price), image_url || null, isDynamic]
     );
 
     res.status(201).json({ success: true, message: 'Katalog Motor ditambahkan.', id: result.lastID });
@@ -224,7 +226,8 @@ router.post('/motors', requirePermission('armada'), async (req, res) => {
 
 router.put('/motors/:id', requirePermission('armada'), async (req, res) => {
   try {
-    const { name, category, location, price_12h, base_price, image_url, allow_dynamic_pricing } = req.body || {};
+    // 1. Tambahkan cc di sini
+    const { name, cc, category, location, price_12h, base_price, image_url, allow_dynamic_pricing } = req.body || {};
 
     if (!name || !category || !base_price) {
       return res.status(400).json({ success: false, error: 'Nama, kategori, dan harga dasar wajib diisi.' });
@@ -232,9 +235,10 @@ router.put('/motors/:id', requirePermission('armada'), async (req, res) => {
 
     const isDynamic = (allow_dynamic_pricing === false || allow_dynamic_pricing === 0 || allow_dynamic_pricing === '0') ? 0 : 1;
 
+    // 2. Tambahkan cc=? ke query UPDATE
     await dbRun(
-      `UPDATE motors SET name=?, category=?, location=?, price_12h=?, base_price=?, image_url=?, allow_dynamic_pricing=? WHERE id=?`,
-      [name.trim(), category, location, parseInt(price_12h) || 0, parseInt(base_price), image_url, isDynamic, req.params.id]
+      `UPDATE motors SET name=?, cc=?, category=?, location=?, price_12h=?, base_price=?, image_url=?, allow_dynamic_pricing=? WHERE id=?`,
+      [name.trim(), cc === 'Listrik' ? 'Listrik' : (parseInt(cc) || 125), category, location, parseInt(price_12h) || 0, parseInt(base_price), image_url, isDynamic, req.params.id]
     );
 
     res.json({ success: true, message: 'Data katalog berhasil diupdate.' });

@@ -94,7 +94,8 @@ db.serialize(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       category TEXT NOT NULL,
-      location TEXT DEFAULT 'Lempuyangan',
+      location TEXT DEFAULT 'Yogyakarta',
+      cc INTEGER DEFAULT 125,
       base_price INTEGER NOT NULL,
       price_12h INTEGER DEFAULT 0,
       stock INTEGER NOT NULL DEFAULT 0,
@@ -426,7 +427,7 @@ db.serialize(() => {
   addColumnIfNotExists('bookings', 'price_notes',     'TEXT');
 
   // Motors
-  addColumnIfNotExists('motors', 'location',               'TEXT DEFAULT "Lempuyangan"');
+  addColumnIfNotExists('motors', 'location',               'TEXT DEFAULT "Yogyakarta"');
   addColumnIfNotExists('motors', 'price_12h',              'INTEGER DEFAULT 0');
   addColumnIfNotExists('motors', 'allow_dynamic_pricing',  'INTEGER DEFAULT 1');
   addColumnIfNotExists('motors', 'vendor_user_id',         'TEXT');

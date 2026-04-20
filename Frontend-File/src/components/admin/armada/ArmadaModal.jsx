@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
   const [formData, setFormData] = useState({
     name:                  '',
+    CC:                    '125cc',
     category:              'Matic',
     location:              'Yogyakarta',
     price_12h:             0,
@@ -73,6 +74,22 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
                 <option value="Matic">Matic</option>
                 <option value="Manual">Manual</option>
                 <option value="Sport">Sport/Premium</option>
+                <option value="EV">Listrik</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="col-span-2 md:col-span-1">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Kapasitas (CC)</label>
+              <select name="cc" value={formData.cc} onChange={handleChange}
+                className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
+                <option value="110">110 cc</option>
+                <option value="125">125 cc</option>
+                <option value="150">150 cc</option>
+                <option value="155">155 cc</option>
+                <option value="250">250 cc</option>
+                <option value="Listrik">Listrik</option>
               </select>
             </div>
           </div>

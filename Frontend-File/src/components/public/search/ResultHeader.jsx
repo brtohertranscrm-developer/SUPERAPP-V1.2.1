@@ -33,8 +33,8 @@ const ResultHeader = ({
               <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 cursor-pointer relative focus-within:ring-2 focus-within:ring-rose-500 focus-within:border-rose-500">
                 <MapPin size={18} className="text-rose-500 z-10" />
                 <select value={currentCity} onChange={(e) => setCurrentCity(e.target.value)} className="w-full bg-transparent outline-none font-bold text-slate-900 cursor-pointer text-sm appearance-none z-10 pr-6 relative">
-                  <option value="Stasiun Lempuyangan">Stasiun Lempuyangan</option>
-                  <option value="Stasiun Solo Balapan">Stasiun Solo Balapan</option>
+                  <option value="Yogyakarta">Yogyakarta</option>
+                  <option value="Solo">Solo</option>
                 </select>
                 <ChevronDown size={16} className="absolute right-4 text-slate-400 z-0 pointer-events-none" />
               </div>

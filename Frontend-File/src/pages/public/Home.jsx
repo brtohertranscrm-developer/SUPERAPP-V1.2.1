@@ -79,7 +79,7 @@ export default function Home() {
             <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto md:mx-0 backdrop-blur-md border border-white/10 shadow-lg shadow-white/5">
               <Package size={32} className="text-white"/>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-black mb-4 tracking-tight drop-shadow-lg">Koper Bikin Libet & Capek?</h2>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4 tracking-tight drop-shadow-lg">Koper Bikin Ribet & Capek?</h2>
             <p className="text-indigo-100 mb-8 font-medium leading-relaxed max-w-sm mx-auto md:mx-0">
               Titipkan barang bawaan Anda di fasilitas Smart Loker kami yang tersebar di stasiun utama Yogyakarta & Solo. Terpantau CCTV 24 Jam.
             </p>
