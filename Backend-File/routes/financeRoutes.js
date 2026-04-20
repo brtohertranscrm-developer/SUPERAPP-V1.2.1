@@ -167,7 +167,6 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
     );
 
     // ── TELEGRAM: Notifikasi pembayaran dikonfirmasi ───────────────────────────
-    // Fire and forget — tidak blokir response
     notifyPaymentConfirmed(recon, booking, req.user.name)
       .catch((err) => console.error('[Telegram] payment notify error:', err.message));
     // ──────────────────────────────────────────────────────────────────────────
@@ -260,6 +259,16 @@ router.post('/expenses', requirePermission('finance'), (req, res) => {
         return res.status(400).json({ success: false, error: 'Nominal harus berupa angka positif.' });
       }
 
+      // --- GUARDRAILS TAMBAHAN UNTUK ADMIN AWAM ---
+      if (category === 'bbm' && parsedAmount > 300000) {
+        return res.status(400).json({ success: false, error: 'Nominal BBM mencurigakan (> Rp 300.000). Pastikan angka benar atau bagi menjadi 2 struk jika perlu.' });
+      }
+
+      if (category === 'lainnya' && (!description || description.trim() === '')) {
+        return res.status(400).json({ success: false, error: 'Untuk kategori "Lainnya", kolom deskripsi wajib diisi dengan jelas agar mudah diaudit.' });
+      }
+      // --------------------------------------------
+
       const receiptUrl = req.file
         ? `${req.protocol}://${req.get('host')}/uploads/finance/${req.file.filename}`
         : null;
@@ -283,9 +292,21 @@ router.put('/expenses/:id', requirePermission('finance'), async (req, res) => {
     if (!category || !amount || !expense_date) {
       return res.status(400).json({ success: false, error: 'Kategori, nominal, dan tanggal wajib diisi.' });
     }
+
+    const parsedAmount = parseInt(amount);
+
+    // --- GUARDRAILS TAMBAHAN UNTUK EDIT DATA ---
+    if (category === 'bbm' && parsedAmount > 300000) {
+        return res.status(400).json({ success: false, error: 'Nominal BBM mencurigakan (> Rp 300.000). Pastikan angka benar.' });
+    }
+    if (category === 'lainnya' && (!description || description.trim() === '')) {
+        return res.status(400).json({ success: false, error: 'Kategori "Lainnya" wajib disertai deskripsi jelas.' });
+    }
+    // -------------------------------------------
+
     await dbRun(
       `UPDATE expenses SET category = ?, motor_unit_id = ?, amount = ?, description = ?, expense_date = ? WHERE id = ?`,
-      [category, motor_unit_id || null, parseInt(amount), description || null, expense_date, req.params.id]
+      [category, motor_unit_id || null, parsedAmount, description || null, expense_date, req.params.id]
     );
     res.json({ success: true, message: 'Pengeluaran berhasil diperbarui.' });
   } catch (err) {
@@ -543,6 +564,37 @@ router.put('/vendor-payouts/:id/pay', requirePermission('finance'), (req, res) =
       res.status(500).json({ success: false, error: 'Gagal memperbarui status payout.' });
     }
   });
+});
+
+// ==========================================
+// LAPORAN KESEHATAN ASET (UNIT PROFITABILITY)
+// ==========================================
+
+router.get('/unit-profitability', requirePermission('finance'), async (req, res) => {
+  try {
+    // Membaca input bulan/tahun, jika tidak ada, gunakan default waktu sekarang
+    const now = new Date();
+    const month = req.query.month
+      ? String(req.query.month).padStart(2, '0')
+      : String(now.getMonth() + 1).padStart(2, '0');
+    const year = req.query.year || now.getFullYear();
+    const datePrefix = `${year}-${month}`;
+
+    const rows = await dbAll(
+      `SELECT 
+          mu.id, mu.plate_number, mu.name,
+          COALESCE((SELECT SUM(total_price) FROM bookings b WHERE b.motor_unit_id = mu.id AND b.status = 'completed' AND strftime('%Y-%m', b.created_at) = ?), 0) as total_revenue,
+          COALESCE((SELECT SUM(amount) FROM expenses e WHERE e.motor_unit_id = mu.id AND strftime('%Y-%m', e.expense_date) = ?), 0) as total_expense
+       FROM motor_units mu
+       ORDER BY total_revenue DESC`,
+      [datePrefix, datePrefix]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /finance/unit-profitability error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data profitabilitas unit.' });
+  }
 });
 
 module.exports = router;

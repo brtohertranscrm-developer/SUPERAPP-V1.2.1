@@ -23,6 +23,49 @@ const CAT_COLORS = {
 
 const FinanceSummary = ({ summary, chartData, breakdown, isLoading, month, setMonth, year, setYear }) => {
 
+  // ==========================================
+  // FUNGSI EXPORT EXCEL (CSV)
+  // ==========================================
+  const handleExportExcel = () => {
+    if (!summary && (!breakdown || breakdown.length === 0)) {
+      alert('Tidak ada data untuk diexport pada periode ini.');
+      return;
+    }
+
+    const monthLabel = MONTHS.find(m => m.v === month)?.l || month;
+    
+    // 1. Buat Header CSV Laporan Utama
+    let csvContent = "LAPORAN KEUANGAN & KAS\n";
+    csvContent += `Periode,${monthLabel} ${year}\n\n`;
+    
+    csvContent += "Keterangan,Jumlah,Total (Rp)\n";
+    csvContent += `Total Pemasukan (Omset),${summary?.booking_count || 0} booking,${summary?.gross_revenue || 0}\n`;
+    csvContent += `Total Pengeluaran,${summary?.expense_count || 0} item,${summary?.total_expense || 0}\n`;
+    csvContent += `Sisa Kas (Pemasukan - Pengeluaran),-,${summary?.net_profit || 0}\n\n`;
+
+    // 2. Buat Data Breakdown Pengeluaran
+    csvContent += "RINCIAN PENGELUARAN\n";
+    csvContent += "Kategori,Jumlah Transaksi,Total (Rp),Persentase\n";
+    
+    if (breakdown && breakdown.length > 0) {
+      breakdown.forEach(row => {
+        csvContent += `${row.category},${row.count},${row.total},${row.percentage}%\n`;
+      });
+    } else {
+      csvContent += "Tidak ada data pengeluaran,,,\n";
+    }
+
+    // 3. Convert ke file Blob & Trigger Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Laporan_Keuangan_${monthLabel}_${year}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-20 text-slate-400">
@@ -60,14 +103,14 @@ const FinanceSummary = ({ summary, chartData, breakdown, isLoading, month, setMo
         </span>
       </div>
 
-      {/* Kartu Metrik */}
+      {/* Kartu Metrik (Dengan Istilah Awam) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
           <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mb-3">
             <DollarSign size={20} className="text-blue-500" />
           </div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Pendapatan Bruto</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Pemasukan (Omset)</p>
           <p className="text-xl font-black text-slate-800">{fmtRp(summary?.gross_revenue)}</p>
           <p className="text-[11px] text-slate-500 mt-1">{summary?.booking_count || 0} booking selesai</p>
         </div>
@@ -85,18 +128,18 @@ const FinanceSummary = ({ summary, chartData, breakdown, isLoading, month, setMo
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${profitPositive ? 'bg-emerald-100' : 'bg-red-100'}`}>
             <TrendingUp size={20} className={profitPositive ? 'text-emerald-600' : 'text-red-600'} />
           </div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Laba Bersih</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Sisa Kas (Bersih)</p>
           <p className={`text-xl font-black ${profitPositive ? 'text-emerald-700' : 'text-red-700'}`}>
             {fmtRp(summary?.net_profit)}
           </p>
-          <p className="text-[11px] text-slate-500 mt-1">Pendapatan – Pengeluaran</p>
+          <p className="text-[11px] text-slate-500 mt-1">Pemasukan – Pengeluaran</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-4">
           <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-3">
             <AlertCircle size={20} className="text-amber-500" />
           </div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Menunggu Konfirmasi</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cek Kembali</p>
           <p className="text-xl font-black text-amber-600">{summary?.pending_reconciliation || 0}</p>
           <p className="text-[11px] text-slate-500 mt-1">Bukti transfer pending</p>
         </div>
@@ -170,12 +213,18 @@ const FinanceSummary = ({ summary, chartData, breakdown, isLoading, month, setMo
       </div>
 
       {/* Tombol Print / Export */}
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-3 mt-8">
         <button
           onClick={() => window.print()}
-          className="px-5 py-2.5 text-sm font-bold text-white bg-slate-700 rounded-xl hover:bg-slate-800 shadow-md transition-colors"
+          className="px-5 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 shadow-sm transition-colors flex items-center gap-2"
         >
-          🖨️ Print / Simpan sebagai PDF
+          🖨️ Print PDF
+        </button>
+        <button
+          onClick={handleExportExcel}
+          className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 shadow-md transition-colors flex items-center gap-2"
+        >
+          📊 Download Excel
         </button>
       </div>
     </div>

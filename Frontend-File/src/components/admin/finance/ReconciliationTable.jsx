@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, ExternalLink, AlertTriangle } from 'lucide-react';
 
 const STATUS_MAP = {
   pending:  { label: 'Menunggu',    cls: 'bg-amber-50 text-amber-600 border-amber-200' },
@@ -64,6 +64,12 @@ const ReconciliationTable = ({ data, isLoading, onMatch, onReject }) => {
             const isExpanded = expandedId === r.id;
             const statusInfo = STATUS_MAP[r.status] || STATUS_MAP.pending;
 
+            // --- LOGIKA PENGECEKAN NOMINAL ---
+            const isExactMatch = r.transfer_amount === r.total_price;
+            const isUnderpaid = r.transfer_amount < r.total_price;
+            const isOverpaid = r.transfer_amount > r.total_price;
+            // ---------------------------------
+
             return (
               <div key={r.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col transition-all hover:shadow-md">
 
@@ -73,7 +79,10 @@ const ReconciliationTable = ({ data, isLoading, onMatch, onReject }) => {
                   className="p-4 cursor-pointer hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors"
                 >
                   <div className="overflow-hidden">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">Order ID</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                      Order ID 
+                      {!isExactMatch && r.status === 'pending' && <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" title="Ada selisih nominal"></span>}
+                    </p>
                     <span className="font-mono text-sm font-black text-slate-800 truncate block">{r.order_id}</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -105,21 +114,31 @@ const ReconciliationTable = ({ data, isLoading, onMatch, onReject }) => {
                         </div>
                       </div>
 
-                      {/* Info Transfer */}
-                      <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 flex justify-between items-center">
+                      {/* Info Transfer dengan Visual Cues */}
+                      <div className={`rounded-xl p-3 border flex justify-between items-center transition-colors ${
+                        isExactMatch ? 'bg-blue-50 border-blue-100' : 'bg-red-50 border-red-200'
+                      }`}>
                         <div>
-                          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Transfer via</p>
-                          <p className="text-sm font-black text-blue-800">{BANK_LABELS[r.bank_name] || r.bank_name}</p>
-                          <p className="text-[10px] text-blue-600">{r.transfer_date}</p>
+                          <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isExactMatch ? 'text-blue-400' : 'text-red-400'}`}>Transfer via</p>
+                          <p className={`text-sm font-black ${isExactMatch ? 'text-blue-800' : 'text-red-800'}`}>{BANK_LABELS[r.bank_name] || r.bank_name}</p>
+                          <p className={`text-[10px] ${isExactMatch ? 'text-blue-600' : 'text-red-600'}`}>{r.transfer_date}</p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1">Nominal</p>
-                          <p className="text-base font-black text-blue-700">
+                        <div className="text-right flex flex-col items-end">
+                          <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isExactMatch ? 'text-blue-400' : 'text-red-400'}`}>Nominal Bukti</p>
+                          <p className={`text-base font-black ${isExactMatch ? 'text-blue-700' : 'text-red-700'}`}>
                             Rp {r.transfer_amount?.toLocaleString('id-ID')}
                           </p>
-                          <p className="text-[10px] text-blue-500">
-                            Total booking: Rp {r.total_price?.toLocaleString('id-ID')}
+                          <p className={`text-[10px] font-medium ${isExactMatch ? 'text-blue-500' : 'text-slate-600'}`}>
+                            Tagihan: Rp {r.total_price?.toLocaleString('id-ID')}
                           </p>
+                          
+                          {/* BADGE PERINGATAN SELISIH */}
+                          {!isExactMatch && r.status === 'pending' && (
+                            <span className="text-[9px] font-black uppercase tracking-wider bg-red-100 text-red-600 px-2 py-0.5 rounded-full mt-1.5 flex items-center gap-1">
+                              <AlertTriangle size={10} />
+                              {isUnderpaid ? 'KURANG BAYAR!' : 'LEBIH BAYAR'}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -131,7 +150,7 @@ const ReconciliationTable = ({ data, isLoading, onMatch, onReject }) => {
                           rel="noreferrer"
                           className="flex items-center gap-2 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-3 py-2.5 rounded-xl border border-indigo-100 transition-colors"
                         >
-                          <ExternalLink size={14} /> Lihat Bukti Transfer
+                          <ExternalLink size={14} /> Lihat Gambar Bukti Transfer
                         </a>
                       )}
 
@@ -155,10 +174,20 @@ const ReconciliationTable = ({ data, isLoading, onMatch, onReject }) => {
                     {r.status === 'pending' && (
                       <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
                         <button
-                          onClick={() => onMatch(r.id)}
-                          className="flex-1 bg-green-500 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-green-600 transition-colors flex justify-center items-center gap-1.5 shadow-sm"
+                          onClick={() => {
+                            if (isUnderpaid) {
+                              alert("Tindakan diblokir! Nominal transfer kurang dari total tagihan pelanggan. Silakan tolak bukti transfer ini atau hubungi pelanggan.");
+                              return;
+                            }
+                            onMatch(r.id);
+                          }}
+                          className={`flex-1 text-white font-bold py-2.5 rounded-xl text-xs flex justify-center items-center gap-1.5 shadow-sm transition-colors ${
+                            isUnderpaid 
+                              ? 'bg-slate-300 cursor-not-allowed hover:bg-slate-300' 
+                              : 'bg-green-500 hover:bg-green-600'
+                          }`}
                         >
-                          <CheckCircle size={14} /> Konfirmasi Cocok
+                          <CheckCircle size={14} /> {isUnderpaid ? 'Nominal Kurang' : 'Konfirmasi Cocok'}
                         </button>
                         <button
                           onClick={() => onReject(r.id)}
