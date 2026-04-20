@@ -73,17 +73,23 @@ export const useUserDashboard = () => {
   };
 
   useEffect(() => {
+    // 1. Jika tidak ada token, hentikan loading dan jangan paksa navigate ke /login dari dalam hook.
+    // Perlindungan Route sebaiknya diatur di tingkat AppRoutes.jsx (ProtectedRoute)
     if (!authToken) {
       setIsLoading(false);
-      navigate('/login');
+      
+      // Mencegah infinite loop: Hanya navigate jika saat ini BUKAN di halaman login
+      if (window.location.pathname !== '/login') {
+        navigate('/login');
+      }
       return;
     }
 
     fetchDashboardData();
     const interval = setInterval(fetchDashboardData, 10_000);
     return () => clearInterval(interval);
-  }, [authToken]);
-
+  }, [authToken, navigate]);
+  
   // ── Navigasi booking ────────────────────────────────────────────────────────
   const activeOrders = dashboardData?.activeOrders || [];
 

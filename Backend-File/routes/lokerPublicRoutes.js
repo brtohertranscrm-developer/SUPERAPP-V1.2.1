@@ -1,17 +1,15 @@
 /**
  * PUBLIC LOKER ROUTES — Brothers Trans
  * =====================================
- * [FIX 6] Tidak ada upload di route ini, tapi checkout di-hardened:
- *         - Validasi harga dari DB bukan dari client
- *         - Race condition stok sudah di-fix dengan atomic UPDATE
- *
- * Mount di server.js: app.use('/api/loker', lokerPublicRoutes)
  */
 
 const express = require('express');
 const crypto  = require('crypto');
 const db      = require('../db');
 const { calculateLockerPrice, MIN_HOURS } = require('../utils/lockerPricing');
+const { verifyUser } = require('../middlewares/authMiddleware'); 
+// [PERBAIKAN] Tambahkan Import Telegram Notifikasi
+const { notifyNewBooking } = require('../utils/telegram'); 
 const router  = express.Router();
 
 const dbGet = (sql, params = []) => new Promise((resolve, reject) =>
@@ -53,7 +51,7 @@ router.get('/catalog', async (req, res) => {
 });
 
 // ==========================================
-// ADDON LIST (Pickup & Drop)
+// ADDON LIST
 // ==========================================
 router.get('/addons', async (req, res) => {
   try {
@@ -133,14 +131,12 @@ router.post('/calculate', async (req, res) => {
 });
 
 // ==========================================
-// CHECKOUT LOKER (butuh auth)
-// [FIX 6] Harga dihitung dari DB, bukan dari body request
-// [FIX RACE CONDITION] Kurangi stok atomic — tolak jika stok = 0
+// CHECKOUT LOKER
 // ==========================================
-router.post('/checkout', async (req, res) => {
+router.post('/checkout', verifyUser, async (req, res) => {
   try {
     const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ success: false, error: 'Login terlebih dahulu.' });
+    if (!userId) return res.status(401).json({ success: false, error: 'User ID tidak ditemukan dalam token.' });
 
     const {
       locker_id,
@@ -166,7 +162,6 @@ router.post('/checkout', async (req, res) => {
       });
     }
 
-    // Cek ketersediaan loker — ambil harga dari DB, bukan dari client
     const locker = await dbGet(
       `SELECT * FROM lockers WHERE id = ? AND stock > 0`,
       [locker_id]
@@ -175,7 +170,6 @@ router.post('/checkout', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Loker tidak tersedia atau stok habis.' });
     }
 
-    // [FIX 6] Hitung harga dari DB — client tidak bisa manipulasi harga
     const pricing = calculateLockerPrice(h, locker.price_1h, locker.price_12h, locker.price_24h);
     if (!pricing.isValid) return res.status(400).json({ success: false, error: pricing.error });
 
@@ -197,7 +191,6 @@ router.post('/checkout', async (req, res) => {
       if (addon) dropFee = addon.price;
     }
 
-    // Total dihitung murni dari DB — tidak ada angka dari client yang dipakai
     const totalPrice = pricing.total + pickupFee + dropFee;
 
     const startMs = new Date(start_date).getTime();
@@ -208,8 +201,6 @@ router.post('/checkout', async (req, res) => {
     const rand    = Math.floor(Math.random() * 9000) + 1000;
     const orderId = `BTL-${dateStr}-${rand}`;
 
-    // [FIX RACE CONDITION] Kurangi stok secara atomic
-    // Jika dua request masuk bersamaan, hanya satu yang berhasil (stok tidak bisa negatif)
     const stockResult = await dbRun(
       `UPDATE lockers SET stock = stock - 1 WHERE id = ? AND stock > 0`,
       [locker_id]
@@ -219,24 +210,37 @@ router.post('/checkout', async (req, res) => {
       return res.status(409).json({ success: false, error: 'Stok loker habis. Silakan pilih loker lain.' });
     }
 
-    // Buat booking — jika INSERT gagal, kembalikan stok
+    const item_name = `Loker ${locker.type.charAt(0).toUpperCase() + locker.type.slice(1)}`;
+
     try {
       await dbRun(
         `INSERT INTO bookings (order_id, user_id, item_type, item_name, location, start_date, end_date,
          base_price, total_price, status, payment_status, duration_hours, pickup_fee, drop_fee, payment_method)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          orderId, userId, 'locker',
-          `Loker ${locker.type.charAt(0).toUpperCase() + locker.type.slice(1)}`,
-          locker.location, start_date, endDate,
-          pricing.total,   // base_price = harga loker tanpa addon
-          totalPrice,      // total_price = loker + addon
-          'pending', 'unpaid',
-          h, pickupFee, dropFee, payment_method
+          orderId, userId, 'locker', item_name, locker.location, start_date, endDate,
+          pricing.total, totalPrice, 'pending', 'unpaid', h, pickupFee, dropFee, payment_method
         ]
       );
+
+      // [PERBAIKAN] Panggil notifikasi Telegram 
+      dbGet(`SELECT name, phone FROM users WHERE id = ?`, [userId])
+        .then((userData) => notifyNewBooking(
+          {
+            order_id: orderId,
+            item_type: 'locker',
+            item_name: item_name,
+            location: locker.location,
+            start_date: start_date,
+            end_date: endDate,
+            total_price: totalPrice,
+            payment_method: payment_method
+          },
+          userData
+        ))
+        .catch((err) => console.error('[Telegram] locker booking notify error:', err.message));
+
     } catch (insertErr) {
-      // Rollback stok jika INSERT gagal
       await dbRun(`UPDATE lockers SET stock = stock + 1 WHERE id = ?`, [locker_id]).catch(() => {});
       throw insertErr;
     }

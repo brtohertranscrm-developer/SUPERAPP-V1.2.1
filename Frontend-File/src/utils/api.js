@@ -1,11 +1,19 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 export const apiFetch = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
+  // Ambil token dari localStorage
+  let token = localStorage.getItem('token');
+  let adminToken = localStorage.getItem('admin_token');
+
+  // 🔥 PERBAIKAN: Bersihkan token jika bentuknya string 'undefined' atau 'null'
+  if (token === 'undefined' || token === 'null') token = null;
+  if (adminToken === 'undefined' || adminToken === 'null') adminToken = null;
+
+  const activeToken = token || adminToken;
   
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {}),
     ...options.headers,
   };
 
@@ -20,7 +28,6 @@ export const apiFetch = async (endpoint, options = {}) => {
     return data;
   } catch (error) {
     console.error(`API Fetch Error (${endpoint}):`, error);
-    // Lemparkan error agar bisa ditangkap oleh blok try-catch di Hook/Komponen
     throw error; 
   }
 };

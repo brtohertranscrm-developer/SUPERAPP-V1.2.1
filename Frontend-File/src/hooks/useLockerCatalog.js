@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../utils/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 const MIN_HOURS = 3;
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
 
 // ==========================================
 // HELPER: Kalkulasi harga lokal (mirror backend)
@@ -107,9 +101,9 @@ export const useLockerCheckout = (locker) => {
     try {
       const startDatetime = `${form.start_date}T${form.start_time}:00`;
 
-      const res = await fetch(`${API_URL}/api/loker/checkout`, {
+      // Menggunakan apiFetch, token otomatis disisipkan dan error dihandle di api.js
+      const result = await apiFetch('/api/loker/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           locker_id: locker.id,
           duration_hours: form.duration_hours,
@@ -119,10 +113,11 @@ export const useLockerCheckout = (locker) => {
           payment_method: form.payment_method
         })
       });
-      const result = await res.json();
+      
       return result;
     } catch (err) {
-      return { success: false, error: 'Terjadi kesalahan jaringan.' };
+      // Jika Backend menolak (401), error message "Login terlebih dahulu" akan muncul di sini
+      return { success: false, error: err.message || 'Gagal membuat booking.' };
     } finally {
       setIsSubmitting(false);
     }

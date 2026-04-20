@@ -7,9 +7,12 @@ import LoginForm from '../../components/public/auth/LoginForm';
 import ForgotPasswordForm from '../../components/public/auth/ForgotPasswordForm';
 
 export default function LoginPage() {
-  const { user } = useContext(AuthContext) || {};
+  // 🔥 PERBAIKAN 1: Ambil token dan fungsi logout dari AuthContext
+  const { user, token, logout } = useContext(AuthContext) || {};
   const navigate  = useNavigate();
   const location  = useLocation();
+
+  const activeToken = token || localStorage.getItem('token');
 
   const {
     isLoading, error, forgotStatus, setForgotStatus,
@@ -21,14 +24,25 @@ export default function LoginPage() {
 
   // ── Jika sudah login, redirect sesuai role ──────────────────────────────────
   useEffect(() => {
-    if (!user) return;
+    // 🔥 PERBAIKAN 2: Mencegah Ping-Pong Loop
+    // Jika ada data user TAPI tidak ada token, berarti datanya rusak/setengah. 
+    // Kita harus logout-kan secara paksa agar bersih.
+    if (user && !activeToken) {
+      if (logout) logout();
+      return; 
+    }
+
+    // Jika memang tidak ada user dan tidak ada token, diam di halaman login (jangan redirect)
+    if (!user || !activeToken) return;
+
+    // Jika keduanya valid, baru boleh masuk ke dashboard
     const role = user.role;
     if (role === 'admin' || role === 'superadmin' || role === 'subadmin') {
       navigate('/admin', { replace: true });
     } else {
       navigate('/dashboard', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, activeToken, navigate, logout]);
 
   // ── Pesan sukses dari halaman register ─────────────────────────────────────
   const registeredSuccess = location.state?.registered;

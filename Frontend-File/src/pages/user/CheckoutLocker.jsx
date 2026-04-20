@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useContext } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Package, Lock, ArrowLeft, Loader2, CheckCircle } from 'lucide-react';
 import { useLockerCatalog, useLockerAddons, useLockerCheckout } from '../../hooks/useLockerCatalog';
 import LockerCard from '../../components/public/catalog/LockerCard';
 import LockerForm from '../../components/user/checkout/LockerForm';
 import LockerSummary from '../../components/user/checkout/LockerSummary';
+import { AuthContext } from '../../context/AuthContext';
 
 const STEPS = [
   { key: 'pilih',   label: 'Pilih Loker' },
@@ -15,8 +16,15 @@ const STEPS = [
 const CheckoutLocker = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const preselectedId = searchParams.get('id');
+  const location = useLocation();
 
+  // AMBIL context secara utuh
+  const authContext = useContext(AuthContext);
+  
+  // LOGIKA LOGIN YANG LEBIH AMAN:
+  const isLoggedIn = !!(authContext?.user) || !!(localStorage.getItem('token') || localStorage.getItem('admin_token'));
+
+  const preselectedId = location.state?.lockerId || searchParams.get('id');
   const [step, setStep] = useState(preselectedId ? 'durasi' : 'pilih');
   const [selectedLocker, setSelectedLocker] = useState(null);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -39,10 +47,27 @@ const CheckoutLocker = () => {
     setStep('durasi');
   };
 
+  const handleLoginRedirect = () => {
+    navigate('/login', { 
+        state: { 
+            from: '/checkout-loker',
+            lockerId: selectedLocker?.id 
+        } 
+    });
+  };
+
   const handleSubmit = async () => {
+    // Double check sebelum kirim request
+    if (!isLoggedIn) {
+      alert("Sesi login Anda telah berakhir. Silakan login kembali.");
+      handleLoginRedirect();
+      return;
+    }
+
     const pickupAddon = addons.pickup.find(a => a.id === checkout.form.pickup_addon_id);
     const dropAddon   = addons.drop.find(a   => a.id === checkout.form.drop_addon_id);
     const result = await checkout.submit(pickupAddon?.price, dropAddon?.price);
+    
     if (result.success) {
       setOrderId(result.order_id);
       setIsSuccess(true);
@@ -236,16 +261,31 @@ const CheckoutLocker = () => {
                 </div>
               </div>
 
-              <button
-                onClick={handleSubmit}
-                disabled={checkout.isSubmitting}
-                className="w-full py-3.5 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {checkout.isSubmitting
-                  ? <><Loader2 size={18} className="animate-spin" /> Memproses...</>
-                  : '✓ Konfirmasi Booking'
-                }
-              </button>
+              {/* TAMPILAN TOMBOL BERDASARKAN STATUS LOGIN */}
+              {isLoggedIn ? (
+                <button
+                  onClick={handleSubmit}
+                  disabled={checkout.isSubmitting}
+                  className="w-full py-3.5 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {checkout.isSubmitting
+                    ? <><Loader2 size={18} className="animate-spin" /> Memproses...</>
+                    : '✓ Konfirmasi Booking'
+                  }
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold rounded-xl text-center">
+                    Anda harus login terlebih dahulu untuk menyelesaikan booking.
+                  </div>
+                  <button
+                    onClick={handleLoginRedirect}
+                    className="w-full py-3.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 shadow-md transition-colors flex items-center justify-center gap-2"
+                  >
+                    Login untuk Booking Loker
+                  </button>
+                </div>
+              )}
 
               <p className="text-xs text-slate-400 text-center mt-3">
                 Dengan menekan konfirmasi, kamu setuju dengan syarat penggunaan loker Brothers Trans

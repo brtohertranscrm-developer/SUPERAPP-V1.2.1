@@ -5,15 +5,20 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   
-  // 🔥 PERBAIKAN: Baca localStorage secara SINKRON di awal.
-  // Ini mencegah nilai 'user' menjadi null sekian detik saat halaman di-refresh.
+  // State untuk User
   const [user, setUser] = useState(() => {
     const storedUser = localStorage.getItem('user');
+    // Bersihkan jika ternyata yang tersimpan adalah string 'undefined'
+    if (storedUser === 'undefined' || storedUser === 'null') return null;
     return storedUser ? JSON.parse(storedUser) : null;
   });
 
+  // State untuk Token
   const [token, setToken] = useState(() => {
-    return localStorage.getItem('token') || null;
+    const savedToken = localStorage.getItem('token');
+    // Bersihkan jika ternyata yang tersimpan adalah string 'undefined'
+    if (savedToken === 'undefined' || savedToken === 'null') return null;
+    return savedToken || null;
   });
 
   // Fungsi Login
@@ -32,7 +37,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
   };
 
-  // Fungsi Update KYC (Untuk Dashboard User)
+  // Fungsi Update KYC
   const updateKycStatus = (status) => {
     if (user) {
       const updatedUser = { ...user, kyc_status: status };

@@ -3,7 +3,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
 export const useCheckoutLocker = () => {
-  const { user } = useContext(AuthContext) || {};
+  // Ambil konteks dengan fallback yang lebih aman
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user || null; 
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -14,31 +17,48 @@ export const useCheckoutLocker = () => {
   const [lockerSize, setLockerSize] = useState(passedData.size || 'Medium');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // FIX: normalize ke nama kota saja
+  // Normalisasi lokasi ke nama kota
   const rawLoc = passedData.location || '';
   const lockerLocation = rawLoc.toLowerCase().includes('solo') || rawLoc.toLowerCase().includes('balapan')
     ? 'Solo'
     : 'Yogyakarta';
   
   const priceMap = { Medium: 25000, Large: 40000 };
-  const basePrice = priceMap[lockerSize];
+  const basePrice = priceMap[lockerSize] || 25000; // Fallback default
   
+  // Kalkulasi total hari dengan validasi Date yang aman
   let totalDays = 1;
   if (startDate && endDate) {
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const diffTime = Math.abs(end - start);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    totalDays = diffDays > 0 ? diffDays : 1;
+    
+    // Pastikan tanggal valid (bukan NaN) sebelum dihitung
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+      const diffTime = Math.abs(end - start);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      totalDays = diffDays > 0 ? diffDays : 1;
+    }
   }
 
   const totalPrice = basePrice * totalDays;
 
+  // Efek pengecekan otentikasi
   useEffect(() => {
-    if (!user) navigate('/');
-  }, [user, navigate]);
+    // Jika benar-benar belum login, arahkan ke halaman login
+    if (user === null) {
+      // Membawa state data sebelumnya agar tidak hilang setelah login (opsional)
+      navigate('/login', { 
+        state: { 
+            from: location.pathname, 
+            ...passedData 
+        },
+        replace: true 
+      });
+    }
+  }, [user, navigate, location.pathname, passedData]);
 
-  const isKycApproved = user?.kycStatus === 'approved';
+  // Perbaikan penulisan key dari database/context (kyc_status)
+  const isKycApproved = user?.kyc_status === 'approved';
 
   const handlePayment = () => {
     setIsProcessing(true);
@@ -54,6 +74,7 @@ export const useCheckoutLocker = () => {
     };
 
     setTimeout(() => {
+      setIsProcessing(false);
       navigate('/payment', { state: { orderData } });
     }, 800);
   };
