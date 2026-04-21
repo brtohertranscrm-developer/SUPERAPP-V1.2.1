@@ -1,19 +1,15 @@
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 
 export const useArtikel = () => {
   const [artikel, setArtikel] = useState([]);
   const [loading, setLoading] = useState(false);
-  const token = localStorage.getItem('token');
-  const API_URL = import.meta.env.VITE_API_URL; // Tambahkan ini
 
   const fetchArtikel = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/admin/articles`, { // Ubah disini
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const result = await response.json();
-      if (result.success) setArtikel(result.data);
+      const result = await apiFetch('/api/admin/articles');
+      if (result.success) setArtikel(result.data || []);
     } catch (error) {
       console.error("Gagal mengambil data artikel:", error);
     } finally {
@@ -23,13 +19,9 @@ export const useArtikel = () => {
 
   const addArtikel = async (data) => {
     try {
-      await fetch(`${API_URL}/api/admin/articles`, { // Ubah disini
+      await apiFetch('/api/admin/articles', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
       });
       fetchArtikel();
     } catch (error) { console.error(error); }
@@ -37,13 +29,9 @@ export const useArtikel = () => {
 
   const editArtikel = async (id, data) => {
     try {
-      await fetch(`${API_URL}/api/admin/articles/${id}`, { // Ubah disini
+      await apiFetch(`/api/admin/articles/${id}`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
       });
       fetchArtikel(); 
     } catch (error) { console.error(error); }
@@ -52,10 +40,7 @@ export const useArtikel = () => {
   const deleteArtikel = async (id) => {
     if(!window.confirm("Yakin ingin menghapus artikel ini?")) return;
     try {
-      await fetch(`${API_URL}/api/admin/articles/${id}`, { // Ubah disini
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiFetch(`/api/admin/articles/${id}`, { method: 'DELETE' });
       fetchArtikel();
     } catch (error) { console.error(error); }
   };

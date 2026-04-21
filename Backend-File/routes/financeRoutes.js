@@ -149,10 +149,19 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
     );
     if (!booking) return res.status(404).json({ success: false, error: 'Booking terkait tidak ditemukan.' });
 
-    if (recon.transfer_amount < booking.total_price) {
+    const transferAmount = Number(recon.transfer_amount) || 0;
+    const totalPrice = Number(booking.total_price) || 0;
+    if (transferAmount <= 0 || totalPrice <= 0) {
       return res.status(400).json({
         success: false,
-        error: `Nominal transfer (Rp ${recon.transfer_amount.toLocaleString('id-ID')}) kurang dari total booking (Rp ${booking.total_price.toLocaleString('id-ID')}).`
+        error: 'Nominal transfer atau total booking tidak valid. Silakan cek data booking dan bukti transfer.',
+      });
+    }
+
+    if (transferAmount < totalPrice) {
+      return res.status(400).json({
+        success: false,
+        error: `Nominal transfer (Rp ${transferAmount.toLocaleString('id-ID')}) kurang dari total booking (Rp ${totalPrice.toLocaleString('id-ID')}).`
       });
     }
 
@@ -162,12 +171,22 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
       [req.user.id, now, req.params.id]
     );
     await dbRun(
-      `UPDATE bookings SET payment_status = 'paid' WHERE order_id = ?`,
-      [recon.order_id]
+      `UPDATE bookings
+       SET payment_status = 'paid',
+           paid_amount = CASE
+             WHEN IFNULL(paid_amount, 0) < ? THEN ?
+             ELSE IFNULL(paid_amount, 0)
+           END,
+           status = CASE
+             WHEN status = 'pending' THEN 'active'
+             ELSE status
+           END
+       WHERE order_id = ?`,
+      [transferAmount, transferAmount, recon.order_id]
     );
 
     // ── TELEGRAM: Notifikasi pembayaran dikonfirmasi ───────────────────────────
-    notifyPaymentConfirmed(recon, booking, req.user.name)
+    void Promise.resolve(notifyPaymentConfirmed(recon, booking, req.user.name))
       .catch((err) => console.error('[Telegram] payment notify error:', err.message));
     // ──────────────────────────────────────────────────────────────────────────
 
