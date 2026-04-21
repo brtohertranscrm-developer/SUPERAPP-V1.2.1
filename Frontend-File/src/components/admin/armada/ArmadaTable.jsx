@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, MapPin, ChevronDown, ChevronUp, Edit, Trash2, Package, Tag, Key } from 'lucide-react';
+import { Search, MapPin, ChevronDown, ChevronUp, Edit, Trash2, Package, Tag, Key, Zap, BatteryCharging } from 'lucide-react';
 
 const ArmadaTable = ({ data, onEdit, onDelete, onManageUnit }) => {
   // State untuk Accordion, Search, dan Filter Lokasi
@@ -100,6 +100,13 @@ const ArmadaTable = ({ data, onEdit, onDelete, onManageUnit }) => {
                     <div className="flex items-center gap-2 mt-1">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
                         <MapPin size={10} /> {motor.location}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        {motor.cc === 'Listrik' ? <BatteryCharging size={10} /> : <Zap size={10} />}
+                        {motor.cc === 'Listrik' ? 'Listrik' : `${motor.cc || 125} cc`}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        {motor.category || 'Matic'}
                       </span>
                     </div>
                   </div>

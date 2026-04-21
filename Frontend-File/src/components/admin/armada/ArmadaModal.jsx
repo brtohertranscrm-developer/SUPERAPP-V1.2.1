@@ -1,9 +1,21 @@
 import React, { useState, useEffect } from 'react';
 
 const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
+  const normalizeCategory = (value) => {
+    if (!value) return 'Matic';
+    if (value === 'EV') return 'EV';
+    return value;
+  };
+
+  const normalizeCc = (value, categoryValue) => {
+    if (categoryValue === 'EV') return 'Listrik';
+    if (value === 'Listrik') return 'Listrik';
+    return String(value || '125');
+  };
+
   const [formData, setFormData] = useState({
     name:                  '',
-    CC:                    '125cc',
+    cc:                    '125',
     category:              'Matic',
     location:              'Yogyakarta',
     price_12h:             0,
@@ -15,8 +27,11 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
 
   useEffect(() => {
     if (initialData) {
+      const normalizedCategory = normalizeCategory(initialData.category);
       setFormData({
         ...initialData,
+        cc: normalizeCc(initialData.cc, normalizedCategory),
+        category: normalizedCategory,
         allow_dynamic_pricing:
           initialData.allow_dynamic_pricing !== undefined
             ? initialData.allow_dynamic_pricing
@@ -27,6 +42,27 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (name === 'category') {
+      const nextCategory = normalizeCategory(value);
+      setFormData(prev => ({
+        ...prev,
+        category: nextCategory,
+        cc: nextCategory === 'EV'
+          ? 'Listrik'
+          : (prev.cc === 'Listrik' ? '125' : prev.cc),
+      }));
+      return;
+    }
+
+    if (name === 'cc') {
+      setFormData(prev => ({
+        ...prev,
+        cc: value,
+        category: value === 'Listrik' ? 'EV' : (prev.category === 'EV' ? 'Matic' : prev.category),
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? (checked ? 1 : 0) : value,
@@ -35,7 +71,11 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      cc: formData.category === 'EV' ? 'Listrik' : formData.cc,
+      category: normalizeCategory(formData.category),
+    });
     onClose();
   };
 
@@ -68,7 +108,7 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Kategori</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Jenis Kendaraan</label>
               <select name="category" value={formData.category} onChange={handleChange}
                 className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none">
                 <option value="Matic">Matic</option>
@@ -91,6 +131,9 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
                 <option value="250">250 cc</option>
                 <option value="Listrik">Listrik</option>
               </select>
+              <p className="mt-1.5 text-[11px] text-slate-400 font-bold">
+                Pilih `Listrik` untuk motor EV. Kategori akan menyesuaikan otomatis.
+              </p>
             </div>
           </div>
 
