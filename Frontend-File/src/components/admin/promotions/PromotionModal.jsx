@@ -4,7 +4,14 @@ import { Ticket, X, Loader2 } from 'lucide-react';
 const PromotionModal = ({ onClose, onSubmit, initialData }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    title: '', code: '', image: '', desc: '', tag: 'Diskon'
+    title: '',
+    code: '',
+    image: '',
+    desc: '',
+    tag: 'Diskon',
+    discount_percent: '',
+    max_discount: '',
+    usage_limit: 0,
   });
 
   useEffect(() => {
@@ -14,7 +21,19 @@ const PromotionModal = ({ onClose, onSubmit, initialData }) => {
         code: initialData.code || '',
         image: initialData.image || '',
         desc: initialData.desc || '',
-        tag: initialData.tag || 'Diskon'
+        tag: initialData.tag || 'Diskon',
+        discount_percent:
+          initialData.discount_percent === 0 || initialData.discount_percent
+            ? String(initialData.discount_percent)
+            : '',
+        max_discount:
+          initialData.max_discount === 0 || initialData.max_discount
+            ? String(initialData.max_discount)
+            : '',
+        usage_limit:
+          initialData.usage_limit === 0 || initialData.usage_limit
+            ? Number(initialData.usage_limit)
+            : 0,
       });
     }
   }, [initialData]);
@@ -66,6 +85,45 @@ const PromotionModal = ({ onClose, onSubmit, initialData }) => {
                   <option value="Miles">Bonus Miles</option>
                 </select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Diskon (%)</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="100"
+                  value={formData.discount_percent}
+                  onChange={e => setFormData({...formData, discount_percent: e.target.value})}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Kuota (0 = unlimited)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.usage_limit}
+                  onChange={e => setFormData({...formData, usage_limit: e.target.value === '' ? 0 : Number(e.target.value)})}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Maks Potongan (Rp, 0 = tanpa batas)</label>
+              <input
+                type="number"
+                min="0"
+                value={formData.max_discount}
+                onChange={e => setFormData({...formData, max_discount: e.target.value})}
+                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                placeholder="0"
+              />
             </div>
 
             <div>

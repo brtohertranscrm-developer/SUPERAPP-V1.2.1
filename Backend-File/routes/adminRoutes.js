@@ -659,8 +659,23 @@ router.get('/promos', requirePermission('pricing'), async (req, res) => {
 
 router.post('/promos', requirePermission('pricing'), async (req, res) => {
   try {
-    const { code, discount_percent, max_discount, usage_limit } = req.body || {};
+    const {
+      title,
+      code,
+      image,
+      desc,
+      tag,
+      discount_percent,
+      max_discount,
+      usage_limit,
+    } = req.body || {};
 
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Judul promo wajib diisi.' });
+    }
+    if (!image) {
+      return res.status(400).json({ success: false, error: 'URL gambar banner wajib diisi.' });
+    }
     if (!code || !discount_percent) {
       return res.status(400).json({ success: false, error: 'Kode promo dan persentase diskon wajib diisi.' });
     }
@@ -673,7 +688,21 @@ router.post('/promos', requirePermission('pricing'), async (req, res) => {
     const result = await dbRun(
       `INSERT INTO promotions (title, code, image, discount_percent, max_discount, usage_limit, current_usage, is_active) 
        VALUES (?, ?, ?, ?, ?, ?, 0, 1)`,
-      ['Promo Spesial', code.trim().toUpperCase(), 'default-promo.jpg', discountInt, parseInt(max_discount) || 0, parseInt(usage_limit) || 0]
+      [
+        title.trim(),
+        code.trim().toUpperCase(),
+        image.trim(),
+        discountInt,
+        parseInt(max_discount) || 0,
+        parseInt(usage_limit) || 0,
+      ]
+    );
+
+    // Optional fields (exist in schema but not used in insert above)
+    // Keep it a separate update so we don't break older DBs missing columns.
+    await dbRun(
+      `UPDATE promotions SET desc = ?, tag = ? WHERE id = ?`,
+      [desc || null, tag || null, result.lastID]
     );
 
     res.status(201).json({ success: true, message: 'Promo berhasil ditambahkan.', id: result.lastID });
@@ -686,15 +715,42 @@ router.post('/promos', requirePermission('pricing'), async (req, res) => {
 
 router.put('/promos/:id', requirePermission('pricing'), async (req, res) => {
   try {
-    const { code, discount_percent, max_discount, usage_limit } = req.body || {};
+    const {
+      title,
+      code,
+      image,
+      desc,
+      tag,
+      discount_percent,
+      max_discount,
+      usage_limit,
+    } = req.body || {};
 
+    if (!title) {
+      return res.status(400).json({ success: false, error: 'Judul promo wajib diisi.' });
+    }
+    if (!image) {
+      return res.status(400).json({ success: false, error: 'URL gambar banner wajib diisi.' });
+    }
     if (!code || !discount_percent) {
       return res.status(400).json({ success: false, error: 'Kode promo dan persentase diskon wajib diisi.' });
     }
 
     await dbRun(
-      `UPDATE promotions SET code = ?, discount_percent = ?, max_discount = ?, usage_limit = ? WHERE id = ?`,
-      [code.trim().toUpperCase(), parseInt(discount_percent), parseInt(max_discount) || 0, parseInt(usage_limit) || 0, req.params.id]
+      `UPDATE promotions
+       SET title = ?, code = ?, image = ?, desc = ?, tag = ?, discount_percent = ?, max_discount = ?, usage_limit = ?
+       WHERE id = ?`,
+      [
+        title.trim(),
+        code.trim().toUpperCase(),
+        image.trim(),
+        desc || null,
+        tag || null,
+        parseInt(discount_percent),
+        parseInt(max_discount) || 0,
+        parseInt(usage_limit) || 0,
+        req.params.id,
+      ]
     );
 
     res.json({ success: true, message: 'Promo berhasil diperbarui.' });
