@@ -216,7 +216,7 @@ router.post('/bookings', async (req, res) => {
       order_id, item_type, item_name, location, start_date, end_date, total_price,
       base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
       basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
-      duration_hours, price_notes
+      duration_hours, price_notes, payment_method
     } = req.body || {};
 
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
@@ -312,7 +312,7 @@ router.post('/bookings', async (req, res) => {
     const pCode   = promo_code || promoCode || null;
     const billableHours = rentalBreakdown?.billableHours || parseInt(duration_hours) || 0;
     finalPrice = Math.max(0, bPrice - dAmount + sFee + aFee + delFee);
-    const pAmount = finalPrice;
+    const payMethod = payment_method || req.body.payment_method || 'transfer';
     const computedPriceNotes = rentalBreakdown
       ? `Motor billing ${rentalBreakdown.packageSummary}`
       : (price_notes || null);
@@ -321,20 +321,20 @@ router.post('/bookings', async (req, res) => {
       `INSERT INTO bookings (
          order_id, user_id, item_type, item_name, location, start_date, end_date, 
          base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-         paid_amount, total_price, status, payment_status, duration_hours, price_notes
+         paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
        ) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', 'paid', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
       [
         order_id, req.user.id, item_type, item_name, location, start_date, end_date, 
         bPrice, dAmount, pCode, sFee, aFee, delFee,
-        pAmount, finalPrice, billableHours, computedPriceNotes
+        0, finalPrice, payMethod, billableHours, computedPriceNotes
       ]
     );
 
     dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
       .then((userData) => notifyNewBooking(
         { order_id, item_type, item_name, location, start_date, end_date,
-          total_price: finalPrice, payment_method: req.body.payment_method || 'transfer' },
+          total_price: finalPrice, payment_method: payMethod },
         userData
       ))
       .catch((err) => console.error('[Telegram] booking notify error:', err.message));
@@ -344,6 +344,53 @@ router.post('/bookings', async (req, res) => {
   } catch (err) {
     console.error('POST /bookings error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal membuat booking.' });
+  }
+});
+
+// ==========================================
+// 5b. GET BOOKING DETAIL (USER)
+// ==========================================
+router.get('/bookings/:orderId', async (req, res) => {
+  try {
+    const orderId = req.params.orderId;
+    if (!orderId) return res.status(400).json({ success: false, error: 'Order ID wajib diisi.' });
+
+    const row = await dbGet(
+      `SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+              base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
+              paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes, created_at
+       FROM bookings
+       WHERE order_id = ? AND user_id = ?
+       LIMIT 1`,
+      [orderId, req.user.id]
+    );
+
+    if (!row) {
+      return res.status(404).json({ success: false, error: 'Pesanan tidak ditemukan.' });
+    }
+
+    const calcTotal =
+      (Number(row.base_price) || 0) -
+      (Number(row.discount_amount) || 0) +
+      (Number(row.service_fee) || 0) +
+      (Number(row.extend_fee) || 0) +
+      (Number(row.addon_fee) || 0) +
+      (Number(row.delivery_fee) || 0);
+
+    const totalPrice = calcTotal > 0 ? calcTotal : (Number(row.total_price) || 0);
+    const outstandingAmount = Math.max(0, totalPrice - (Number(row.paid_amount) || 0));
+
+    res.json({
+      success: true,
+      data: {
+        ...row,
+        total_price: totalPrice,
+        outstanding_amount: outstandingAmount,
+      },
+    });
+  } catch (err) {
+    console.error('GET /bookings/:orderId error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil detail pesanan.' });
   }
 });
 

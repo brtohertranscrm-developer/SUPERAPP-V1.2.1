@@ -1,64 +1,94 @@
 import React from 'react';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { CreditCard, Loader2 } from 'lucide-react';
 import { usePayment } from '../../hooks/usePayment';
-import InvoiceSummary from '../../components/user/payment/InvoiceSummary';
-import PaymentMethods from '../../components/user/payment/PaymentMethods';
 
 export default function PaymentPage() {
+  const navigate = useNavigate();
   const {
-    user, orderData,
-    paymentMethod, setPaymentMethod,
-    isProcessing, isSuccess,
-    handlePayment
+    user,
+    orderData,
+    paymentInfo,
+    isLoading,
   } = usePayment();
 
-  if (!orderData || !user) return null;
+  if (!user) return null;
 
   // ==========================================
-  // TAMPILAN JIKA PEMBAYARAN SUKSES
-  // ==========================================
-  if (isSuccess) {
-    return (
-      <div className="min-h-[80vh] flex items-center justify-center bg-brand-light px-4 animate-fade-in-up">
-        <div className="bg-white p-10 rounded-[2rem] shadow-xl shadow-green-900/5 w-full max-w-md border border-gray-100 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-2 bg-green-500"></div>
-          <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 scale-in-center">
-            <CheckCircle size={48} />
-          </div>
-          <h2 className="text-2xl font-black text-brand-dark mb-2">Pembayaran Berhasil!</h2>
-          <p className="text-gray-500 mb-6 leading-relaxed font-medium">
-            Terima kasih, pesanan <span className="font-bold text-brand-dark">{orderData.item_name}</span> Anda telah dikonfirmasi.
-          </p>
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8 inline-block">
-            <span className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Order ID</span>
-            <span className="font-mono font-black text-brand-dark">{orderData.order_id}</span>
-          </div>
-          <div className="text-sm font-bold text-gray-400 flex items-center justify-center gap-2">
-            <Loader2 size={16} className="animate-spin text-brand-primary" /> Mengarahkan ke Riwayat...
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ==========================================
-  // TAMPILAN HALAMAN PEMBAYARAN
+  // HALAMAN INSTRUKSI TRANSFER (LOKER)
   // ==========================================
   return (
     <div className="py-12 bg-brand-light min-h-screen animate-fade-in-up">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-rose-900/5 border border-gray-100 overflow-hidden">
-          
-          <InvoiceSummary orderData={orderData} />
+          <div className="p-8 sm:p-10">
+            <h1 className="text-2xl sm:text-3xl font-black text-brand-dark mb-2 tracking-tight flex items-center gap-2">
+              <CreditCard size={22} className="text-brand-primary" /> Instruksi Transfer Bank
+            </h1>
+            <p className="text-gray-500 text-sm font-medium">
+              Untuk saat ini pembayaran masih via transfer bank dan diverifikasi manual oleh admin.
+            </p>
 
-          <PaymentMethods 
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
-            isProcessing={isProcessing}
-            handlePayment={handlePayment}
-          />
+            {isLoading && (
+              <div className="mt-8 flex items-center gap-2 text-gray-500 font-bold">
+                <Loader2 size={16} className="animate-spin text-brand-primary" /> Memuat data pembayaran...
+              </div>
+            )}
 
+            {!isLoading && !orderData && (
+              <div className="mt-8 text-sm font-bold text-rose-600">
+                Data pesanan tidak ditemukan.
+              </div>
+            )}
+
+            {!isLoading && orderData && (
+              <div className="mt-8 space-y-4">
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Order ID</div>
+                  <div className="font-mono font-black text-brand-dark">{orderData.order_id}</div>
+                  <div className="mt-3 text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Tagihan</div>
+                  <div className="text-2xl font-black text-brand-dark">
+                    Rp {Number(orderData.total_price || 0).toLocaleString('id-ID')}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500 font-bold">{orderData.item_name}</div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+                  <div className="text-sm font-black text-brand-dark mb-2">Rekening Tujuan</div>
+                  <div className="space-y-2 text-sm font-bold text-gray-700">
+                    <div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">BCA</div>
+                      <div>{paymentInfo?.bca?.number ? `${paymentInfo.bca.number} (a/n ${paymentInfo.bca.name || '-'})` : 'Belum diset'}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Mandiri</div>
+                      <div>{paymentInfo?.mandiri?.number ? `${paymentInfo.mandiri.number} (a/n ${paymentInfo.mandiri.name || '-'})` : 'Belum diset'}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 text-[11px] font-bold text-gray-400">
+                    Setelah transfer, status akan berubah setelah diverifikasi admin.
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/dashboard', { replace: true })}
+                    className="flex-1 py-3.5 rounded-2xl bg-brand-dark text-white font-black hover:bg-slate-800 transition-colors"
+                  >
+                    Ke Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/trip-history', { replace: true })}
+                    className="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-700 font-black hover:bg-gray-200 transition-colors"
+                  >
+                    Lihat Riwayat
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

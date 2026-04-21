@@ -400,8 +400,14 @@ export default function CheckoutMotor() {
         }).catch(() => {});
       }
 
-      navigate('/dashboard', {
-        state:   { successMessage: `Pesanan ${orderId} berhasil dibuat! Segera selesaikan pembayaran.` },
+      navigate('/transfer-confirmation', {
+        state: {
+          order_id: orderId,
+          item_type: 'motor',
+          item_name: motorName,
+          total_price: grandTotal,
+          payment_method: paymentMethod,
+        },
         replace: true,
       });
     } catch (err) {

@@ -23,6 +23,7 @@ import KycPage from '../pages/user/KycPage';
 import CheckoutMotor from '../pages/user/CheckoutMotor';
 import CheckoutLocker from '../pages/user/CheckoutLocker';
 import PaymentPage from '../pages/user/PaymentPage';
+import TransferConfirmation from '../pages/user/TransferConfirmation';
 import Rewards from '../pages/user/Rewards';
 import TripHistory from '../pages/user/TripHistory';
 import SupportPage from '../pages/user/SupportPage';
@@ -68,6 +69,8 @@ const AppRoutes = () => {
           <Route path="/checkout-motor" element={<CheckoutMotor />} />
           <Route path="/checkout-loker" element={<CheckoutLocker />} />
           <Route path="/payment" element={<PaymentPage />} />
+          <Route path="/payment/:orderId" element={<PaymentPage />} />
+          <Route path="/transfer-confirmation" element={<TransferConfirmation />} />
           <Route path="/rewards" element={<Rewards />} />
           <Route path="/trip-history" element={<TripHistory />} />
           <Route path="/support" element={<SupportPage />} />

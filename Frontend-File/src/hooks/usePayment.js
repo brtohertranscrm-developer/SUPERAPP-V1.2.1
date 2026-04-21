@@ -1,71 +1,70 @@
 import { useState, useEffect, useContext } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 
 export const usePayment = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { orderId: orderIdParam } = useParams();
   const { user, token } = useContext(AuthContext) || {};
   const authToken = token || localStorage.getItem('token');
 
-  const { orderData } = location.state || {};
+  const { orderData: orderDataFromState } = location.state || {};
 
-  const [paymentMethod, setPaymentMethod] = useState('bank_bca'); 
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [orderData, setOrderData] = useState(orderDataFromState || null);
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-  // Proteksi Halaman
+  // Proteksi Halaman + load data
   useEffect(() => {
-    if (!orderData || !user) {
-      navigate('/');
-    }
-  }, [orderData, user, navigate]);
-
-  const handlePayment = async (e) => {
-    e.preventDefault();
-    setIsProcessing(true);
-    
-    try {
-      // 1. Simulasi jeda verifikasi Bank/E-Wallet
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // 2. Tembak API
-      const response = await fetch(`${API_URL}/api/bookings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
-        body: JSON.stringify(orderData)
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setIsProcessing(false);
-        setIsSuccess(true);
-        
-        // 3. Jeda di layar sukses sebelum dilempar
-        setTimeout(() => {
-          navigate('/trip-history'); 
-        }, 3000);
-      } else {
-        alert(`Gagal menyimpan pesanan: ${result.error}`);
-        setIsProcessing(false);
+    const run = async () => {
+      if (!user) {
+        navigate('/login', { replace: true });
+        return;
       }
-    } catch (error) {
-      console.error('Payment Error:', error);
-      alert('Terjadi kesalahan jaringan saat memproses pembayaran.');
-      setIsProcessing(false);
-    }
-  };
+
+      try {
+        setIsLoading(true);
+
+        const paymentInfoReq = fetch(`${API_URL}/api/payment-info`)
+          .then((r) => r.json())
+          .then((data) => { if (data?.success) setPaymentInfo(data.data); });
+
+        if (orderDataFromState) {
+          await paymentInfoReq;
+          setOrderData(orderDataFromState);
+          return;
+        }
+
+        if (orderIdParam) {
+          const res = await fetch(`${API_URL}/api/bookings/${orderIdParam}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          const data = await res.json();
+          if (data?.success && data?.data) setOrderData(data.data);
+          else navigate('/dashboard', { replace: true });
+          await paymentInfoReq;
+          return;
+        }
+
+        navigate('/dashboard', { replace: true });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    run().catch(() => {
+      setIsLoading(false);
+      navigate('/dashboard', { replace: true });
+    });
+  }, [user, navigate, API_URL, orderIdParam, authToken, orderDataFromState]);
 
   return {
-    user, orderData,
-    paymentMethod, setPaymentMethod,
-    isProcessing, isSuccess,
-    handlePayment
+    user,
+    orderData,
+    paymentInfo,
+    isLoading,
   };
 };
