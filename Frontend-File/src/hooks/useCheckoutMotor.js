@@ -10,7 +10,7 @@ export const useCheckoutMotor = () => {
   const bookingData = location.state;
 
   const [isLoading, setIsLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('qris');
+  const [paymentMethod, setPaymentMethod] = useState('bca');
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 

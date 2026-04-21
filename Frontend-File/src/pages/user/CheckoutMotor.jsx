@@ -80,14 +80,6 @@ const PaymentMethodPicker = ({ value, onChange, paymentInfo }) => {
       badge:    'MANDIRI',
       badgeCls: 'bg-amber-50 text-amber-800 border-amber-200',
     },
-    {
-      id:       'qris',
-      label:    'QRIS / E-Wallet',
-      detail:   paymentInfo?.qris?.name || 'GoPay, OVO, Dana, ShopeePay',
-      icon:     <Wallet size={20} className="text-purple-600" />,
-      badge:    'QRIS',
-      badgeCls: 'bg-purple-50 text-purple-800 border-purple-200',
-    },
   ];
 
   return (

@@ -244,9 +244,7 @@ const CheckoutLocker = () => {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Metode Pembayaran</label>
                 <div className="space-y-2">
                   {[
-                    { value: 'transfer', label: 'Transfer Bank (BCA / Mandiri)' },
-                    { value: 'cash',     label: 'Cash di Lokasi' },
-                    { value: 'qris',     label: 'QRIS / E-Wallet' }
+                    { value: 'transfer', label: 'Transfer Bank (BCA / Mandiri)' }
                   ].map(m => (
                     <label key={m.value} className={`flex items-center gap-3 p-3 bg-white border-2 rounded-xl cursor-pointer transition-all ${
                       checkout.form.payment_method === m.value ? 'border-blue-400 bg-blue-50/30' : 'border-slate-200 hover:border-slate-300'
