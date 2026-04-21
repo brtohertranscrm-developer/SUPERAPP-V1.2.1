@@ -4,7 +4,7 @@ import { AuthContext } from '../../context/AuthContext';
 import {
   ChevronLeft, Tag, ShieldAlert, CheckCircle2, XCircle,
   Loader2, MapPin, Calendar, Bike, CreditCard, Wallet,
-  AlertTriangle, Info, Percent, X, Clock, Users, CloudRain, Settings2
+  AlertTriangle, Info, Percent, X, Clock, Users, CloudRain
 } from 'lucide-react';
 import {
   calculateMotorRentalBreakdown,
@@ -14,7 +14,6 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
-const INSURANCE_PER_DAY = 15000;
 const SERVICE_FEE = 2500;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -298,10 +297,8 @@ export default function CheckoutMotor() {
   });
 
   const subTotal      = rentalBreakdown.isValid ? rentalBreakdown.baseTotal : 0;
-  const insuranceUnits = rentalBreakdown.isValid ? rentalBreakdown.billableDayUnits : 0;
-  const insuranceFee  = Math.round(INSURANCE_PER_DAY * insuranceUnits);
   const serviceFee    = SERVICE_FEE;
-  const beforeDiscount = subTotal + insuranceFee + serviceFee;
+  const beforeDiscount = subTotal + serviceFee;
   const safeDiscount  = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
   const grandTotal    = beforeDiscount - safeDiscount;
 
@@ -359,7 +356,6 @@ export default function CheckoutMotor() {
       duration_hours:  rentalBreakdown.billableHours,
       base_price:      subTotal,
       service_fee:     serviceFee,
-      addon_fee:       insuranceFee,
       discount_amount: safeDiscount,
       promo_code:      appliedPromo?.code || null,
       total_price:     grandTotal,
@@ -467,7 +463,6 @@ export default function CheckoutMotor() {
                 {[
                   { icon: <Users size={12} />, label: '2 Helm SNI' },
                   { icon: <CloudRain size={12} />, label: 'Jas Hujan' },
-                  { icon: <Settings2 size={12} />, label: 'Asuransi Dasar' },
                 ].map((item) => (
                   <span
                     key={item.label}
@@ -570,7 +565,6 @@ export default function CheckoutMotor() {
                     value={item.price}
                   />
                 ))}
-                <PriceRow label={`Asuransi & RSA (${insuranceUnits} hari ekuivalen)`} value={insuranceFee} />
                 <PriceRow label="Biaya layanan & aplikasi" value={serviceFee} />
 
                 {safeDiscount > 0 && appliedPromo && (

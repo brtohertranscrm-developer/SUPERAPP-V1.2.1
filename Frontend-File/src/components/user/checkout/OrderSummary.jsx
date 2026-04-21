@@ -2,7 +2,7 @@ import React from 'react';
 import { Bike, MapPin, Calendar, Loader2, CheckCircle2 } from 'lucide-react';
 
 const OrderSummary = ({ 
-  bookingData, subTotal, insuranceFee, adminFee, grandTotal, 
+  bookingData, subTotal, adminFee, grandTotal, 
   isLoading, handleCheckout 
 }) => {
   return (
@@ -40,10 +40,6 @@ const OrderSummary = ({
             <div className="flex justify-between text-sm font-bold text-slate-500">
               <span>Biaya Sewa ({bookingData.totalDays}x Rp {bookingData.basePrice.toLocaleString('id-ID')})</span>
               <span className="text-slate-900">Rp {subTotal.toLocaleString('id-ID')}</span>
-            </div>
-            <div className="flex justify-between text-sm font-bold text-slate-500">
-              <span>Asuransi Dasar & RSA (Wajib)</span>
-              <span className="text-slate-900">Rp {insuranceFee.toLocaleString('id-ID')}</span>
             </div>
             <div className="flex justify-between text-sm font-bold text-slate-500">
               <span>Biaya Layanan & Aplikasi</span>

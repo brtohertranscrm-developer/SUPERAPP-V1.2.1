@@ -38,8 +38,7 @@ export const useCheckoutMotor = () => {
 
   const subTotal = basePrice * totalDays;
   const adminFee = 2500;
-  const insuranceFee = 15000 * totalDays;
-  const grandTotal = subTotal + adminFee + insuranceFee;
+  const grandTotal = subTotal + adminFee;
 
   // UPDATED: Menerima parameter rincian diskon dari komponen CheckoutMotor
   const handleCheckout = async (checkoutDetails = {}) => {
@@ -61,7 +60,6 @@ export const useCheckoutMotor = () => {
       // Rincian Harga
       base_price: subTotal,
       service_fee: adminFee,
-      addon_fee: insuranceFee, // Asuransi kita catat sebagai Addon di database
       discount_amount: checkoutDetails.discountAmount || 0,
       promo_code: checkoutDetails.appliedPromo?.code || null,
       total_price: checkoutDetails.finalPrice || grandTotal
@@ -99,7 +97,7 @@ export const useCheckoutMotor = () => {
     bookingData,
     isLoading,
     paymentMethod, setPaymentMethod,
-    subTotal, adminFee, insuranceFee, grandTotal,
+    subTotal, adminFee, grandTotal,
     handleCheckout
   };
 };
