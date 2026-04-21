@@ -7,9 +7,10 @@ const ResultMotorCard = ({
   const basePrice24h = Number(motor.current_price || motor.base_price || 0);
   const basePrice12h = Number(motor.current_price_12h || motor.price_12h || Math.round(basePrice24h * 0.7));
   
-  const categoryStr = motor.category || '';
+  const categoryStr = String(motor.category || '');
+  const normalizedCc = String(motor.cc || '');
   const isMatic = categoryStr.toLowerCase().includes('matic');
-  const isEV = motor.cc === 'Listrik' || categoryStr.toLowerCase().includes('ev') || categoryStr.toLowerCase().includes('listrik');
+  const isEV = normalizedCc.toLowerCase() === 'listrik' || categoryStr.toLowerCase().includes('ev') || categoryStr.toLowerCase().includes('listrik');
   
   const safeImageUrl = motor.image_url || 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800';
 
@@ -46,9 +47,14 @@ const ResultMotorCard = ({
         
         <div className="flex flex-wrap gap-2 mb-6">
           {/* Badge CC (Hanya muncul jika bukan listrik dan datanya ada) */}
-          {motor.cc && motor.cc !== 'Listrik' && (
+          {normalizedCc && !isEV && (
             <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-2.5 rounded-xl border border-slate-100 shadow-inner">
-              <Zap size={16} className="text-yellow-500" /> {motor.cc} cc
+              <Zap size={16} className="text-yellow-500" /> {normalizedCc} cc
+            </span>
+          )}
+          {isEV && (
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-green-700 bg-green-50 px-3 py-2.5 rounded-xl border border-green-100 shadow-inner">
+              <BatteryCharging size={16} className="text-green-500" /> Motor Listrik
             </span>
           )}
 

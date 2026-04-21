@@ -9,9 +9,11 @@ const MotorCard = ({ motor, onClick }) => {
   // Jika tidak ada, gunakan price_12h asli, lalu fallback terakhir dengan rumus 0.7
   const price12h = motor.current_price_12h || motor.price_12h || Math.round(price24h * 0.7);
   
-  const isMatic = motor.category.toLowerCase().includes('matic');
-  const isManual = motor.category.toLowerCase().includes('manual');
-  const isEV = motor.category.toLowerCase().includes('ev');
+  const category = String(motor.category || '');
+  const normalizedCc = String(motor.cc || '');
+  const isMatic = category.toLowerCase().includes('matic');
+  const isManual = category.toLowerCase().includes('manual');
+  const isEV = normalizedCc.toLowerCase() === 'listrik' || category.toLowerCase().includes('ev') || category.toLowerCase().includes('listrik');
 
 
   return (
@@ -44,15 +46,15 @@ const MotorCard = ({ motor, onClick }) => {
         {/* LABEL FASILITAS */}
         <div className="flex flex-wrap gap-2 mb-6 mt-auto">
           {/* Badge CC Baru */}
-          {motor.cc && (
+          {normalizedCc && (
             <span className="flex items-center gap-1.5 text-[9px] font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-              {motor.cc === 'Listrik' ? (
+              {isEV ? (
                 <>
                   <BatteryCharging size={12} className="text-green-500" /> Listrik
                 </>
               ) : (
                 <>
-                  <Zap size={12} className="text-slate-400" /> {motor.cc} cc
+                  <Zap size={12} className="text-slate-400" /> {normalizedCc} cc
                 </>
               )}
             </span>

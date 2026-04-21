@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Flame, Clock, Users, CloudRain, Settings2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Zap, Flame, Clock, Users, CloudRain, Settings2, ArrowRight, ShieldCheck, BatteryCharging } from 'lucide-react';
 
 const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
   const navigate = useNavigate();
@@ -16,7 +16,11 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
         const isLowStock = motor.stock > 0 && motor.stock <= 2;
         const price24h = motor.current_price || motor.base_price;
         const price12h = motor.current_price_12h || motor.price_12h || Math.round(price24h * 0.7);
-        const isMatic = motor.category.toLowerCase().includes('matic');
+        const category = String(motor.category || '');
+        const normalizedCc = String(motor.cc || '');
+        const isMatic = category.toLowerCase().includes('matic');
+        const isManual = category.toLowerCase().includes('manual');
+        const isElectric = normalizedCc.toLowerCase() === 'listrik' || category.toLowerCase().includes('ev') || category.toLowerCase().includes('listrik');
 
         return (
           <React.Fragment key={motor.id}>
@@ -52,9 +56,17 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
                 
                 {/* Grid Fasilitas Icon */}
                 <div className="flex flex-wrap gap-2 mb-2 sm:mb-0 mt-auto">
+                  {normalizedCc && (
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
+                      {isElectric ? <BatteryCharging size={14} className="text-green-500" /> : <Zap size={14} className="text-slate-400" />}
+                      {isElectric ? 'Motor Listrik' : `${normalizedCc} cc`}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100"><Users size={14} className="text-slate-400" /> 2 Helm</span>
                   <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100"><CloudRain size={14} className="text-slate-400" /> Jas Hujan</span>
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100"><Settings2 size={14} className="text-slate-400" /> {isMatic ? 'Matic' : 'Manual'}</span>
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
+                    <Settings2 size={14} className="text-slate-400" /> {isElectric ? 'EV' : isMatic ? 'Matic' : isManual ? 'Manual' : 'Motor'}
+                  </span>
                 </div>
               </div>
 
