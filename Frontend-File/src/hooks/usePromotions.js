@@ -28,7 +28,8 @@ export const usePromotions = () => {
       });
       
       alert(editingId ? 'Promo berhasil diperbarui!' : 'Promo berhasil ditambahkan!');
-      fetchPromos();
+      // Pastikan UI list (dan data yang dipakai saat edit lagi) benar-benar pakai data terbaru.
+      await fetchPromos();
       return true;
     } catch (error) {
       alert(`Gagal menyimpan promo: ${error.message}`);

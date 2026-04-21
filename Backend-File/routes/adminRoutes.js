@@ -670,12 +670,6 @@ router.post('/promos', requirePermission('pricing'), async (req, res) => {
       usage_limit,
     } = req.body || {};
 
-    if (!title) {
-      return res.status(400).json({ success: false, error: 'Judul promo wajib diisi.' });
-    }
-    if (!image) {
-      return res.status(400).json({ success: false, error: 'URL gambar banner wajib diisi.' });
-    }
     if (!code || !discount_percent) {
       return res.status(400).json({ success: false, error: 'Kode promo dan persentase diskon wajib diisi.' });
     }
@@ -689,9 +683,9 @@ router.post('/promos', requirePermission('pricing'), async (req, res) => {
       `INSERT INTO promotions (title, code, image, discount_percent, max_discount, usage_limit, current_usage, is_active) 
        VALUES (?, ?, ?, ?, ?, ?, 0, 1)`,
       [
-        title.trim(),
+        (title || 'Promo Spesial').trim(),
         code.trim().toUpperCase(),
-        image.trim(),
+        (image || 'default-promo.jpg').trim(),
         discountInt,
         parseInt(max_discount) || 0,
         parseInt(usage_limit) || 0,
@@ -705,7 +699,8 @@ router.post('/promos', requirePermission('pricing'), async (req, res) => {
       [desc || null, tag || null, result.lastID]
     );
 
-    res.status(201).json({ success: true, message: 'Promo berhasil ditambahkan.', id: result.lastID });
+    const created = await dbGet(`SELECT * FROM promotions WHERE id = ?`, [result.lastID]);
+    res.status(201).json({ success: true, message: 'Promo berhasil ditambahkan.', id: result.lastID, data: created });
 
   } catch (err) {
     console.error('POST /admin/promos error:', err.message);
@@ -726,14 +721,13 @@ router.put('/promos/:id', requirePermission('pricing'), async (req, res) => {
       usage_limit,
     } = req.body || {};
 
-    if (!title) {
-      return res.status(400).json({ success: false, error: 'Judul promo wajib diisi.' });
-    }
-    if (!image) {
-      return res.status(400).json({ success: false, error: 'URL gambar banner wajib diisi.' });
-    }
     if (!code || !discount_percent) {
       return res.status(400).json({ success: false, error: 'Kode promo dan persentase diskon wajib diisi.' });
+    }
+
+    const existing = await dbGet(`SELECT * FROM promotions WHERE id = ?`, [req.params.id]);
+    if (!existing) {
+      return res.status(404).json({ success: false, error: 'Promo tidak ditemukan.' });
     }
 
     await dbRun(
@@ -741,11 +735,11 @@ router.put('/promos/:id', requirePermission('pricing'), async (req, res) => {
        SET title = ?, code = ?, image = ?, desc = ?, tag = ?, discount_percent = ?, max_discount = ?, usage_limit = ?
        WHERE id = ?`,
       [
-        title.trim(),
+        (title || existing.title || 'Promo Spesial').trim(),
         code.trim().toUpperCase(),
-        image.trim(),
-        desc || null,
-        tag || null,
+        (image || existing.image || 'default-promo.jpg').trim(),
+        desc !== undefined ? (desc || null) : (existing.desc || null),
+        tag !== undefined ? (tag || null) : (existing.tag || null),
         parseInt(discount_percent),
         parseInt(max_discount) || 0,
         parseInt(usage_limit) || 0,
@@ -753,7 +747,8 @@ router.put('/promos/:id', requirePermission('pricing'), async (req, res) => {
       ]
     );
 
-    res.json({ success: true, message: 'Promo berhasil diperbarui.' });
+    const updated = await dbGet(`SELECT * FROM promotions WHERE id = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Promo berhasil diperbarui.', data: updated });
 
   } catch (err) {
     console.error('PUT /admin/promos/:id error:', err.message);
