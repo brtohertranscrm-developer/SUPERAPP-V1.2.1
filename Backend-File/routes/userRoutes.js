@@ -130,6 +130,50 @@ router.get('/dashboard/top-travellers', async (req, res) => {
 });
 
 // ==========================================
+// 4. RIWAYAT PERJALANAN USER
+// ==========================================
+router.get('/users/history', async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT b.order_id, b.item_type, b.item_name, b.location, b.start_date, b.end_date,
+              b.status, b.payment_status, b.payment_method, b.total_price, b.base_price,
+              b.discount_amount, b.service_fee, b.extend_fee, b.addon_fee, b.delivery_fee,
+              b.paid_amount, b.duration_hours, b.price_notes, b.created_at,
+              u.name as user_name, u.phone as user_phone
+       FROM bookings b
+       LEFT JOIN users u ON b.user_id = u.id
+       WHERE b.user_id = ?
+       ORDER BY datetime(COALESCE(b.created_at, b.start_date)) DESC, datetime(b.start_date) DESC`,
+      [req.user.id]
+    );
+
+    const formatted = rows.map((booking) => {
+      const calcTotal =
+        (Number(booking.base_price) || 0) -
+        (Number(booking.discount_amount) || 0) +
+        (Number(booking.service_fee) || 0) +
+        (Number(booking.extend_fee) || 0) +
+        (Number(booking.addon_fee) || 0) +
+        (Number(booking.delivery_fee) || 0);
+
+      const totalPrice = calcTotal > 0 ? calcTotal : (Number(booking.total_price) || 0);
+      const outstandingAmount = Math.max(0, totalPrice - (Number(booking.paid_amount) || 0));
+
+      return {
+        ...booking,
+        total_price: totalPrice,
+        outstanding_amount: outstandingAmount,
+      };
+    });
+
+    res.json({ success: true, data: formatted });
+  } catch (err) {
+    console.error('GET /users/history error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil riwayat perjalanan.' });
+  }
+});
+
+// ==========================================
 // 4. SUPPORT TICKETS
 // ==========================================
 router.post('/support/tickets', async (req, res) => {
@@ -196,12 +240,19 @@ router.post('/bookings', async (req, res) => {
         [item_name]
       );
       if (motor) {
+        const settings = await dbGet(
+          `SELECT motor_billing_mode, motor_threshold_12h
+           FROM booking_pricing_settings WHERE id = 1`
+        );
+
         refPrice = motor.base_price;
         rentalBreakdown = calculateMotorRentalBreakdown({
           startDate: start_date,
           endDate: end_date,
           price24h: motor.base_price,
           price12h: motor.price_12h || 0,
+          billingMode: settings?.motor_billing_mode || 'calendar',
+          threshold12h: settings?.motor_threshold_12h || 12,
         });
 
         if (!rentalBreakdown.isValid) {
@@ -220,7 +271,8 @@ router.post('/bookings', async (req, res) => {
       const startDt   = new Date(start_date);
       const endDt     = new Date(end_date);
       const days      = Math.max(1, Math.ceil((endDt - startDt) / (1000 * 60 * 60 * 24)));
-      const minPrice  = Math.floor(refPrice * days * 0.2); 
+      const dayUnits  = rentalBreakdown?.billableDayUnits || days;
+      const minPrice  = Math.floor(refPrice * dayUnits * 0.2); 
 
       if (finalPrice < minPrice) {
         return res.status(400).json({

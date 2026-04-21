@@ -44,6 +44,8 @@ const calculateMotorRentalBreakdown = ({
   endTime,
   price24h = 0,
   price12h = 0,
+  billingMode = 'calendar',
+  threshold12h = 12,
 }) => {
   const startAt = toLocalDateTime(startDate, startTime);
   const endAt = toLocalDateTime(endDate, endTime || '09:00');
@@ -58,37 +60,72 @@ const calculateMotorRentalBreakdown = ({
 
   const safePrice24h = Math.max(0, Number(price24h) || 0);
   const safePrice12h = Math.max(0, Number(price12h) || 0);
-  const cursor = new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate(), 0, 0, 0, 0);
-  const dailyBreakdown = [];
   let count12h = 0;
   let count24h = 0;
 
-  while (cursor < endAt) {
-    const dayStart = new Date(cursor);
-    const dayEnd = new Date(cursor);
-    dayEnd.setDate(dayEnd.getDate() + 1);
+  const mode = String(billingMode || 'calendar').toLowerCase();
+  const threshold = Math.min(23, Math.max(1, parseInt(threshold12h, 10) || 12));
 
-    const segmentStart = startAt > dayStart ? startAt : dayStart;
-    const segmentEnd = endAt < dayEnd ? endAt : dayEnd;
-    const usedMs = segmentEnd.getTime() - segmentStart.getTime();
+  const dailyBreakdown = [];
 
-    if (usedMs > 0) {
-      const usedHours = usedMs / HOUR_MS;
-      const packageHours = usedHours > 12 ? 24 : 12;
-      const packagePrice = packageHours === 24 ? safePrice24h : safePrice12h;
+  if (mode === 'stopwatch') {
+    const actualMs = endAt.getTime() - startAt.getTime();
+    const actualHours = actualMs / HOUR_MS;
+    const roundedHours = Math.max(1, Math.ceil(actualHours));
 
-      if (packageHours === 24) count24h += 1;
-      else count12h += 1;
+    count24h = Math.floor(roundedHours / 24);
+    const remainder = roundedHours % 24;
 
-      dailyBreakdown.push({
-        date: `${dayStart.getFullYear()}-${pad(dayStart.getMonth() + 1)}-${pad(dayStart.getDate())}`,
-        usedHours,
-        packageHours,
-        price: packagePrice,
-      });
+    if (remainder > 0) {
+      if (remainder <= threshold) count12h += 1;
+      else count24h += 1;
     }
 
-    cursor.setDate(cursor.getDate() + 1);
+    for (let i = 0; i < count24h; i += 1) {
+      dailyBreakdown.push({
+        date: `Paket 24 jam #${i + 1}`,
+        usedHours: 24,
+        packageHours: 24,
+        price: safePrice24h,
+      });
+    }
+    for (let i = 0; i < count12h; i += 1) {
+      dailyBreakdown.push({
+        date: `Paket 12 jam #${i + 1}`,
+        usedHours: 12,
+        packageHours: 12,
+        price: safePrice12h,
+      });
+    }
+  } else {
+    const cursor = new Date(startAt.getFullYear(), startAt.getMonth(), startAt.getDate(), 0, 0, 0, 0);
+    while (cursor < endAt) {
+      const dayStart = new Date(cursor);
+      const dayEnd = new Date(cursor);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+
+      const segmentStart = startAt > dayStart ? startAt : dayStart;
+      const segmentEnd = endAt < dayEnd ? endAt : dayEnd;
+      const usedMs = segmentEnd.getTime() - segmentStart.getTime();
+
+      if (usedMs > 0) {
+        const usedHours = usedMs / HOUR_MS;
+        const packageHours = usedHours > threshold ? 24 : 12;
+        const packagePrice = packageHours === 24 ? safePrice24h : safePrice12h;
+
+        if (packageHours === 24) count24h += 1;
+        else count12h += 1;
+
+        dailyBreakdown.push({
+          date: `${dayStart.getFullYear()}-${pad(dayStart.getMonth() + 1)}-${pad(dayStart.getDate())}`,
+          usedHours,
+          packageHours,
+          price: packagePrice,
+        });
+      }
+
+      cursor.setDate(cursor.getDate() + 1);
+    }
   }
 
   return {
@@ -104,6 +141,8 @@ const calculateMotorRentalBreakdown = ({
     baseTotal: dailyBreakdown.reduce((total, item) => total + item.price, 0),
     dailyBreakdown,
     packageSummary: formatBillableSummary(count24h, count12h),
+    billingMode: mode,
+    threshold12h: threshold,
   };
 };
 

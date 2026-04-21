@@ -243,6 +243,10 @@ export default function CheckoutMotor() {
 
   // [FIX 4] State untuk info rekening dari API
   const [paymentInfo, setPaymentInfo]       = useState(null);
+  const [motorBillingSettings, setMotorBillingSettings] = useState({
+    motor_billing_mode: 'calendar',
+    motor_threshold_12h: 12,
+  });
 
   // Redirect if no booking data
   useEffect(() => {
@@ -263,6 +267,21 @@ export default function CheckoutMotor() {
       .then((r) => r.json())
       .then((data) => { if (data.success) setPaymentInfo(data.data); })
       .catch(() => {/* silent fail — UI tetap jalan, hanya info rekening kosong */});
+  }, []);
+
+  // Ambil setting billing motor agar preview harga sama dengan backend
+  useEffect(() => {
+    fetch(`${API_URL}/api/pricing/motor-billing`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.success && data?.data) {
+          setMotorBillingSettings({
+            motor_billing_mode: data.data.motor_billing_mode || 'calendar',
+            motor_threshold_12h: Number(data.data.motor_threshold_12h) || 12,
+          });
+        }
+      })
+      .catch(() => {/* silent */});
   }, []);
 
   if (!bookingData || !user) return null;
@@ -286,6 +305,8 @@ export default function CheckoutMotor() {
     endTime,
     price24h,
     price12h,
+    billingMode: motorBillingSettings.motor_billing_mode,
+    threshold12h: motorBillingSettings.motor_threshold_12h,
   });
 
   const subTotal      = rentalBreakdown.isValid ? rentalBreakdown.baseTotal : 0;

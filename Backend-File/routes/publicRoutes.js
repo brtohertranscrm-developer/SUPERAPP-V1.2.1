@@ -91,6 +91,30 @@ router.get('/motors', async (req, res) => {
 });
 
 // ==========================================
+// PRICING SETTINGS (Public)
+// ==========================================
+router.get('/pricing/motor-billing', async (req, res) => {
+  try {
+    const row = await dbGet(
+      `SELECT motor_billing_mode, motor_threshold_12h, updated_at
+       FROM booking_pricing_settings WHERE id = 1`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        motor_billing_mode: row?.motor_billing_mode || 'calendar',
+        motor_threshold_12h: Number(row?.motor_threshold_12h) || 12,
+        updated_at: row?.updated_at || null,
+      },
+    });
+  } catch (err) {
+    console.error('GET /pricing/motor-billing error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil pengaturan billing.' });
+  }
+});
+
+// ==========================================
 // LOCKERS - Daftar Loker
 // ==========================================
 router.get('/lockers', async (req, res) => {

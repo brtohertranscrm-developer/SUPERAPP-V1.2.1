@@ -78,6 +78,73 @@ const upload = multer({
 router.use(verifyAdmin);
 
 // ==========================================
+// SETTINGS: MOTOR BILLING MODE (Akses: settings)
+// ==========================================
+router.get('/settings/motor-billing', requirePermission('settings'), async (req, res) => {
+  try {
+    const row = await dbGet(
+      `SELECT motor_billing_mode, motor_threshold_12h, updated_at
+       FROM booking_pricing_settings WHERE id = 1`
+    );
+
+    const mode = row?.motor_billing_mode || 'calendar';
+    const threshold12h = Number.isFinite(Number(row?.motor_threshold_12h))
+      ? Number(row.motor_threshold_12h)
+      : 12;
+
+    res.json({
+      success: true,
+      data: {
+        motor_billing_mode: mode,
+        motor_threshold_12h: threshold12h,
+        updated_at: row?.updated_at || null,
+      },
+    });
+  } catch (err) {
+    console.error('GET /admin/settings/motor-billing error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil pengaturan billing motor.' });
+  }
+});
+
+router.put('/settings/motor-billing', requirePermission('settings'), async (req, res) => {
+  try {
+    const { motor_billing_mode, motor_threshold_12h } = req.body || {};
+
+    const mode = String(motor_billing_mode || '').trim().toLowerCase();
+    if (!['calendar', 'stopwatch'].includes(mode)) {
+      return res.status(400).json({ success: false, error: 'Mode billing tidak valid.' });
+    }
+
+    const threshold = parseInt(motor_threshold_12h, 10);
+    if (!Number.isFinite(threshold) || threshold < 1 || threshold > 23) {
+      return res.status(400).json({
+        success: false,
+        error: 'Threshold 12 jam harus angka 1-23.',
+      });
+    }
+
+    await dbRun(
+      `INSERT INTO booking_pricing_settings (id, motor_billing_mode, motor_threshold_12h, updated_at)
+       VALUES (1, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         motor_billing_mode = excluded.motor_billing_mode,
+         motor_threshold_12h = excluded.motor_threshold_12h,
+         updated_at = datetime('now')`,
+      [mode, threshold]
+    );
+
+    res.json({
+      success: true,
+      message: 'Pengaturan billing motor berhasil disimpan.',
+      data: { motor_billing_mode: mode, motor_threshold_12h: threshold },
+    });
+  } catch (err) {
+    console.error('PUT /admin/settings/motor-billing error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menyimpan pengaturan billing motor.' });
+  }
+});
+
+// ==========================================
 // DASHBOARD STATS (Akses: dashboard)
 // ==========================================
 router.get('/stats', requirePermission('dashboard'), async (req, res) => {

@@ -168,6 +168,21 @@ db.serialize(() => {
     )
   `);
 
+  // --- BOOKING PRICING SETTINGS (Global) ---
+  // Mode hitung motor: "calendar" (per tanggal) atau "stopwatch" (selisih durasi total)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS booking_pricing_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      motor_billing_mode TEXT NOT NULL DEFAULT 'calendar',
+      motor_threshold_12h INTEGER NOT NULL DEFAULT 12,
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(
+    `INSERT OR IGNORE INTO booking_pricing_settings (id, motor_billing_mode, motor_threshold_12h)
+     VALUES (1, 'calendar', 12)`
+  );
+
   // --- PRICE RULES (Surge & Seasonal) ---
   db.run(`
     CREATE TABLE IF NOT EXISTS price_rules (
