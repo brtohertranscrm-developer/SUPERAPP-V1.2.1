@@ -8,7 +8,7 @@ export const useResetPassword = () => {
 
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Cek keberadaan token saat halaman pertama dimuat
   useEffect(() => {

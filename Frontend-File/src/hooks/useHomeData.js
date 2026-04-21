@@ -6,7 +6,7 @@ export const useHomeData = () => {
   const [isLoadingMotors, setIsLoadingMotors] = useState(true);
 
   // Ambil URL dari environment, jika tidak ada fallback ke localhost
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Ambil Promo
   useEffect(() => {

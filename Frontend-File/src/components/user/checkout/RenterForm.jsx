@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Phone, Mail, CheckCircle2 } from 'lucide-react';
 
 // [FIX 4] Ambil API_URL dari env — sama seperti file checkout lainnya
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
 const RenterForm = ({ user, paymentMethod, setPaymentMethod }) => {
   // [FIX 4] Fetch info rekening dari backend — tidak ada nomor rekening hardcoded

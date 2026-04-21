@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Copy, CreditCard, Loader2, Upload } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
 const fmtRp = (value) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
 

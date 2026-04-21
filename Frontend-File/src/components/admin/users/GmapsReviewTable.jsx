@@ -4,7 +4,7 @@ import {
   Clock, RefreshCw, ExternalLink
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
 const STATUS_BADGE = {
   pending:  { label: 'Menunggu',  cls: 'bg-amber-50 text-amber-700 border-amber-200' },

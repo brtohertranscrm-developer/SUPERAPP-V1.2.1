@@ -5,7 +5,7 @@ export const useSupport = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const authToken = localStorage.getItem('admin_token') || localStorage.getItem('token');
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);

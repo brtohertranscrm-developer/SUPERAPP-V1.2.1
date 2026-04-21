@@ -11,7 +11,7 @@ export const useRewards = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRedeeming, setIsRedeeming] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Fetch Saldo Miles Real dari Database
   useEffect(() => {

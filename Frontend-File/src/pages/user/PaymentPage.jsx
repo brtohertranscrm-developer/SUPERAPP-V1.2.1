@@ -54,7 +54,7 @@ export default function PaymentPage() {
 
     setIsUploading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/users/payments/reconciliations`, {
+      const res = await fetch(`/api/users/payments/reconciliations`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,

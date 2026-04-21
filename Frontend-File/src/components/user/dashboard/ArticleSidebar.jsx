@@ -9,7 +9,7 @@ export default function ArticleSidebar({ navigate }) {
   useEffect(() => {
     const fetchArticles = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+        const apiUrl = import.meta.env.VITE_API_URL?.trim() || '';
         
         const response = await fetch(`${apiUrl}/api/articles`);
         const result = await response.json();

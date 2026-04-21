@@ -10,7 +10,7 @@ export const useDashboard = () => {
   });
   const [recentBookings, setRecentBookings] = useState([]);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // 1. PERBAIKAN: Utamakan 'admin_token' agar tidak tertukar dengan token User
   const getAuthHeaders = () => {

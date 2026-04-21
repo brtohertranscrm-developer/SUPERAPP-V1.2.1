@@ -7,7 +7,7 @@ import {
   Loader2, Clock
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
 const availableMenus = [
   { key: 'dashboard', label: 'Dashboard Stats' },

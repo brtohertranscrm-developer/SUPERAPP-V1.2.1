@@ -5,7 +5,7 @@ const SeasonalTab = () => {
   const [seasonalRules, setSeasonalRules] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
   
   // PERBAIKAN 1: Buat fungsi untuk menarik token secara dinamis
   const getAuthToken = () => {

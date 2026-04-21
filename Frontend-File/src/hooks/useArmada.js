@@ -5,7 +5,7 @@ export const useArmada = () => {
   const [loading, setLoading] = useState(false);
 
   // 1. URL Dinamis agar aman saat di-hosting
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // 2. Fungsi untuk menarik token segar tepat sebelum menembak API
   const getAuthHeaders = () => {

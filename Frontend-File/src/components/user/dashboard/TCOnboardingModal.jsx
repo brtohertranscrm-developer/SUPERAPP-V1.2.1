@@ -42,7 +42,7 @@ export default function TCOnboardingModal({ onClose, onClaimSuccess }) {
       
       try {
         const token = localStorage.getItem('token'); 
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+        const apiUrl = import.meta.env.VITE_API_URL?.trim() || '';
         
         // PERBAIKAN: Hapus /users agar URL cocok dengan backend -> /api/claim-tc-miles
         const response = await fetch(`${apiUrl}/api/claim-tc-miles`, {

@@ -19,7 +19,7 @@ export const useMotorCatalog = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error,     setError]     = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   useEffect(() => {
     fetch(`${API_URL}/api/motors`)

@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL_RAW = import.meta.env.VITE_API_URL?.trim() || '';
+const API_URL = API_URL_RAW.endsWith('/') ? API_URL_RAW.slice(0, -1) : API_URL_RAW;
 
 export const apiFetch = async (endpoint, options = {}) => {
   // Ambil token dari localStorage

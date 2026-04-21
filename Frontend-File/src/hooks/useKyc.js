@@ -5,7 +5,7 @@ export const useKyc = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // 1. Gunakan URL dinamis agar aman saat hosting
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // 2. Fungsi penarik token yang selalu fresh (segar) saat API dipanggil
   const getAuthHeaders = () => {

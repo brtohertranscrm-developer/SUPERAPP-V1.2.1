@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { X, Star, Upload, ExternalLink, CheckCircle2, Loader2, ImageIcon } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 const GMAPS_URL = 'https://maps.app.goo.gl/FhGySRUr2qiPcUXX6'; // Ganti dengan link Google Maps Brothers Trans
 
 const ReviewPopup = ({ onClose, onSubmitSuccess, completedOrder }) => {

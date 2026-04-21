@@ -15,7 +15,7 @@ export const usePayment = () => {
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Proteksi Halaman + load data
   useEffect(() => {

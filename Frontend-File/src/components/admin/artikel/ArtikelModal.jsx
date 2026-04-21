@@ -43,7 +43,7 @@ const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
     setIsUploading(true);
     const uploadData = new FormData();
     uploadData.append('image', file);
-    const API_URL = import.meta.env.VITE_API_URL; // Tambahkan ini
+    const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
     try {
       const token = localStorage.getItem('token');

@@ -6,7 +6,7 @@ export const useArticleDetail = (id) => {
   const [error, setError] = useState(null);
   
   // Gunakan API URL dari environment jika ada
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   useEffect(() => {
     const fetchArticleDetail = async () => {

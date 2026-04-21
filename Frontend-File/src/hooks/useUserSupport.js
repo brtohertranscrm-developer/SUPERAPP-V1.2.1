@@ -18,7 +18,7 @@ export const useUserSupport = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [ticketNumber, setTicketNumber] = useState('');
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Guard: Harus Login
   useEffect(() => {

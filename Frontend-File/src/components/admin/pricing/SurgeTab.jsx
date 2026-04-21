@@ -5,7 +5,7 @@ const SurgeTab = () => {
   const [surgeConfig, setSurgeConfig] = useState({ isActive: false, multiplier: 0, triggerStock: 0 });
   const [isSaving, setIsSaving] = useState(false);
   const token = localStorage.getItem('token');
-  const API_URL = import.meta.env.VITE_API_URL; // Tambahkan ini
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
   // Ambil data asli dari database saat halaman dibuka
   useEffect(() => {

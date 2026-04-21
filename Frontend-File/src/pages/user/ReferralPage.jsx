@@ -6,7 +6,7 @@ import {
   ChevronRight, Clock, Star, TrendingUp, ArrowLeft, Loader2
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+const API_URL = import.meta.env.VITE_API_URL?.trim() || "";
 
 const apiFetch = async (path, opts = {}) => {
   const token = localStorage.getItem("token");
