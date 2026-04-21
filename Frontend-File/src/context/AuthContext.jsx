@@ -3,6 +3,8 @@ import { createContext, useState } from 'react';
 
 export const AuthContext = createContext();
 
+const isAdminRole = (role) => role === 'admin' || role === 'superadmin' || role === 'subadmin';
+
 export const AuthProvider = ({ children }) => {
   
   // State untuk User
@@ -26,7 +28,15 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     setToken(authToken); 
     localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', authToken);
+
+    // Pisahkan token admin vs user agar request /api/admin tidak "ketuker" token user yang stale.
+    if (isAdminRole(userData?.role)) {
+      localStorage.setItem('admin_token', authToken);
+      localStorage.setItem('token', authToken); // tetap set untuk kompatibilitas komponen lama
+    } else {
+      localStorage.setItem('token', authToken);
+      localStorage.removeItem('admin_token');
+    }
   };
 
   // Fungsi Logout
@@ -35,6 +45,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null); 
     localStorage.removeItem('user');
     localStorage.removeItem('token');
+    localStorage.removeItem('admin_token');
   };
 
   // Fungsi Update KYC

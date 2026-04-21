@@ -10,7 +10,10 @@ export const apiFetch = async (endpoint, options = {}) => {
   if (token === 'undefined' || token === 'null') token = null;
   if (adminToken === 'undefined' || adminToken === 'null') adminToken = null;
 
-  const activeToken = token || adminToken;
+  // Untuk endpoint admin, prioritaskan admin_token agar tidak ketuker token user yang stale/expired.
+  const isAdminEndpoint =
+    typeof endpoint === 'string' && (endpoint.startsWith('/api/admin') || endpoint.startsWith('api/admin'));
+  const activeToken = isAdminEndpoint ? (adminToken || token) : (token || adminToken);
   
   const headers = {
     'Content-Type': 'application/json',
@@ -20,10 +23,28 @@ export const apiFetch = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
-    const data = await response.json();
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
     
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || data.message || 'Terjadi kesalahan pada server');
+    if (!response.ok || !data?.success) {
+      // Jika token expired/invalid, bersihkan sesi agar user tidak stuck di halaman admin.
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('user');
+
+        // Redirect yang aman untuk dev/prod
+        if (typeof window !== 'undefined' && window.location?.pathname !== '/login') {
+          window.location.assign('/login');
+        }
+      }
+
+      throw new Error(data?.error || data?.message || 'Terjadi kesalahan pada server');
     }
     
     return data;
