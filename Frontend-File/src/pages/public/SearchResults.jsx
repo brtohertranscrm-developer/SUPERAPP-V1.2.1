@@ -6,7 +6,7 @@ import ResultMotorCard from '../../components/public/search/ResultMotorCard';
 
 export default function SearchResults() {
   const {
-    currentCity, setCurrentCity, startDate, setStartDate, today, endDate, setEndDate, totalDays,
+    currentCity, setCurrentCity, startDate, setStartDate, startTime, setStartTime, today, endDate, setEndDate, endTime, setEndTime, totalDays,
     showSearchEdit, setShowSearchEdit, filterType, setFilterType,
     selectedPackages, handlePackageChange,
     isLoading, error, filteredResults, navigateToCheckout
@@ -16,10 +16,10 @@ export default function SearchResults() {
     <div className="bg-slate-50 min-h-screen pb-20 font-sans text-slate-900 animate-fade-in-up relative">
       
       {/* 1. HEADER & FORM PENCARIAN */}
-      <ResultHeader 
+        <ResultHeader 
         currentCity={currentCity} setCurrentCity={setCurrentCity}
-        startDate={startDate} setStartDate={setStartDate} today={today}
-        endDate={endDate} setEndDate={setEndDate}
+        startDate={startDate} setStartDate={setStartDate} startTime={startTime} setStartTime={setStartTime} today={today}
+        endDate={endDate} setEndDate={setEndDate} endTime={endTime} setEndTime={setEndTime}
         totalDays={totalDays}
         showSearchEdit={showSearchEdit} setShowSearchEdit={setShowSearchEdit}
       />

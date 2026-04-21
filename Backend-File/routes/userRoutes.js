@@ -1,4 +1,5 @@
 const { notifyNewBooking, notifyExtendBooking, notifyKycPending, notifyGmapsReview } = require('../utils/telegram');
+const { calculateMotorRentalBreakdown } = require('../utils/motorRentalPricing');
 const multer = require('multer');
 const path   = require('path');
 const crypto = require('crypto');
@@ -170,7 +171,8 @@ router.post('/bookings', async (req, res) => {
     const { 
       order_id, item_type, item_name, location, start_date, end_date, total_price,
       base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
-      basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee
+      basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
+      duration_hours, price_notes
     } = req.body || {};
 
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
@@ -181,18 +183,31 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Tipe item tidak valid.' });
     }
 
-    const parsedPrice = parseInt(total_price);
-    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+    let finalPrice = parseInt(total_price);
+    if (isNaN(finalPrice) || finalPrice <= 0) {
       return res.status(400).json({ success: false, error: 'Total harga tidak valid.' });
     }
 
     let refPrice = null;
+    let rentalBreakdown = null;
     if (item_type === 'motor') {
       const motor = await dbGet(
-        `SELECT base_price FROM motors WHERE name = ? LIMIT 1`,
+        `SELECT base_price, price_12h FROM motors WHERE name = ? LIMIT 1`,
         [item_name]
       );
-      if (motor) refPrice = motor.base_price;
+      if (motor) {
+        refPrice = motor.base_price;
+        rentalBreakdown = calculateMotorRentalBreakdown({
+          startDate: start_date,
+          endDate: end_date,
+          price24h: motor.base_price,
+          price12h: motor.price_12h || 0,
+        });
+
+        if (!rentalBreakdown.isValid) {
+          return res.status(400).json({ success: false, error: rentalBreakdown.error });
+        }
+      }
     } else if (item_type === 'locker') {
       const locker = await dbGet(
         `SELECT base_price FROM lockers WHERE location = ? LIMIT 1`,
@@ -207,7 +222,7 @@ router.post('/bookings', async (req, res) => {
       const days      = Math.max(1, Math.ceil((endDt - startDt) / (1000 * 60 * 60 * 24)));
       const minPrice  = Math.floor(refPrice * days * 0.2); 
 
-      if (parsedPrice < minPrice) {
+      if (finalPrice < minPrice) {
         return res.status(400).json({
           success: false,
           error: `Total harga tidak masuk akal. Minimum Rp ${minPrice.toLocaleString('id-ID')} untuk durasi ini.`,
@@ -237,32 +252,37 @@ router.post('/bookings', async (req, res) => {
       return res.status(409).json({ success: false, error: 'Order ID sudah digunakan.' });
     }
 
-    const bPrice  = parseInt(base_price || basePrice) || parsedPrice; 
+    const bPrice  = rentalBreakdown?.baseTotal || parseInt(base_price || basePrice) || finalPrice; 
     const dAmount = parseInt(discount_amount || discountAmount) || 0;
     const sFee    = parseInt(service_fee || serviceFee) || 0;
     const aFee    = parseInt(addon_fee || addonFee) || 0;
     const delFee  = parseInt(delivery_fee || deliveryFee) || 0;
     const pCode   = promo_code || promoCode || null;
-    const pAmount = parsedPrice;
+    const billableHours = rentalBreakdown?.billableHours || parseInt(duration_hours) || 0;
+    finalPrice = Math.max(0, bPrice - dAmount + sFee + aFee + delFee);
+    const pAmount = finalPrice;
+    const computedPriceNotes = rentalBreakdown
+      ? `Motor billing ${rentalBreakdown.packageSummary}`
+      : (price_notes || null);
 
     await dbRun(
       `INSERT INTO bookings (
          order_id, user_id, item_type, item_name, location, start_date, end_date, 
          base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-         paid_amount, total_price, status, payment_status
+         paid_amount, total_price, status, payment_status, duration_hours, price_notes
        ) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', 'paid')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'active', 'paid', ?, ?)`,
       [
         order_id, req.user.id, item_type, item_name, location, start_date, end_date, 
         bPrice, dAmount, pCode, sFee, aFee, delFee,
-        pAmount, parsedPrice
+        pAmount, finalPrice, billableHours, computedPriceNotes
       ]
     );
 
     dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
       .then((userData) => notifyNewBooking(
         { order_id, item_type, item_name, location, start_date, end_date,
-          total_price: parsedPrice, payment_method: req.body.payment_method || 'transfer' },
+          total_price: finalPrice, payment_method: req.body.payment_method || 'transfer' },
         userData
       ))
       .catch((err) => console.error('[Telegram] booking notify error:', err.message));

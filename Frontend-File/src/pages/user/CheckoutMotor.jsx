@@ -6,6 +6,11 @@ import {
   Loader2, MapPin, Calendar, Bike, CreditCard, Wallet,
   AlertTriangle, Info, Percent, X, Clock, Users, CloudRain, Settings2
 } from 'lucide-react';
+import {
+  calculateMotorRentalBreakdown,
+  formatBillableSummary,
+  formatDateTimeForInput,
+} from '../../utils/motorRentalPricing';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
@@ -276,15 +281,25 @@ export default function CheckoutMotor() {
     motorName     = 'Motor',
     pickupLocation = 'Lokasi tidak diketahui',
     startDate     = '',
+    startTime     = '09:00',
     endDate       = '',
-    totalDays     = 1,
-    basePrice     = 0,
+    endTime       = '09:00',
+    price24h      = 0,
+    price12h      = Math.round((Number(price24h) || 0) * 0.7),
   } = bookingData;
 
-  const safeDays      = Math.max(1, Number(totalDays) || 1);
-  const safeBasePrice = Number(basePrice) || 0;
-  const subTotal      = safeBasePrice * safeDays;
-  const insuranceFee  = INSURANCE_PER_DAY * safeDays;
+  const rentalBreakdown = calculateMotorRentalBreakdown({
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    price24h,
+    price12h,
+  });
+
+  const subTotal      = rentalBreakdown.isValid ? rentalBreakdown.baseTotal : 0;
+  const insuranceUnits = rentalBreakdown.isValid ? rentalBreakdown.billableDayUnits : 0;
+  const insuranceFee  = Math.round(INSURANCE_PER_DAY * insuranceUnits);
   const serviceFee    = SERVICE_FEE;
   const beforeDiscount = subTotal + insuranceFee + serviceFee;
   const safeDiscount  = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
@@ -327,7 +342,7 @@ export default function CheckoutMotor() {
 
   // ── Submit Handler ──────────────────────────────────────────────────────────
   const handleCheckout = async () => {
-    if (!isKycVerified) return;
+    if (!isKycVerified || !rentalBreakdown.isValid) return;
     setSubmitError('');
     setIsSubmitting(true);
 
@@ -339,8 +354,9 @@ export default function CheckoutMotor() {
       item_type:       'motor',
       item_name:       motorName,
       location:        pickupLocation,
-      start_date:      startDate,
-      end_date:        endDate,
+      start_date:      formatDateTimeForInput(rentalBreakdown.startAt),
+      end_date:        formatDateTimeForInput(rentalBreakdown.endAt),
+      duration_hours:  rentalBreakdown.billableHours,
       base_price:      subTotal,
       service_fee:     serviceFee,
       addon_fee:       insuranceFee,
@@ -348,6 +364,7 @@ export default function CheckoutMotor() {
       promo_code:      appliedPromo?.code || null,
       total_price:     grandTotal,
       payment_method:  paymentMethod,
+      price_notes:     `Motor billing ${formatBillableSummary(rentalBreakdown.count24h, rentalBreakdown.count12h)}`,
     };
 
     try {
@@ -435,11 +452,14 @@ export default function CheckoutMotor() {
                   <Calendar size={16} className="text-rose-500 mt-0.5 shrink-0" />
                   <div>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">
-                      Jadwal ({safeDays} Hari)
+                      Jadwal Booking
                     </p>
                     <p className="font-bold text-slate-800 text-sm">
-                      {startDate} <span className="text-slate-400 mx-1 font-normal">→</span> {endDate}
+                      {startDate} {startTime} <span className="text-slate-400 mx-1 font-normal">→</span> {endDate} {endTime}
                     </p>
+                    {rentalBreakdown.isValid && (
+                      <p className="text-xs text-rose-500 font-black mt-1">{rentalBreakdown.packageSummary}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -536,13 +556,21 @@ export default function CheckoutMotor() {
                 <p className="text-white font-black text-lg">{motorName}</p>
                 <div className="flex items-center gap-1.5 mt-1">
                   <Clock size={12} className="text-slate-400" />
-                  <p className="text-slate-400 text-xs font-medium">{safeDays} Hari Sewa</p>
+                  <p className="text-slate-400 text-xs font-medium">
+                    {rentalBreakdown.isValid ? rentalBreakdown.packageSummary : 'Jadwal belum valid'}
+                  </p>
                 </div>
               </div>
 
               <div className="p-5 space-y-3">
-                <PriceRow label={`Biaya sewa (${safeDays}x ${fmtRp(safeBasePrice)})`} value={subTotal} />
-                <PriceRow label={`Asuransi & RSA (${safeDays}x ${fmtRp(INSURANCE_PER_DAY)})`} value={insuranceFee} />
+                {rentalBreakdown.isValid && rentalBreakdown.dailyBreakdown.map((item) => (
+                  <PriceRow
+                    key={item.date}
+                    label={`Sewa ${item.date} (${item.packageLabel})`}
+                    value={item.price}
+                  />
+                ))}
+                <PriceRow label={`Asuransi & RSA (${insuranceUnits} hari ekuivalen)`} value={insuranceFee} />
                 <PriceRow label="Biaya layanan & aplikasi" value={serviceFee} />
 
                 {safeDiscount > 0 && appliedPromo && (
@@ -566,10 +594,15 @@ export default function CheckoutMotor() {
               )}
 
               <div className="px-5 pb-5">
+                {!rentalBreakdown.isValid && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-amber-700 text-xs font-bold">{rentalBreakdown.error}</p>
+                  </div>
+                )}
                 {isKycVerified ? (
                   <button
                     onClick={handleCheckout}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !rentalBreakdown.isValid}
                     className="w-full py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-rose-500 transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
                   >
                     {isSubmitting ? (

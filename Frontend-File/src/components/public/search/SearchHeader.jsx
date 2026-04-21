@@ -19,7 +19,7 @@ const SearchHeader = ({
         
         {/* LOGIKA TOGGLE FORM VS RINGKASAN */}
         {isEditing ? (
-          <form onSubmit={handleUpdateSearch} className="bg-white p-4 rounded-[2rem] shadow-2xl flex flex-col md:flex-row gap-4 mt-2">
+          <form onSubmit={handleUpdateSearch} className="bg-white p-4 rounded-[2rem] shadow-2xl grid grid-cols-1 md:grid-cols-6 gap-4 mt-2">
             <div className="flex-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Lokasi</label>
               <div className="relative">
@@ -49,6 +49,17 @@ const SearchHeader = ({
             </div>
 
             <div className="flex-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Jam Ambil</label>
+              <input
+                type="time"
+                required
+                value={formData.startTime}
+                onChange={e => setFormData({...formData, startTime: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-rose-500 border border-slate-100"
+              />
+            </div>
+
+            <div className="flex-1">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Tanggal Kembali</label>
               <div className="relative">
                 <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-rose-500" />
@@ -61,7 +72,18 @@ const SearchHeader = ({
               </div>
             </div>
 
-            <div className="flex items-end gap-2 mt-2 md:mt-0">
+            <div className="flex-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Jam Kembali</label>
+              <input
+                type="time"
+                required
+                value={formData.endTime}
+                onChange={e => setFormData({...formData, endTime: e.target.value})}
+                className="w-full px-4 py-3 bg-slate-50 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-rose-500 border border-slate-100"
+              />
+            </div>
+
+            <div className="flex items-end gap-2 mt-2 md:mt-0 md:col-span-2">
               <button type="button" onClick={() => { setIsEditing(false); setFormData({...activeSearch}); }} className="px-5 py-3 rounded-xl font-bold text-slate-400 hover:bg-slate-50 transition-colors border border-transparent">
                 Batal
               </button>
@@ -77,7 +99,7 @@ const SearchHeader = ({
             </div>
             <div className="hidden sm:block text-slate-600">|</div>
             <div className="flex items-center gap-2 text-slate-200 text-sm font-bold">
-              <Calendar size={18} className="text-rose-500" /> {formatDate(activeSearch.startDate)} - {formatDate(activeSearch.endDate)}
+              <Calendar size={18} className="text-rose-500" /> {formatDate(activeSearch.startDate, activeSearch.startTime)} - {formatDate(activeSearch.endDate, activeSearch.endTime)}
             </div>
             <button 
               onClick={() => setIsEditing(true)} 

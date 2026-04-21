@@ -2,6 +2,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Search } from 'lucide-react';
 import { CityContext } from '../../../context/CityContext';
+import { DEFAULT_PICKUP_TIME, DEFAULT_RETURN_TIME } from '../../../utils/motorRentalPricing';
 
 const HeroSection = () => {
   const navigate = useNavigate();
@@ -14,11 +15,20 @@ const HeroSection = () => {
 
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(tomorrow);
+  const [startTime, setStartTime] = useState(DEFAULT_PICKUP_TIME);
+  const [endTime, setEndTime] = useState(DEFAULT_RETURN_TIME);
 
   const handleSearch = (e) => {
     e.preventDefault();
     navigate('/search-page', {
-      state: { startDate, endDate, selectedCity: selectedCity || 'Yogyakarta' }
+      state: {
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+        pickupLocation: selectedCity || 'Yogyakarta',
+        selectedCity: selectedCity || 'Yogyakarta',
+      }
     });
   };
 
@@ -44,7 +54,7 @@ const HeroSection = () => {
           Solusi total liburan Anda. Sewa motor premium untuk eksplorasi dan amankan barang bawaan Anda di Smart Loker kami.
         </p>
 
-        <form onSubmit={handleSearch} className="bg-white p-4 sm:p-5 rounded-3xl shadow-2xl max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 items-end relative z-20">
+        <form onSubmit={handleSearch} className="bg-white p-4 sm:p-5 rounded-3xl shadow-2xl max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-6 gap-4 items-end relative z-20">
           <div className="md:col-span-1 text-left">
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
               Kota Tujuan
@@ -67,8 +77,18 @@ const HeroSection = () => {
               className="w-full bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
           </div>
           <div className="text-left">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Jam Ambil</label>
+            <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
+              className="w-full bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
+          </div>
+          <div className="text-left">
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Tanggal Kembali</label>
             <input type="date" value={endDate} min={startDate || today} onChange={(e) => setEndDate(e.target.value)}
+              className="w-full bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
+          </div>
+          <div className="text-left">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Jam Kembali</label>
+            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)}
               className="w-full bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
           </div>
           <div>

@@ -15,7 +15,7 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
         const isOutofStock = motor.stock <= 0;
         const isLowStock = motor.stock > 0 && motor.stock <= 2;
         const price24h = motor.current_price || motor.base_price;
-        const price12h = Math.round(price24h * 0.7);
+        const price12h = motor.current_price_12h || motor.price_12h || Math.round(price24h * 0.7);
         const isMatic = motor.category.toLowerCase().includes('matic');
 
         return (
@@ -73,6 +73,9 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
                     </div>
                   </div>
                 </div>
+                <p className="text-[10px] text-slate-400 font-bold mb-4">
+                  Billing 12 jam / 24 jam akan dihitung otomatis sesuai tanggal dan jam booking.
+                </p>
 
                 {isOutofStock ? (
                   <button disabled className="w-full bg-slate-100 text-slate-400 font-bold py-3 rounded-xl text-sm cursor-not-allowed">

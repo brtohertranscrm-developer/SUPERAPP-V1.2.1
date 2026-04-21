@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { DEFAULT_PICKUP_TIME, DEFAULT_RETURN_TIME } from '../utils/motorRentalPricing';
 
 export const useMotorCatalog = () => {
   const navigate  = useNavigate();
@@ -8,7 +9,9 @@ export const useMotorCatalog = () => {
   const [searchParams, setSearchParams] = useState({
     location:  'Yogyakarta',
     startDate: '',
+    startTime: DEFAULT_PICKUP_TIME,
     endDate:   '',
+    endTime:   DEFAULT_RETURN_TIME,
   });
 
   const [activeFilter, setActiveFilter] = useState('Semua');
@@ -44,7 +47,9 @@ export const useMotorCatalog = () => {
     navigate('/search-page', {
       state: {
         startDate:      searchParams.startDate,
+        startTime:      searchParams.startTime,
         endDate:        searchParams.endDate,
+        endTime:        searchParams.endTime,
         pickupLocation: searchParams.location,
       }
     });

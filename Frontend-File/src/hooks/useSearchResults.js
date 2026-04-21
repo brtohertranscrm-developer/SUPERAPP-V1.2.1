@@ -1,6 +1,10 @@
 import { useContext, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CityContext } from '../context/CityContext';
+import {
+  DEFAULT_PICKUP_TIME,
+  DEFAULT_RETURN_TIME,
+} from '../utils/motorRentalPricing';
 
 export const useSearchResults = () => {
   const navigate  = useNavigate();
@@ -28,7 +32,9 @@ export const useSearchResults = () => {
   const tomorrow = tomorrowDate.toISOString().split('T')[0];
 
   const [startDate,   setStartDate]   = useState(passedData.startDate || today);
+  const [startTime,   setStartTime]   = useState(passedData.startTime || DEFAULT_PICKUP_TIME);
   const [endDate,     setEndDate]     = useState(passedData.endDate   || tomorrow);
+  const [endTime,     setEndTime]     = useState(passedData.endTime   || DEFAULT_RETURN_TIME);
   const [totalDays,   setTotalDays]   = useState(1);
 
   const [showSearchEdit,    setShowSearchEdit]    = useState(false);
@@ -57,14 +63,14 @@ export const useSearchResults = () => {
   // Hitung total hari
   useEffect(() => {
     try {
-      const start = new Date(startDate || today);
-      const end   = new Date(endDate   || tomorrow);
+      const start = new Date(`${startDate || today}T${startTime || DEFAULT_PICKUP_TIME}:00`);
+      const end   = new Date(`${endDate || tomorrow}T${endTime || DEFAULT_RETURN_TIME}:00`);
       const diff  = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
       setTotalDays(!isNaN(diff) && diff > 0 ? diff : 1);
     } catch {
       setTotalDays(1);
     }
-  }, [startDate, endDate]);
+  }, [startDate, startTime, endDate, endTime, today, tomorrow]);
 
   // Fetch motor
   useEffect(() => {
@@ -103,14 +109,16 @@ export const useSearchResults = () => {
     setSelectedPackages(prev => ({ ...prev, [motorId]: duration }));
   };
 
-  const navigateToCheckout = (motor, activePrice) => {
+  const navigateToCheckout = (motor) => {
     navigate('/checkout-motor', {
       state: {
         startDate,
+        startTime,
         endDate,
-        totalDays,
+        endTime,
         motorName:      motor.name,
-        basePrice:      activePrice,
+        price24h:       motor.current_price || motor.base_price || 0,
+        price12h:       motor.current_price_12h || motor.price_12h || Math.round((motor.current_price || motor.base_price || 0) * 0.7),
         pickupLocation: currentCity,
       }
     });
@@ -118,8 +126,8 @@ export const useSearchResults = () => {
 
   return {
     currentCity, setCurrentCity,
-    startDate, setStartDate, today,
-    endDate, setEndDate,
+    startDate, setStartDate, startTime, setStartTime, today,
+    endDate, setEndDate, endTime, setEndTime,
     totalDays,
     showSearchEdit, setShowSearchEdit,
     filterType, setFilterType,

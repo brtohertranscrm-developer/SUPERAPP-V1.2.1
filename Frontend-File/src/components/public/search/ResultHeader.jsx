@@ -3,8 +3,8 @@ import { Bike, X, Search, MapPin, ChevronDown, Calendar, ChevronRight } from 'lu
 
 const ResultHeader = ({
   currentCity, setCurrentCity,
-  startDate, setStartDate, today,
-  endDate, setEndDate,
+  startDate, setStartDate, startTime, setStartTime, today,
+  endDate, setEndDate, endTime, setEndTime,
   totalDays,
   showSearchEdit, setShowSearchEdit
 }) => {
@@ -27,7 +27,7 @@ const ResultHeader = ({
         
         {/* Form Edit Tampil Saat Tombol Diklik */}
         <div className={`transition-all duration-500 ease-in-out overflow-hidden ${showSearchEdit ? 'max-h-[700px] opacity-100 mb-8' : 'max-h-0 opacity-0'}`}>
-          <form onSubmit={(e) => {e.preventDefault(); setShowSearchEdit(false);}} className="bg-white rounded-3xl p-6 sm:p-8 shadow-2xl text-slate-900 grid grid-cols-1 md:grid-cols-4 gap-5 items-end border border-slate-100 relative z-30">
+          <form onSubmit={(e) => {e.preventDefault(); setShowSearchEdit(false);}} className="bg-white rounded-3xl p-6 sm:p-8 shadow-2xl text-slate-900 grid grid-cols-1 md:grid-cols-6 gap-5 items-end border border-slate-100 relative z-30">
             <div className="md:col-span-1">
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Titik Jemput</label>
               <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 cursor-pointer relative focus-within:ring-2 focus-within:ring-rose-500 focus-within:border-rose-500">
@@ -45,8 +45,16 @@ const ResultHeader = ({
               <input type="date" value={startDate} min={today} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
             </div>
             <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Jam Ambil</label>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
+            </div>
+            <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Kembali</label>
               <input type="date" value={endDate} min={startDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">Jam Kembali</label>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-slate-50 p-4 rounded-2xl border border-slate-200 text-sm font-bold outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500 transition-all cursor-pointer" />
             </div>
             <div>
               <button type="submit" className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-rose-500 transition-all shadow-xl shadow-slate-900/10 active:scale-95">
@@ -62,7 +70,7 @@ const ResultHeader = ({
              <div className="flex items-center gap-2 text-rose-400 font-black tracking-wide bg-rose-500/10 px-3 py-1.5 rounded-xl"><MapPin size={18}/> {currentCity}</div>
              <div className="w-px h-5 bg-white/20"></div>
              <div className="flex items-center gap-2 text-slate-200 font-bold bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-               <Calendar size={18} className="text-rose-400"/> {startDate} <ChevronRight size={14} className="text-slate-400 mx-1"/> {endDate} 
+               <Calendar size={18} className="text-rose-400"/> {startDate} {startTime} <ChevronRight size={14} className="text-slate-400 mx-1"/> {endDate} {endTime}
              </div>
              <div className="bg-rose-500 text-white px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm">
                {totalDays} Hari

@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  DEFAULT_PICKUP_TIME,
+  DEFAULT_RETURN_TIME,
+} from '../utils/motorRentalPricing';
 
 export const useSearchPage = () => {
   const location  = useLocation();
@@ -9,7 +13,9 @@ export const useSearchPage = () => {
   const [activeSearch, setActiveSearch] = useState({
     pickupLocation: initialSearchData.pickupLocation || 'Yogyakarta',
     startDate:      initialSearchData.startDate      || '',
+    startTime:      initialSearchData.startTime      || DEFAULT_PICKUP_TIME,
     endDate:        initialSearchData.endDate        || '',
+    endTime:        initialSearchData.endTime        || DEFAULT_RETURN_TIME,
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -61,8 +67,8 @@ export const useSearchPage = () => {
 
   const handleUpdateSearch = (e) => {
     e.preventDefault();
-    if (!formData.startDate || !formData.endDate) {
-      alert('Mohon lengkapi tanggal!');
+    if (!formData.startDate || !formData.endDate || !formData.startTime || !formData.endTime) {
+      alert('Mohon lengkapi tanggal dan jam!');
       return;
     }
     setActiveSearch(formData);
@@ -70,31 +76,28 @@ export const useSearchPage = () => {
     navigate('.', { state: formData, replace: true });
   };
 
-  const handleRent = (motor, activePrice) => {
-    const start = new Date(activeSearch.startDate);
-    const end   = new Date(activeSearch.endDate);
-    const diff  = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-    const days  = (!isNaN(diff) && diff >= 1) ? diff : 1;
-    const price = activePrice || motor.current_price || motor.base_price;
-
+  const handleRent = (motor) => {
     navigate('/checkout-motor', {
       state: {
         motorId:        motor.id,
         motorName:      motor.name,
         pickupLocation: activeSearch.pickupLocation,
         startDate:      activeSearch.startDate,
+        startTime:      activeSearch.startTime,
         endDate:        activeSearch.endDate,
-        totalDays:      days,
-        basePrice:      price,
+        endTime:        activeSearch.endTime,
+        price24h:       motor.current_price || motor.base_price || 0,
+        price12h:       motor.current_price_12h || motor.price_12h || Math.round((motor.current_price || motor.base_price || 0) * 0.7),
       }
     });
   };
 
-  const formatDate = (dateStr) => {
+  const formatDate = (dateStr, timeStr) => {
     if (!dateStr) return '';
-    return new Date(dateStr).toLocaleDateString('id-ID', {
+    const formattedDate = new Date(dateStr).toLocaleDateString('id-ID', {
       day: 'numeric', month: 'short', year: 'numeric'
     });
+    return timeStr ? `${formattedDate} ${timeStr}` : formattedDate;
   };
 
   return {

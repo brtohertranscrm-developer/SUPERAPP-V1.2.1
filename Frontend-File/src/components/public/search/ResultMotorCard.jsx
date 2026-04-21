@@ -1,20 +1,14 @@
 import React from 'react';
-// 1. PERBAIKAN IMPORT: Hapus 'listrik', ganti dengan BatteryCharging dan Zap
 import { Flame, Settings2, ShieldCheck, CloudRain, Clock, ChevronRight, BatteryCharging, Zap } from 'lucide-react';
 
 const ResultMotorCard = ({ 
-  motor, motorCity, totalDays, 
-  currentPackage, handlePackageChange, onRent 
+  motor, motorCity, totalDays, onRent 
 }) => {
   const basePrice24h = Number(motor.current_price || motor.base_price || 0);
-  const basePrice12h = Math.round(basePrice24h * 0.7); 
-  const activePrice = currentPackage === '12' ? basePrice12h : basePrice24h;
-  const totalPrice = activePrice * totalDays;
+  const basePrice12h = Number(motor.current_price_12h || motor.price_12h || Math.round(basePrice24h * 0.7));
   
-  // 2. PERBAIKAN VARIABEL: Tambahkan definisi isManual dan isEV
   const categoryStr = motor.category || '';
   const isMatic = categoryStr.toLowerCase().includes('matic');
-  const isManual = categoryStr.toLowerCase().includes('manual');
   const isEV = motor.cc === 'Listrik' || categoryStr.toLowerCase().includes('ev') || categoryStr.toLowerCase().includes('listrik');
   
   const safeImageUrl = motor.image_url || 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=800';
@@ -85,20 +79,23 @@ const ResultMotorCard = ({
       <div className="lg:w-80 bg-slate-50 border-t lg:border-t-0 lg:border-l border-slate-100 p-6 lg:p-8 flex flex-col justify-between shrink-0 relative">
         <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-2xl pointer-events-none"></div>
         <div>
-          <div className="bg-slate-200/50 p-1.5 rounded-2xl flex mb-6 shadow-inner border border-slate-200/50 relative z-10">
-            <button onClick={() => handlePackageChange(motor.id, '12')} className={`flex-1 text-xs py-3 rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-1.5 ${currentPackage === '12' ? 'bg-white text-rose-500 shadow-md border border-white' : 'text-slate-500 hover:text-slate-700'}`}>
-              <Clock size={14}/> 12 Jam
-            </button>
-            <button onClick={() => handlePackageChange(motor.id, '24')} className={`flex-1 text-xs py-3 rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-1.5 ${currentPackage === '24' ? 'bg-white text-rose-500 shadow-md border border-white' : 'text-slate-500 hover:text-slate-700'}`}>
-              <Clock size={14}/> 24 Jam
-            </button>
+          <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
+            <div className="bg-white border border-slate-200 rounded-2xl p-3 text-center">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center justify-center gap-1"><Clock size={11} />12 Jam</div>
+              <div className="font-black text-slate-800 text-sm">Rp {basePrice12h.toLocaleString('id-ID')}</div>
+            </div>
+            <div className="bg-white border border-rose-100 rounded-2xl p-3 text-center">
+              <div className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1"><Clock size={11} />24 Jam</div>
+              <div className="font-black text-rose-500 text-sm">Rp {basePrice24h.toLocaleString('id-ID')}</div>
+            </div>
           </div>
           
           <div className="text-right mb-8 relative z-10">
             <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1.5">
-              Total {totalDays} Hari ({currentPackage} Jam/Hari)
+              Booking Fleksibel
             </div>
-            <div className="text-3xl font-black text-slate-900 tracking-tight drop-shadow-sm">Rp {totalPrice.toLocaleString('id-ID')}</div>
+            <div className="text-base font-black text-slate-900 tracking-tight drop-shadow-sm">12 jam / 24 jam dihitung otomatis per tanggal</div>
+            <div className="text-xs text-slate-500 font-medium mt-1">Estimasi hari kalender: {totalDays} hari</div>
             {motor.is_surge && (
               <div className="text-[10px] font-bold text-rose-500 mt-1 uppercase tracking-widest flex items-center justify-end gap-1.5">
                 <Flame size={12}/> High Demand / Liburan
@@ -107,7 +104,7 @@ const ResultMotorCard = ({
           </div>
         </div>
         
-        <button onClick={() => onRent(motor, activePrice)} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-rose-500 transition-all duration-300 flex items-center justify-center gap-2.5 shadow-xl shadow-slate-900/10 active:scale-95 group-hover:shadow-rose-500/20 hover:-translate-y-0.5 relative z-10">
+        <button onClick={() => onRent(motor)} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-rose-500 transition-all duration-300 flex items-center justify-center gap-2.5 shadow-xl shadow-slate-900/10 active:scale-95 group-hover:shadow-rose-500/20 hover:-translate-y-0.5 relative z-10">
           Pesan Armada Ini <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform"/>
         </button>
       </div>
