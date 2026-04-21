@@ -1,13 +1,13 @@
 import React from 'react';
-import { Clock } from 'lucide-react';
+import { CreditCard } from 'lucide-react';
 
 const InvoiceSummary = ({ orderData }) => {
   return (
     <>
       <div className="text-center mb-8">
         <h1 className="text-3xl font-black text-brand-dark mb-2 tracking-tight">Selesaikan Pembayaran</h1>
-        <div className="inline-flex items-center gap-2 bg-orange-50 border border-orange-100 text-orange-600 px-4 py-2 rounded-full text-sm font-bold shadow-sm">
-          <Clock size={16} /> Sisa Waktu: 14:59
+        <div className="inline-flex items-center gap-2 bg-slate-50 border border-slate-100 text-slate-600 px-4 py-2 rounded-full text-sm font-bold shadow-sm">
+          <CreditCard size={16} /> Transfer bank diverifikasi manual
         </div>
       </div>
 

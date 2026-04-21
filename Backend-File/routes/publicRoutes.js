@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const { calculateMotorRentalBreakdown } = require('../utils/motorRentalPricing');
 const router = express.Router();
 
 // ==========================================
@@ -111,6 +112,56 @@ router.get('/pricing/motor-billing', async (req, res) => {
   } catch (err) {
     console.error('GET /pricing/motor-billing error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil pengaturan billing.' });
+  }
+});
+
+// ==========================================
+// PRICING PREVIEW: MOTOR BREAKDOWN (Public)
+// Source of truth: backend helper + DB settings
+// ==========================================
+router.post('/pricing/motor-breakdown', async (req, res) => {
+  try {
+    const {
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+      price24h,
+      price12h,
+    } = req.body || {};
+
+    const settings = await dbGet(
+      `SELECT motor_billing_mode, motor_threshold_12h
+       FROM booking_pricing_settings WHERE id = 1`
+    );
+
+    const breakdown = calculateMotorRentalBreakdown({
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+      price24h,
+      price12h,
+      billingMode: settings?.motor_billing_mode || 'calendar',
+      threshold12h: settings?.motor_threshold_12h || 12,
+    });
+
+    if (!breakdown.isValid) {
+      return res.status(400).json({ success: false, error: breakdown.error || 'Data booking tidak valid.' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...breakdown,
+        // Normalize Dates for frontend
+        startAtIso: breakdown.startAt instanceof Date ? breakdown.startAt.toISOString() : breakdown.startAt,
+        endAtIso: breakdown.endAt instanceof Date ? breakdown.endAt.toISOString() : breakdown.endAt,
+      },
+    });
+  } catch (err) {
+    console.error('POST /pricing/motor-breakdown error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghitung billing motor.' });
   }
 });
 

@@ -961,7 +961,7 @@ router.get('/database/export', async (req, res) => {
 // POST /api/admin/database/restore — upload & replace DB
 router.post('/database/restore', (req, res) => {
   // Hanya superadmin
-  if (req.user.role !== 'superadmin' && req.user.role !== 'admin') {
+  if (req.user.role !== 'superadmin') {
     return res.status(403).json({ success: false, error: 'Akses ditolak.' });
   }
 
@@ -977,15 +977,41 @@ router.post('/database/restore', (req, res) => {
       // 1. Validasi file yang diupload adalah SQLite yang valid
       const { execSync } = require('child_process');
       try {
-        execSync('sqlite3 "' + uploadedPath + '" "PRAGMA integrity_check;" 2>&1', { timeout: 10000 });
+        const out = execSync('sqlite3 "' + uploadedPath + '" "PRAGMA integrity_check;" 2>&1', { timeout: 10000 })
+          .toString()
+          .trim()
+          .toLowerCase();
+        if (out !== 'ok') {
+          fs.unlinkSync(uploadedPath);
+          return res.status(400).json({ success: false, error: 'File database tidak valid atau corrupt.' });
+        }
       } catch {
         fs.unlinkSync(uploadedPath);
         return res.status(400).json({ success: false, error: 'File database tidak valid atau corrupt.' });
       }
 
-      // 2. Backup DB saat ini sebelum diganti
+      // 2. Backup DB saat ini sebelum diganti (dan pastikan backup valid)
       if (fs.existsSync(dbPath)) {
         fs.copyFileSync(dbPath, backupPath);
+        try {
+          const out = execSync('sqlite3 "' + backupPath + '" "PRAGMA integrity_check;" 2>&1', { timeout: 10000 })
+            .toString()
+            .trim()
+            .toLowerCase();
+          if (out !== 'ok') {
+            fs.unlinkSync(uploadedPath);
+            return res.status(500).json({
+              success: false,
+              error: 'Backup otomatis gagal divalidasi (DB saat ini kemungkinan corrupt). Batalkan restore untuk keamanan.',
+            });
+          }
+        } catch {
+          fs.unlinkSync(uploadedPath);
+          return res.status(500).json({
+            success: false,
+            error: 'Backup otomatis gagal divalidasi. Batalkan restore untuk keamanan.',
+          });
+        }
       }
 
       // 3. Replace DB dengan file yang diupload

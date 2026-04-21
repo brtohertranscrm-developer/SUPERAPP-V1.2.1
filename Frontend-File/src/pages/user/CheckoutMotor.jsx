@@ -243,10 +243,8 @@ export default function CheckoutMotor() {
 
   // [FIX 4] State untuk info rekening dari API
   const [paymentInfo, setPaymentInfo]       = useState(null);
-  const [motorBillingSettings, setMotorBillingSettings] = useState({
-    motor_billing_mode: 'calendar',
-    motor_threshold_12h: 12,
-  });
+  const [remoteBreakdown, setRemoteBreakdown] = useState(null);
+  const [isBreakdownLoading, setIsBreakdownLoading] = useState(false);
 
   // Redirect if no booking data
   useEffect(() => {
@@ -269,23 +267,6 @@ export default function CheckoutMotor() {
       .catch(() => {/* silent fail — UI tetap jalan, hanya info rekening kosong */});
   }, []);
 
-  // Ambil setting billing motor agar preview harga sama dengan backend
-  useEffect(() => {
-    fetch(`${API_URL}/api/pricing/motor-billing`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.success && data?.data) {
-          setMotorBillingSettings({
-            motor_billing_mode: data.data.motor_billing_mode || 'calendar',
-            motor_threshold_12h: Number(data.data.motor_threshold_12h) || 12,
-          });
-        }
-      })
-      .catch(() => {/* silent */});
-  }, []);
-
-  if (!bookingData || !user) return null;
-
   // ── Price Calculations ──────────────────────────────────────────────────────
   const {
     motorName     = 'Motor',
@@ -296,20 +277,56 @@ export default function CheckoutMotor() {
     endTime       = '09:00',
     price24h      = 0,
     price12h      = Math.round((Number(price24h) || 0) * 0.7),
-  } = bookingData;
+  } = bookingData || {};
 
-  const rentalBreakdown = calculateMotorRentalBreakdown({
+  // Local fallback (kalau backend preview gagal)
+  const localBreakdown = calculateMotorRentalBreakdown({
     startDate,
     startTime,
     endDate,
     endTime,
     price24h,
     price12h,
-    billingMode: motorBillingSettings.motor_billing_mode,
-    threshold12h: motorBillingSettings.motor_threshold_12h,
   });
 
-  const subTotal      = rentalBreakdown.isValid ? rentalBreakdown.baseTotal : 0;
+  // Backend preview (source of truth) untuk pricing
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!bookingData) {
+      setRemoteBreakdown(null);
+      setIsBreakdownLoading(false);
+      return () => { isMounted = false; };
+    }
+
+    setIsBreakdownLoading(true);
+    fetch(`${API_URL}/api/pricing/motor-breakdown`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startDate,
+        startTime,
+        endDate,
+        endTime,
+        price24h,
+        price12h,
+      }),
+    })
+      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!isMounted) return;
+        if (ok && j?.success && j?.data) setRemoteBreakdown(j.data);
+        else setRemoteBreakdown(null);
+      })
+      .catch(() => { if (isMounted) setRemoteBreakdown(null); })
+      .finally(() => { if (isMounted) setIsBreakdownLoading(false); });
+
+    return () => { isMounted = false; };
+  }, [API_URL, startDate, startTime, endDate, endTime, price24h, price12h]);
+
+  const rentalBreakdown = remoteBreakdown || localBreakdown;
+
+  const subTotal      = rentalBreakdown?.isValid ? rentalBreakdown.baseTotal : 0;
   const serviceFee    = SERVICE_FEE;
   const beforeDiscount = subTotal + serviceFee;
   const safeDiscount  = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
@@ -352,20 +369,23 @@ export default function CheckoutMotor() {
 
   // ── Submit Handler ──────────────────────────────────────────────────────────
   const handleCheckout = async () => {
-    if (!isKycVerified || !rentalBreakdown.isValid) return;
+    if (!isKycVerified || !rentalBreakdown?.isValid) return;
     setSubmitError('');
     setIsSubmitting(true);
 
     const token   = localStorage.getItem('token');
     const orderId = generateOrderId();
 
+    const startIso = rentalBreakdown.startAtIso || (rentalBreakdown.startAt ? new Date(rentalBreakdown.startAt).toISOString() : null);
+    const endIso = rentalBreakdown.endAtIso || (rentalBreakdown.endAt ? new Date(rentalBreakdown.endAt).toISOString() : null);
+
     const payload = {
       order_id:        orderId,
       item_type:       'motor',
       item_name:       motorName,
       location:        pickupLocation,
-      start_date:      formatDateTimeForInput(rentalBreakdown.startAt),
-      end_date:        formatDateTimeForInput(rentalBreakdown.endAt),
+      start_date:      startIso ? startIso : formatDateTimeForInput(rentalBreakdown.startAt),
+      end_date:        endIso ? endIso : formatDateTimeForInput(rentalBreakdown.endAt),
       duration_hours:  rentalBreakdown.billableHours,
       base_price:      subTotal,
       service_fee:     serviceFee,
@@ -418,6 +438,8 @@ export default function CheckoutMotor() {
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
+  if (!bookingData || !user) return null;
+
   return (
     <div className="bg-slate-50 min-h-screen pt-20 pb-24 font-sans text-slate-900 animate-fade-in-up">
       {isSubmitting && <ProcessingOverlay />}
