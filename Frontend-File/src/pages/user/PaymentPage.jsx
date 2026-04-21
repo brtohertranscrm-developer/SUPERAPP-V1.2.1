@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CreditCard, Loader2 } from 'lucide-react';
+import { CreditCard, Loader2, Upload } from 'lucide-react';
 import { usePayment } from '../../hooks/usePayment';
 
 export default function PaymentPage() {
@@ -13,6 +13,62 @@ export default function PaymentPage() {
   } = usePayment();
 
   if (!user) return null;
+
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState('');
+  const [uploadErr, setUploadErr] = useState('');
+  const [transferBank, setTransferBank] = useState('BCA');
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [transferAmount, setTransferAmount] = useState('');
+
+  useEffect(() => {
+    if (orderData?.total_price != null) {
+      setTransferAmount(String(Number(orderData.total_price || 0)));
+    }
+  }, [orderData?.total_price]);
+
+  const handleUploadProof = async () => {
+    setUploadMsg('');
+    setUploadErr('');
+
+    const input = document.getElementById('locker-proof-file');
+    const file = input?.files?.[0];
+    if (!file) {
+      setUploadErr('Silakan pilih file bukti transfer.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setUploadErr('Sesi login berakhir. Silakan login ulang.');
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('proof', file);
+    fd.append('order_id', orderData?.order_id || '');
+    fd.append('bank_name', transferBank);
+    fd.append('transfer_amount', transferAmount || String(Number(orderData?.total_price || 0)));
+    fd.append('transfer_date', transferDate);
+
+    setIsUploading(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/users/payments/reconciliations`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
+      setUploadMsg(data.message || 'Bukti berhasil diunggah.');
+      input.value = '';
+    } catch (e) {
+      setUploadErr(e.message || 'Gagal mengunggah bukti.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // ==========================================
   // HALAMAN INSTRUKSI TRANSFER (LOKER)
@@ -68,6 +124,76 @@ export default function PaymentPage() {
                   <div className="mt-3 text-[11px] font-bold text-gray-400">
                     Setelah transfer, status akan berubah setelah diverifikasi admin.
                   </div>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Upload size={16} className="text-brand-primary" />
+                    <div className="text-sm font-black text-brand-dark">Upload Bukti Transfer</div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bank</div>
+                      <select
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                        value={transferBank}
+                        onChange={(e) => setTransferBank(e.target.value)}
+                      >
+                        <option value="BCA">BCA</option>
+                        <option value="Mandiri">Mandiri</option>
+                      </select>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tanggal Transfer</div>
+                      <input
+                        type="date"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                        value={transferDate}
+                        onChange={(e) => setTransferDate(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nominal</div>
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                        value={transferAmount}
+                        onChange={(e) => setTransferAmount(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">File Bukti (JPG/PNG/WebP/PDF)</div>
+                    <input
+                      id="locker-proof-file"
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,.pdf"
+                      className="block w-full text-sm font-bold text-gray-600 file:mr-4 file:rounded-xl file:border-0 file:bg-brand-dark file:px-4 file:py-2 file:text-white hover:file:bg-slate-800"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleUploadProof}
+                    disabled={isUploading || !orderData?.order_id}
+                    className="mt-4 w-full py-3.5 rounded-2xl bg-brand-primary text-white font-black hover:bg-brand-secondary transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isUploading ? <><Loader2 size={16} className="animate-spin" /> Mengunggah...</> : 'Upload Bukti Transfer'}
+                  </button>
+
+                  {uploadMsg && (
+                    <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-emerald-800 text-xs font-black">
+                      {uploadMsg}
+                    </div>
+                  )}
+                  {uploadErr && (
+                    <div className="mt-3 bg-rose-50 border border-rose-200 rounded-2xl p-3 text-rose-800 text-xs font-black">
+                      {uploadErr}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">

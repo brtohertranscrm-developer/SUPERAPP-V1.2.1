@@ -21,6 +21,34 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); });
 });
 
+// ==========================================
+// Upload Bukti Transfer (User)
+// ==========================================
+const ALLOWED_PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+const MAX_PROOF_FILE = 5 * 1024 * 1024; // 5MB
+
+const reconStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = 'uploads/reconciliations/';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const rand = crypto.randomBytes(8).toString('hex');
+    cb(null, `user-recon-${Date.now()}-${rand}${ext}`);
+  },
+});
+
+const uploadUserRecon = multer({
+  storage: reconStorage,
+  limits: { fileSize: MAX_PROOF_FILE },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_PROOF_TYPES.includes(file.mimetype)) cb(null, true);
+    else cb(new Error('Hanya JPG, PNG, WebP, atau PDF yang diizinkan.'));
+  },
+});
+
 const dbTransaction = (queries) => new Promise((resolve, reject) => {
   db.serialize(() => {
     db.run('BEGIN TRANSACTION', (err) => {
@@ -127,6 +155,92 @@ router.get('/dashboard/top-travellers', async (req, res) => {
     console.error('GET /top-travellers error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data top travellers.' });
   }
+});
+
+// ==========================================
+// 3b. UPLOAD BUKTI TRANSFER (USER)
+// Buat entri payment_reconciliations berstatus pending
+// ==========================================
+router.post('/users/payments/reconciliations', (req, res) => {
+  uploadUserRecon.single('proof')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maksimal 5MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+
+    try {
+      const { order_id, bank_name, transfer_amount, transfer_date, notes } = req.body || {};
+      if (!order_id || !bank_name || !transfer_amount || !transfer_date) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, error: 'Order ID, bank, nominal, dan tanggal transfer wajib diisi.' });
+      }
+
+      const orderId = String(order_id).trim();
+      const booking = await dbGet(
+        `SELECT order_id, user_id, total_price, payment_status
+         FROM bookings WHERE order_id = ? LIMIT 1`,
+        [orderId]
+      );
+      if (!booking) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(404).json({ success: false, error: 'Order ID tidak ditemukan.' });
+      }
+      if (booking.user_id !== req.user.id) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(403).json({ success: false, error: 'Akses ditolak.' });
+      }
+      if (booking.payment_status === 'paid') {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, error: 'Pesanan ini sudah lunas.' });
+      }
+
+      const existingPending = await dbGet(
+        `SELECT id FROM payment_reconciliations
+         WHERE order_id = ? AND status = 'pending'
+         ORDER BY created_at DESC LIMIT 1`,
+        [orderId]
+      );
+      if (existingPending) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(409).json({
+          success: false,
+          error: 'Bukti transfer untuk pesanan ini sudah pernah diunggah dan sedang ditinjau.',
+        });
+      }
+
+      const proofUrl = req.file
+        ? `${req.protocol}://${req.get('host')}/uploads/reconciliations/${path.basename(req.file.filename)}`
+        : null;
+
+      const amount = parseInt(transfer_amount, 10);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, error: 'Nominal transfer tidak valid.' });
+      }
+
+      const bank = String(bank_name).trim();
+      const date = String(transfer_date).trim();
+
+      const result = await dbRun(
+        `INSERT INTO payment_reconciliations (order_id, bank_name, transfer_amount, transfer_date, proof_url, notes)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [orderId, bank, amount, date, proofUrl, notes || null]
+      );
+
+      res.status(201).json({
+        success: true,
+        message: 'Bukti transfer berhasil diunggah. Tim admin akan memverifikasi secepatnya.',
+        id: result.lastID,
+        proof_url: proofUrl,
+      });
+    } catch (e) {
+      console.error('POST /users/payments/reconciliations error:', e.message);
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      res.status(500).json({ success: false, error: 'Gagal mengunggah bukti transfer.' });
+    }
+  });
 });
 
 // ==========================================
