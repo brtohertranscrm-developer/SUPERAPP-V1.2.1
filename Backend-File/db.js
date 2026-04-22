@@ -374,6 +374,30 @@ db.serialize(() => {
     )
   `);
 
+  // --- PARTNERSHIPS (Homepage: Partner Brother Trans) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS partners (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      category TEXT DEFAULT 'Partner',
+      city TEXT DEFAULT 'Yogyakarta',
+      address TEXT,
+      headline TEXT,
+      promo_text TEXT,
+      terms TEXT,
+      image_url TEXT,
+      cta_label TEXT DEFAULT 'Lihat Promo',
+      cta_url TEXT,
+      maps_url TEXT,
+      phone_wa TEXT,
+      sort_order INTEGER DEFAULT 0,
+      valid_until TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // --- ARTICLES ---
   db.run(`
     CREATE TABLE IF NOT EXISTS articles (

@@ -1597,6 +1597,161 @@ router.delete('/promos/:id', requirePermission('pricing'), async (req, res) => {
 });
 
 // ==========================================
+// PARTNERSHIPS MANAGEMENT (Akses: partners)
+// ==========================================
+router.get('/partners', requirePermission('partners'), async (req, res) => {
+  try {
+    const rows = await dbAll(`SELECT * FROM partners ORDER BY sort_order ASC, id DESC`);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/partners error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data partnership.' });
+  }
+});
+
+router.post('/partners', requirePermission('partners'), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Nama partner wajib diisi.' });
+    }
+
+    const category = String(body.category || 'Partner').trim() || 'Partner';
+    const city = String(body.city || 'Yogyakarta').trim() || 'Yogyakarta';
+    const address = body.address !== undefined ? String(body.address || '').trim() : null;
+    const headline = body.headline !== undefined ? String(body.headline || '').trim() : null;
+    const promo_text = body.promo_text !== undefined ? String(body.promo_text || '').trim() : null;
+    const terms = body.terms !== undefined ? String(body.terms || '').trim() : null;
+    const image_url = body.image_url !== undefined ? String(body.image_url || '').trim() : null;
+    const cta_label = String(body.cta_label || 'Lihat Promo').trim() || 'Lihat Promo';
+    const cta_url = body.cta_url !== undefined ? String(body.cta_url || '').trim() : null;
+    const maps_url = body.maps_url !== undefined ? String(body.maps_url || '').trim() : null;
+    const phone_wa = body.phone_wa !== undefined ? String(body.phone_wa || '').trim() : null;
+    const sort_order = Number.isFinite(parseInt(body.sort_order, 10)) ? parseInt(body.sort_order, 10) : 0;
+    const valid_until = body.valid_until !== undefined ? String(body.valid_until || '').trim() : null;
+    const is_active = body.is_active ? 1 : 0;
+
+    const result = await dbRun(
+      `
+      INSERT INTO partners (
+        name, category, city, address, headline, promo_text, terms,
+        image_url, cta_label, cta_url, maps_url, phone_wa,
+        sort_order, valid_until, is_active, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `,
+      [
+        name,
+        category,
+        city,
+        address || null,
+        headline || null,
+        promo_text || null,
+        terms || null,
+        image_url || null,
+        cta_label,
+        cta_url || null,
+        maps_url || null,
+        phone_wa || null,
+        sort_order,
+        valid_until || null,
+        is_active,
+      ]
+    );
+
+    const created = await dbGet(`SELECT * FROM partners WHERE id = ?`, [result.lastID]);
+    res.status(201).json({ success: true, message: 'Partner berhasil ditambahkan.', data: created });
+  } catch (err) {
+    console.error('POST /admin/partners error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan partner.' });
+  }
+});
+
+router.put('/partners/:id', requirePermission('partners'), async (req, res) => {
+  try {
+    const existing = await dbGet(`SELECT * FROM partners WHERE id = ?`, [req.params.id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Partner tidak ditemukan.' });
+
+    const body = req.body || {};
+    const name = String(body.name ?? existing.name ?? '').trim();
+    if (!name) return res.status(400).json({ success: false, error: 'Nama partner wajib diisi.' });
+
+    const category = String(body.category ?? existing.category ?? 'Partner').trim() || 'Partner';
+    const city = String(body.city ?? existing.city ?? 'Yogyakarta').trim() || 'Yogyakarta';
+    const address = body.address !== undefined ? String(body.address || '').trim() : (existing.address || null);
+    const headline = body.headline !== undefined ? String(body.headline || '').trim() : (existing.headline || null);
+    const promo_text = body.promo_text !== undefined ? String(body.promo_text || '').trim() : (existing.promo_text || null);
+    const terms = body.terms !== undefined ? String(body.terms || '').trim() : (existing.terms || null);
+    const image_url = body.image_url !== undefined ? String(body.image_url || '').trim() : (existing.image_url || null);
+    const cta_label = String(body.cta_label ?? existing.cta_label ?? 'Lihat Promo').trim() || 'Lihat Promo';
+    const cta_url = body.cta_url !== undefined ? String(body.cta_url || '').trim() : (existing.cta_url || null);
+    const maps_url = body.maps_url !== undefined ? String(body.maps_url || '').trim() : (existing.maps_url || null);
+    const phone_wa = body.phone_wa !== undefined ? String(body.phone_wa || '').trim() : (existing.phone_wa || null);
+    const sort_order = body.sort_order !== undefined ? (parseInt(body.sort_order, 10) || 0) : (parseInt(existing.sort_order, 10) || 0);
+    const valid_until = body.valid_until !== undefined ? String(body.valid_until || '').trim() : (existing.valid_until || null);
+    const is_active = body.is_active !== undefined ? (body.is_active ? 1 : 0) : (existing.is_active ? 1 : 0);
+
+    await dbRun(
+      `
+      UPDATE partners
+      SET name = ?, category = ?, city = ?, address = ?, headline = ?, promo_text = ?, terms = ?,
+          image_url = ?, cta_label = ?, cta_url = ?, maps_url = ?, phone_wa = ?,
+          sort_order = ?, valid_until = ?, is_active = ?, updated_at = datetime('now')
+      WHERE id = ?
+      `,
+      [
+        name,
+        category,
+        city,
+        address || null,
+        headline || null,
+        promo_text || null,
+        terms || null,
+        image_url || null,
+        cta_label,
+        cta_url || null,
+        maps_url || null,
+        phone_wa || null,
+        sort_order,
+        valid_until || null,
+        is_active,
+        req.params.id,
+      ]
+    );
+
+    const updated = await dbGet(`SELECT * FROM partners WHERE id = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Partner berhasil diperbarui.', data: updated });
+  } catch (err) {
+    console.error('PUT /admin/partners/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui partner.' });
+  }
+});
+
+router.patch('/partners/:id/active', requirePermission('partners'), async (req, res) => {
+  try {
+    const { is_active } = req.body || {};
+    await dbRun(
+      `UPDATE partners SET is_active = ?, updated_at = datetime('now') WHERE id = ?`,
+      [is_active ? 1 : 0, req.params.id]
+    );
+    res.json({ success: true, message: 'Status partner berhasil diupdate.' });
+  } catch (err) {
+    console.error('PATCH /admin/partners/:id/active error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengubah status partner.' });
+  }
+});
+
+router.delete('/partners/:id', requirePermission('partners'), async (req, res) => {
+  try {
+    await dbRun(`DELETE FROM partners WHERE id = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Partner berhasil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/partners/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus partner.' });
+  }
+});
+
+// ==========================================
 // ARTIKEL MANAGEMENT (Akses: artikel)
 // ==========================================
 router.get('/articles', requirePermission('artikel'), async (req, res) => {

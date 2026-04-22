@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 export const useHomeData = () => {
   const [promotions, setPromotions] = useState([]);
   const [featuredMotors, setFeaturedMotors] = useState([]);
+  const [partners, setPartners] = useState([]);
   const [isLoadingMotors, setIsLoadingMotors] = useState(true);
 
   // Ambil URL dari environment, jika tidak ada fallback ke localhost
@@ -36,5 +37,17 @@ export const useHomeData = () => {
       });
   }, [API_URL]);
 
-  return { promotions, featuredMotors, isLoadingMotors };
+  // Ambil Partners (Homepage)
+  useEffect(() => {
+    fetch(`${API_URL}/api/partners?limit=12`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setPartners(data.data);
+        }
+      })
+      .catch(err => console.error('Gagal memuat partner:', err));
+  }, [API_URL]);
+
+  return { promotions, featuredMotors, partners, isLoadingMotors };
 };

@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign, Calendar, ShieldCheck } from 'lucide-react';
+import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign, Calendar, ShieldCheck, Truck, Handshake } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
 const QuickMenu = () => {
@@ -10,6 +10,7 @@ const QuickMenu = () => {
   const adminMenus = [
     // Operasional
     { section: 'Operasional', name: 'Data Pesanan',   path: '/admin/booking',    key: 'booking',  icon: ClipboardList, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { section: 'Operasional', name: 'Antar / Kembali',path: '/admin/logistics',  key: 'logistics',icon: Truck,         color: 'text-amber-600',  bg: 'bg-amber-50' },
     { section: 'Operasional', name: 'Armada Motor',   path: '/admin/armada',     key: 'armada',   icon: Bike,          color: 'text-rose-600',   bg: 'bg-rose-50' },
     { section: 'Operasional', name: 'Fleet Inventory',path: '/admin/fleet',      key: 'armada',   icon: Calendar,      color: 'text-teal-600',   bg: 'bg-teal-50' },
     { section: 'Operasional', name: 'Smart Loker',    path: '/admin/loker',      key: 'loker',    icon: Package,       color: 'text-blue-600',   bg: 'bg-blue-50' },
@@ -20,6 +21,7 @@ const QuickMenu = () => {
     // Promo & Konten
     { section: 'Promo & Konten', name: 'Harga Dinamis',  path: '/admin/pricing',    key: 'pricing',  icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
     { section: 'Promo & Konten', name: 'Banner Promo',   path: '/admin/promotions', key: 'pricing',  icon: Ticket,     color: 'text-emerald-600',bg: 'bg-emerald-50' },
+    { section: 'Promo & Konten', name: 'Partnership',    path: '/admin/partners',   key: 'partners', icon: Handshake,  color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { section: 'Promo & Konten', name: 'Konten Artikel', path: '/admin/artikel',    key: 'artikel',  icon: FileText,   color: 'text-cyan-600',   bg: 'bg-cyan-50' },
 
     // Sistem

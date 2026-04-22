@@ -18,6 +18,7 @@ const availableMenus = [
   { key: 'armada',    label: 'Manajemen Armada & Unit' },
   { key: 'loker',     label: 'Manajemen Loker' },
   { key: 'pricing',   label: 'Dynamic Pricing & Promo' },
+  { key: 'partners',  label: 'Partnership (Homepage Partner)' },
   { key: 'artikel',   label: 'Konten Artikel' },
   { key: 'users',     label: 'Data Pelanggan & KYC' },
   { key: 'settings',  label: 'Pengaturan & Akses' },

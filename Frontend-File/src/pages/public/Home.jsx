@@ -5,10 +5,11 @@ import { useHomeData } from '../../hooks/useHomeData';
 import HeroSection from '../../components/public/home/HeroSection';
 import PromoSection from '../../components/public/home/PromoSection';
 import HowItWorks from '../../components/public/home/HowItWorks';
+import PartnersSection from '../../components/public/home/PartnersSection';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { promotions, featuredMotors, isLoadingMotors } = useHomeData();
+  const { promotions, featuredMotors, partners, isLoadingMotors } = useHomeData();
 
   return (
     <div className="font-sans text-slate-900 bg-slate-50 min-h-screen relative overflow-x-hidden">
@@ -106,6 +107,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* 6. Partnership (dibawah, tidak ganggu booking) */}
+      <PartnersSection partners={partners} />
 
     </div>
   );

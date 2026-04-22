@@ -47,6 +47,7 @@ import AdminFinance from '../pages/admin/AdminFinance';
 import AdminReferral from '../pages/admin/AdminReferral';
 import AdminAddons from '../pages/admin/AdminAddons';
 import AdminLogistics from '../pages/admin/AdminLogistics';
+import AdminPartners from '../pages/admin/AdminPartners';
 
 const AppRoutes = () => {
   return (
@@ -90,6 +91,7 @@ const AppRoutes = () => {
           <Route path="pricing" element={<AdminPricing />} /> 
           <Route path="artikel" element={<AdminArtikel />} /> {/* Path dirapikan */}
           <Route path="promotions" element={<AdminPromotions />} />    
+          <Route path="partners" element={<AdminPartners />} />
           <Route path="addons" element={<AdminAddons />} />
           <Route path="support" element={<AdminSupport />} />
           <Route path="invoice/:id" element={<AdminInvoice />} /> {/* Rute untuk halaman invoice */}

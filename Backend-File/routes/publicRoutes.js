@@ -211,6 +211,41 @@ router.get('/motor-addons', async (req, res) => {
 });
 
 // ==========================================
+// PARTNERSHIPS (Public) — list partner aktif untuk homepage
+// ==========================================
+router.get('/partners', async (req, res) => {
+  try {
+    const limitRaw = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 50) : 12;
+    const city = String(req.query.city || '').trim();
+
+    const where = ['is_active = 1'];
+    const params = [];
+    if (city) {
+      where.push(`lower(COALESCE(city, '')) = lower(?)`);
+      params.push(city);
+    }
+
+    const rows = await dbAll(
+      `
+      SELECT id, name, category, city, address, headline, promo_text, terms,
+             image_url, cta_label, cta_url, maps_url, phone_wa, valid_until
+      FROM partners
+      WHERE ${where.join(' AND ')}
+      ORDER BY sort_order ASC, id DESC
+      LIMIT ?
+      `,
+      [...params, limit]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /partners error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data partnership.' });
+  }
+});
+
+// ==========================================
 // PRICING SETTINGS (Public)
 // ==========================================
 router.get('/pricing/motor-billing', async (req, res) => {
