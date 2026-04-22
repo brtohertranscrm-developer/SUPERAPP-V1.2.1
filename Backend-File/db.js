@@ -131,6 +131,25 @@ db.serialize(() => {
     )
   `);
 
+  // --- MOTOR ADDONS / PAKET (Upsell saat checkout motor) ---
+  // addon_type:
+  //   - 'addon'   (contoh: helm tambahan, holder HP)
+  //   - 'package' (contoh: paket wisata / city tour)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS motor_addons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      price INTEGER NOT NULL DEFAULT 0,
+      addon_type TEXT NOT NULL DEFAULT 'addon',
+      allow_quantity INTEGER DEFAULT 0,
+      max_qty INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
   // --- LOCKERS ---
   db.run(`
     CREATE TABLE IF NOT EXISTS lockers (
@@ -185,6 +204,24 @@ db.serialize(() => {
       drop_fee INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // Line items add-on per booking (audit-friendly)
+  // Didefinisikan setelah tabel bookings agar foreign key selalu valid saat CREATE TABLE.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS booking_motor_addons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT NOT NULL,
+      addon_id INTEGER NOT NULL,
+      name_snapshot TEXT NOT NULL,
+      addon_type_snapshot TEXT NOT NULL,
+      qty INTEGER NOT NULL DEFAULT 1,
+      unit_price INTEGER NOT NULL DEFAULT 0,
+      total_price INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES bookings(order_id) ON DELETE CASCADE,
+      FOREIGN KEY (addon_id) REFERENCES motor_addons(id) ON DELETE RESTRICT
     )
   `);
 
@@ -548,6 +585,9 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_motor_units_motor_id ON motor_units(motor_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_motor_units_status ON motor_units(status)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_motor_addons_active ON motor_addons(is_active, addon_type, sort_order)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_booking_motor_addons_order ON booking_motor_addons(order_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_booking_motor_addons_addon ON booking_motor_addons(addon_id)`);
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(status)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_articles_slug ON articles(slug)`);

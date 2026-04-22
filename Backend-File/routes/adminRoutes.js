@@ -833,6 +833,121 @@ router.delete('/motors/:id', requirePermission('armada'), async (req, res) => {
 });
 
 // ==========================================
+// MOTOR ADD-ONS & PAKET (Akses: booking)
+// ==========================================
+router.get('/motor-addons', requirePermission('booking'), async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, name, description, price, addon_type, allow_quantity, max_qty, sort_order, is_active, created_at
+       FROM motor_addons
+       ORDER BY
+         CASE addon_type WHEN 'package' THEN 0 ELSE 1 END,
+         sort_order ASC,
+         id ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/motor-addons error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data add-on.' });
+  }
+});
+
+router.post('/motor-addons', requirePermission('booking'), async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      price,
+      addon_type = 'addon',
+      allow_quantity = 0,
+      max_qty = 1,
+      sort_order = 0,
+      is_active = 1,
+    } = req.body || {};
+
+    if (!name || price === undefined || price === null || String(name).trim().length < 2) {
+      return res.status(400).json({ success: false, error: 'Nama dan harga add-on wajib diisi.' });
+    }
+    if (!['addon', 'package'].includes(addon_type)) {
+      return res.status(400).json({ success: false, error: 'Tipe add-on tidak valid.' });
+    }
+
+    const p = Math.max(0, parseInt(price, 10) || 0);
+    const allowQty = (allow_quantity === true || allow_quantity === 1 || allow_quantity === '1') ? 1 : 0;
+    const maxQty = allowQty ? Math.max(1, parseInt(max_qty, 10) || 1) : 1;
+    const sort = parseInt(sort_order, 10) || 0;
+    const active = (is_active === false || is_active === 0 || is_active === '0') ? 0 : 1;
+
+    const result = await dbRun(
+      `INSERT INTO motor_addons (name, description, price, addon_type, allow_quantity, max_qty, sort_order, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [String(name).trim(), description || null, p, addon_type, allowQty, maxQty, sort, active]
+    );
+    res.status(201).json({ success: true, message: 'Add-on berhasil ditambahkan.', id: result.lastID });
+  } catch (err) {
+    console.error('POST /admin/motor-addons error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan add-on.' });
+  }
+});
+
+router.put('/motor-addons/:id', requirePermission('booking'), async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      price,
+      addon_type,
+      allow_quantity,
+      max_qty,
+      sort_order,
+      is_active,
+    } = req.body || {};
+
+    if (!name || price === undefined || price === null || String(name).trim().length < 2) {
+      return res.status(400).json({ success: false, error: 'Nama dan harga add-on wajib diisi.' });
+    }
+    if (!['addon', 'package'].includes(addon_type)) {
+      return res.status(400).json({ success: false, error: 'Tipe add-on tidak valid.' });
+    }
+
+    const p = Math.max(0, parseInt(price, 10) || 0);
+    const allowQty = (allow_quantity === true || allow_quantity === 1 || allow_quantity === '1') ? 1 : 0;
+    const maxQty = allowQty ? Math.max(1, parseInt(max_qty, 10) || 1) : 1;
+    const sort = parseInt(sort_order, 10) || 0;
+    const active = (is_active === false || is_active === 0 || is_active === '0') ? 0 : 1;
+
+    const result = await dbRun(
+      `UPDATE motor_addons
+       SET name = ?, description = ?, price = ?, addon_type = ?, allow_quantity = ?, max_qty = ?, sort_order = ?, is_active = ?
+       WHERE id = ?`,
+      [String(name).trim(), description || null, p, addon_type, allowQty, maxQty, sort, active, req.params.id]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Add-on tidak ditemukan.' });
+    }
+
+    res.json({ success: true, message: 'Add-on berhasil diperbarui.' });
+  } catch (err) {
+    console.error('PUT /admin/motor-addons/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui add-on.' });
+  }
+});
+
+router.delete('/motor-addons/:id', requirePermission('booking'), async (req, res) => {
+  try {
+    const result = await dbRun(`DELETE FROM motor_addons WHERE id = ?`, [req.params.id]);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Add-on tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Add-on berhasil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/motor-addons/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus add-on.' });
+  }
+});
+
+// ==========================================
 // UNIT PLAT NOMOR (Akses: armada)
 // ==========================================
 router.get('/motors/:id/units', requirePermission('armada'), async (req, res) => {

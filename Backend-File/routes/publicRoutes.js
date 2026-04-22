@@ -93,6 +93,28 @@ router.get('/motors', async (req, res) => {
 });
 
 // ==========================================
+// MOTOR ADD-ONS & PAKET (Public)
+// ==========================================
+router.get('/motor-addons', async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, name, description, price, addon_type, allow_quantity, max_qty
+       FROM motor_addons
+       WHERE is_active = 1
+       ORDER BY
+         CASE addon_type WHEN 'package' THEN 0 ELSE 1 END,
+         sort_order ASC,
+         id ASC`
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /motor-addons error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data add-on.' });
+  }
+});
+
+// ==========================================
 // PRICING SETTINGS (Public)
 // ==========================================
 router.get('/pricing/motor-billing', async (req, res) => {

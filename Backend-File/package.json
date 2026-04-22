@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "seed:admin": "node seed_admin.js",
+    "seed:motor-addons": "node seed_motor_addons.js",
     "test:pricing": "node utils/motorRentalPricing.test.js"
   },
   "keywords": [],

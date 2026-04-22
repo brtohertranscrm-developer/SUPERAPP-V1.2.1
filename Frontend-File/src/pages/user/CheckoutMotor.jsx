@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import {
@@ -258,6 +258,12 @@ export default function CheckoutMotor() {
   const [remoteBreakdown, setRemoteBreakdown] = useState(null);
   const [isBreakdownLoading, setIsBreakdownLoading] = useState(false);
 
+  // Add-ons & Paket motor (upsell)
+  const [motorAddons, setMotorAddons] = useState([]);
+  const [selectedAddons, setSelectedAddons] = useState({});
+  const [isAddonsLoading, setIsAddonsLoading] = useState(false);
+  const [addonsError, setAddonsError] = useState('');
+
   // Redirect if no booking data
   useEffect(() => {
     if (!bookingData) {
@@ -277,6 +283,35 @@ export default function CheckoutMotor() {
       .then((r) => r.json())
       .then((data) => { if (data.success) setPaymentInfo(data.data); })
       .catch(() => {/* silent fail — UI tetap jalan, hanya info rekening kosong */});
+  }, []);
+
+  // Fetch motor add-ons (public)
+  useEffect(() => {
+    let isMounted = true;
+    setIsAddonsLoading(true);
+    setAddonsError('');
+
+    fetch(`${API_URL}/api/motor-addons`)
+      .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (!isMounted) return;
+        if (ok && j?.success && Array.isArray(j.data)) {
+          setMotorAddons(j.data);
+        } else {
+          setMotorAddons([]);
+          setAddonsError(j?.error || 'Gagal memuat add-on.');
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setMotorAddons([]);
+        setAddonsError('Gagal memuat add-on.');
+      })
+      .finally(() => {
+        if (isMounted) setIsAddonsLoading(false);
+      });
+
+    return () => { isMounted = false; };
   }, []);
 
   // Fetch delivery stations for city (Solo / Yogyakarta)
@@ -362,7 +397,31 @@ export default function CheckoutMotor() {
     handoverMethod === 'delivery'
       ? (Number(deliveryQuote?.fee) || 0)
       : 0;
-  const grandTotal    = Math.max(0, beforeDiscount - safeDiscount + deliveryFee);
+
+  const addonItems = useMemo(() => {
+    const items = [];
+    for (const a of motorAddons || []) {
+      const qty = Number(selectedAddons?.[a.id]) || 0;
+      if (qty <= 0) continue;
+      items.push({ id: Number(a.id), qty });
+    }
+    return items;
+  }, [motorAddons, selectedAddons]);
+
+  const addonTotal = useMemo(() => {
+    const byId = new Map((motorAddons || []).map((a) => [Number(a.id), a]));
+    let sum = 0;
+    for (const it of addonItems) {
+      const row = byId.get(Number(it.id));
+      if (!row) continue;
+      const qty = Number(it.qty) || 0;
+      const unit = Number(row.price) || 0;
+      sum += Math.max(0, qty) * Math.max(0, unit);
+    }
+    return sum;
+  }, [motorAddons, addonItems]);
+
+  const grandTotal    = Math.max(0, beforeDiscount - safeDiscount + deliveryFee + addonTotal);
 
   const isKycVerified = user?.kyc_status === 'verified';
 
@@ -452,10 +511,39 @@ export default function CheckoutMotor() {
     }
   }, [subTotal]);
 
-  const handleRemovePromo = () => {
-    setAppliedPromo(null);
-    setDiscountAmount(0);
-  };
+const handleRemovePromo = () => {
+  setAppliedPromo(null);
+  setDiscountAmount(0);
+};
+
+  // ── Add-ons handler ────────────────────────────────────────────────────────
+  const setAddonQty = useCallback((addon, nextQty) => {
+    if (!addon?.id) return;
+    const id = Number(addon.id);
+    const allowQty = Number(addon.allow_quantity) === 1;
+    const maxQty = allowQty ? Math.max(1, Number(addon.max_qty) || 1) : 1;
+
+    let qty = Math.max(0, Number(nextQty) || 0);
+    if (!allowQty && qty > 0) qty = 1;
+    if (allowQty && qty > 0) qty = Math.min(maxQty, qty);
+
+    setSelectedAddons((prev) => {
+      const next = { ...(prev || {}) };
+
+      // Paket: lebih jelas kalau hanya bisa pilih 1 paket di satu booking
+      if (addon.addon_type === 'package' && qty > 0) {
+        for (const a of motorAddons || []) {
+          if (a.addon_type === 'package') {
+            delete next[Number(a.id)];
+          }
+        }
+      }
+
+      if (qty <= 0) delete next[id];
+      else next[id] = qty;
+      return next;
+    });
+  }, [motorAddons]);
 
   // ── Submit Handler ──────────────────────────────────────────────────────────
   const handleCheckout = async () => {
@@ -507,6 +595,7 @@ export default function CheckoutMotor() {
       item_type:       'motor',
       item_name:       motorName,
       location:        pickupLocation,
+      addon_items:     addonItems,
       delivery_type:   deliveryType,
       delivery_station_id: deliveryType === 'station' ? stationId : null,
       delivery_address: deliveryType === 'address' ? (deliveryAddress || null) : null,
@@ -635,6 +724,12 @@ export default function CheckoutMotor() {
                 {[
                   { icon: <Users size={12} />, label: '2 Helm SNI' },
                   { icon: <CloudRain size={12} />, label: 'Jas Hujan' },
+                  ...addonItems.map((it) => {
+                    const row = motorAddons.find((a) => Number(a.id) === Number(it.id));
+                    if (!row) return null;
+                    const qty = Number(it.qty) || 1;
+                    return { icon: <Tag size={12} />, label: `${row.name}${qty > 1 ? ` x${qty}` : ''}` };
+                  }).filter(Boolean),
                 ].map((item) => (
                   <span
                     key={item.label}
@@ -878,6 +973,104 @@ export default function CheckoutMotor() {
               </div>
             </div>
 
+            {/* Add-ons & Paket */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <Tag size={16} className="text-slate-500" /> Add-ons & Paket
+              </h3>
+
+              {isAddonsLoading ? (
+                <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
+                  <Loader2 size={16} className="animate-spin" /> Memuat add-on...
+                </div>
+              ) : addonsError ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-amber-700 text-xs font-bold">{addonsError}</p>
+                </div>
+              ) : motorAddons.length === 0 ? (
+                <p className="text-slate-500 text-sm font-medium">
+                  Belum ada add-on yang tersedia.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {motorAddons.map((a) => {
+                    const qty = Number(selectedAddons?.[a.id]) || 0;
+                    const allowQty = Number(a.allow_quantity) === 1;
+                    const maxQty = allowQty ? Math.max(1, Number(a.max_qty) || 1) : 1;
+                    const isPackage = a.addon_type === 'package';
+
+                    return (
+                      <div key={a.id} className="border border-slate-200 rounded-2xl p-4 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-black text-slate-900 text-sm truncate">{a.name}</p>
+                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg border ${
+                              isPackage
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              {isPackage ? 'Paket' : 'Add-on'}
+                            </span>
+                          </div>
+                          {a.description && (
+                            <p className="text-xs text-slate-500 font-medium mt-1 line-clamp-2">{a.description}</p>
+                          )}
+                          <p className="text-xs font-black text-slate-700 mt-2">{fmtRp(a.price)}</p>
+                          {isPackage && (
+                            <p className="text-[11px] text-slate-400 font-bold mt-1">
+                              Catatan: maksimal 1 paket per booking.
+                            </p>
+                          )}
+                        </div>
+
+                        {allowQty ? (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setAddonQty(a, qty - 1)}
+                              disabled={qty <= 0}
+                              className="w-9 h-9 rounded-xl border border-slate-200 bg-white font-black text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                            >
+                              -
+                            </button>
+                            <div className="w-10 text-center font-black text-slate-900">{qty}</div>
+                            <button
+                              type="button"
+                              onClick={() => setAddonQty(a, qty + 1)}
+                              disabled={qty >= maxQty}
+                              className="w-9 h-9 rounded-xl border border-slate-200 bg-white font-black text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                            >
+                              +
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAddonQty(a, qty > 0 ? 0 : 1)}
+                            className={`shrink-0 px-4 py-2 rounded-xl font-black text-xs transition-colors ${
+                              qty > 0
+                                ? 'bg-slate-900 text-white hover:bg-rose-500'
+                                : 'bg-slate-50 text-slate-900 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {qty > 0 ? 'Hapus' : 'Tambah'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {addonTotal > 0 && (
+                <div className="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                  <p className="text-emerald-700 text-xs font-black">
+                    Total add-on: {fmtRp(addonTotal)}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Promo Code */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
@@ -938,6 +1131,24 @@ export default function CheckoutMotor() {
                     label={deliveryTarget === 'station' ? 'Pengantaran (Stasiun)' : 'Pengantaran'}
                     value={deliveryFee}
                   />
+                )}
+
+                {addonItems.length > 0 && (
+                  <div className="pt-1">
+                    {addonItems.map((it) => {
+                      const row = motorAddons.find((a) => Number(a.id) === Number(it.id));
+                      if (!row) return null;
+                      const qty = Number(it.qty) || 1;
+                      const line = (Number(row.price) || 0) * qty;
+                      return (
+                        <PriceRow
+                          key={`addon-${it.id}`}
+                          label={`${row.name}${qty > 1 ? ` x${qty}` : ''}`}
+                          value={line}
+                        />
+                      );
+                    })}
+                  </div>
                 )}
 
                 {safeDiscount > 0 && appliedPromo && (

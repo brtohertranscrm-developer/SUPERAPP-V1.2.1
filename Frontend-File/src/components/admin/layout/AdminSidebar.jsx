@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, Bike, FileText, TrendingUp, Users,
   Settings, LogOut, ClipboardList, Package, DollarSign,
-  Calendar, Gift, Ticket, ShieldCheck, LifeBuoy,
+  Calendar, Gift, Ticket, ShieldCheck, LifeBuoy, PackagePlus,
 } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
@@ -32,6 +32,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
       items: [
         { name: 'Dynamic Pricing', path: '/admin/pricing',    key: 'pricing',   icon: <TrendingUp size={20} /> },
         { name: 'Banner Promo',    path: '/admin/promotions', key: 'pricing',   icon: <Ticket size={20} /> },
+        { name: 'Add-ons & Paket', path: '/admin/addons',     key: 'booking',   icon: <PackagePlus size={20} /> },
         { name: 'Konten Artikel',  path: '/admin/artikel',    key: 'artikel',   icon: <FileText size={20} /> },
         { name: 'Referral',        path: '/admin/referral',   key: 'settings',  icon: <Gift size={20} /> },
       ],

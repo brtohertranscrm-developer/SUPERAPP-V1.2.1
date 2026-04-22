@@ -334,6 +334,7 @@ router.post('/bookings', async (req, res) => {
       base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
       basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
       duration_hours, price_notes, payment_method,
+      addon_items,
       delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng
     } = req.body || {};
 
@@ -425,9 +426,54 @@ router.post('/bookings', async (req, res) => {
     const bPrice  = rentalBreakdown?.baseTotal || parseInt(base_price || basePrice) || finalPrice; 
     const dAmount = parseInt(discount_amount || discountAmount) || 0;
     const sFee    = parseInt(service_fee || serviceFee) || 0;
-    const aFee    = parseInt(addon_fee || addonFee) || 0;
     const pCode   = promo_code || promoCode || null;
     const billableHours = rentalBreakdown?.billableHours || parseInt(duration_hours) || 0;
+
+    // Add-ons motor: compute on server (source of truth)
+    // Untuk sementara, addon_fee dari client diabaikan (anti-manipulasi).
+    let aFee = 0;
+    const addonLines = [];
+    const addonItems = Array.isArray(addon_items) ? addon_items : [];
+
+    if (item_type === 'motor' && addonItems.length > 0) {
+      for (const raw of addonItems) {
+        const addonId = parseInt(raw?.id, 10);
+        if (!addonId) {
+          return res.status(400).json({ success: false, error: 'Add-on tidak valid.' });
+        }
+
+        const row = await dbGet(
+          `SELECT id, name, addon_type, price, allow_quantity, max_qty
+           FROM motor_addons
+           WHERE id = ? AND is_active = 1
+           LIMIT 1`,
+          [addonId]
+        );
+
+        if (!row) {
+          return res.status(400).json({ success: false, error: 'Ada add-on yang tidak tersedia.' });
+        }
+
+        const allowQty = parseInt(row.allow_quantity, 10) === 1;
+        const maxQty = Math.max(1, parseInt(row.max_qty, 10) || 1);
+        const requestedQty = parseInt(raw?.qty, 10) || 1;
+        const qty = allowQty ? Math.max(1, Math.min(maxQty, requestedQty)) : 1;
+
+        const unitPrice = Math.max(0, parseInt(row.price, 10) || 0);
+        const lineTotal = unitPrice * qty;
+        if (lineTotal <= 0) continue;
+
+        aFee += lineTotal;
+        addonLines.push({
+          addon_id: row.id,
+          name_snapshot: row.name,
+          addon_type_snapshot: row.addon_type || 'addon',
+          qty,
+          unit_price: unitPrice,
+          total_price: lineTotal,
+        });
+      }
+    }
 
     // Delivery fee: compute on server (source of truth)
     let delFee = parseInt(delivery_fee || deliveryFee) || 0;
@@ -458,29 +504,57 @@ router.post('/bookings', async (req, res) => {
       ? `Motor billing ${rentalBreakdown.packageSummary}`
       : (price_notes || null);
 
-    await dbRun(
-      `INSERT INTO bookings (
-         order_id, user_id, item_type, item_name, location,
-         delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
-         start_date, end_date, 
-         base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-         paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
-       ) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
-      [
-        order_id, req.user.id, item_type, item_name, location,
-        delType || null,
-        delivery_station_id || null,
-        delivery_address || null,
-        (delivery_lat !== undefined && delivery_lat !== null && delivery_lat !== '') ? Number(delivery_lat) : null,
-        (delivery_lng !== undefined && delivery_lng !== null && delivery_lng !== '') ? Number(delivery_lng) : null,
-        deliveryDistanceKm !== null ? Number(deliveryDistanceKm) : null,
-        deliveryMethod || null,
-        start_date, end_date, 
-        bPrice, dAmount, pCode, sFee, aFee, delFee,
-        0, finalPrice, payMethod, billableHours, computedPriceNotes
-      ]
-    );
+    // Atomic: booking + addon lines
+    await dbRun('BEGIN');
+    try {
+      await dbRun(
+        `INSERT INTO bookings (
+           order_id, user_id, item_type, item_name, location,
+           delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
+           start_date, end_date, 
+           base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
+           paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
+         ) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
+        [
+          order_id, req.user.id, item_type, item_name, location,
+          delType || null,
+          delivery_station_id || null,
+          delivery_address || null,
+          (delivery_lat !== undefined && delivery_lat !== null && delivery_lat !== '') ? Number(delivery_lat) : null,
+          (delivery_lng !== undefined && delivery_lng !== null && delivery_lng !== '') ? Number(delivery_lng) : null,
+          deliveryDistanceKm !== null ? Number(deliveryDistanceKm) : null,
+          deliveryMethod || null,
+          start_date, end_date, 
+          bPrice, dAmount, pCode, sFee, aFee, delFee,
+          0, finalPrice, payMethod, billableHours, computedPriceNotes
+        ]
+      );
+
+      if (item_type === 'motor' && addonLines.length > 0) {
+        for (const line of addonLines) {
+          await dbRun(
+            `INSERT INTO booking_motor_addons
+              (order_id, addon_id, name_snapshot, addon_type_snapshot, qty, unit_price, total_price)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              order_id,
+              line.addon_id,
+              line.name_snapshot,
+              line.addon_type_snapshot,
+              line.qty,
+              line.unit_price,
+              line.total_price,
+            ]
+          );
+        }
+      }
+
+      await dbRun('COMMIT');
+    } catch (e) {
+      try { await dbRun('ROLLBACK'); } catch {}
+      throw e;
+    }
 
     dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
       .then((userData) => notifyNewBooking(
@@ -534,12 +608,28 @@ router.get('/bookings/:orderId', async (req, res) => {
       ? 0
       : Math.max(0, totalPrice - (Number(row.paid_amount) || 0));
 
+    let addons = [];
+    try {
+      if (row.item_type === 'motor') {
+        addons = await dbAll(
+          `SELECT addon_id as id, name_snapshot as name, addon_type_snapshot as addon_type, qty, unit_price, total_price
+           FROM booking_motor_addons
+           WHERE order_id = ?
+           ORDER BY id ASC`,
+          [row.order_id]
+        );
+      }
+    } catch {
+      addons = [];
+    }
+
     res.json({
       success: true,
       data: {
         ...row,
         total_price: totalPrice,
         outstanding_amount: outstandingAmount,
+        addons,
       },
     });
   } catch (err) {
