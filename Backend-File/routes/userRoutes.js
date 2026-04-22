@@ -464,7 +464,7 @@ router.post('/bookings', async (req, res) => {
          base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
          paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
        ) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
       [
         order_id, req.user.id, item_type, item_name, location,
         delType || null,
