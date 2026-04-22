@@ -52,7 +52,10 @@ export const apiFetch = async (endpoint, options = {}) => {
     
     return data;
   } catch (error) {
-    console.error(`API Fetch Error (${endpoint}):`, error);
+    // 401 sudah di-handle (auto logout). 404 kadang expected (fitur ops belum aktif).
+    if (error?.status !== 401 && error?.status !== 404) {
+      console.error(`API Fetch Error (${endpoint}):`, error);
+    }
     throw error; 
   }
 };
