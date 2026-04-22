@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Receipt, X, MapPin, QrCode, Copy, Loader2, Truck, CalendarPlus, MessageCircle, CheckCircle2, Clock, CreditCard } from 'lucide-react';
 import { WA_CONTACTS, buildWaLink } from '../../../config/contacts';
 
@@ -147,12 +148,12 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div 
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
+  const modal = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
+      <div
+        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
-      ></div>
+      />
 
       <div className="relative bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
         
@@ -369,6 +370,12 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
       </div>
     </div>
   );
+
+  // Portal supaya modal tidak "ketahan" stacking context (transform/animation) di parent card.
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modal, document.body);
+  }
+  return modal;
 };
 
 export default TripTicketModal;
