@@ -15,6 +15,26 @@ const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
   db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
 });
 
+const dtExpr = (col) => `CASE
+  WHEN trim(COALESCE(${col}, '')) LIKE '%Z' THEN datetime(${col}, 'localtime')
+  ELSE datetime(replace(substr(COALESCE(${col}, ''), 1, 19), 'T', ' '))
+END`;
+const cityExpr = (col) => `CASE
+  WHEN lower(COALESCE(${col}, '')) LIKE '%solo%' OR lower(COALESCE(${col}, '')) LIKE '%balapan%' THEN 'solo'
+  ELSE 'yogyakarta'
+END`;
+
+const normalizeToSqliteDateTime = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+  return raw.slice(0, 19).replace('T', ' ');
+};
+
 // ==========================================
 // HELPER: Hitung markup pricing (Surge + Seasonal)
 // ==========================================
@@ -52,18 +72,92 @@ const calculateActiveMarkup = async () => {
 router.get('/motors', async (req, res) => {
   try {
     const { totalMarkup, surgeActive, seasonalName } = await calculateActiveMarkup();
+    const startDate = normalizeToSqliteDateTime(req.query.start_date || req.query.start || '');
+    const endDate = normalizeToSqliteDateTime(req.query.end_date || req.query.end || '');
+    const hasRange = !!startDate && !!endDate;
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
 
-    const motors = await dbAll(`
-      SELECT m.*, 
-             (SELECT COUNT(*) FROM motor_units mu WHERE mu.motor_id = m.id AND mu.status = 'RDY') as stock
-      FROM motors m 
-      ORDER BY m.base_price ASC
-    `);
+    const motors = hasRange
+      ? await dbAll(
+        `
+        SELECT m.*,
+               (
+                 SELECT COUNT(*)
+                 FROM motor_units mu
+                 WHERE mu.motor_id = m.id
+                   AND mu.status = 'RDY'
+               ) as total_rdy_units,
+               (
+                 SELECT COUNT(*)
+                 FROM (
+                   SELECT b.unit_id AS unit_id
+                   FROM bookings b
+                   JOIN motor_units mu_booked ON mu_booked.id = b.unit_id
+                   WHERE b.unit_id IS NOT NULL
+                     AND mu_booked.motor_id = m.id
+                     AND mu_booked.status = 'RDY'
+                     AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                     AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                     AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+                   UNION
+                   SELECT ub.unit_id AS unit_id
+                   FROM unit_blocks ub
+                   JOIN motor_units mu_blocked ON mu_blocked.id = ub.unit_id
+                   WHERE mu_blocked.motor_id = m.id
+                     AND mu_blocked.status = 'RDY'
+                     AND datetime(ub.start_at) < datetime(?, ?)
+                     AND datetime(ub.end_at)   > datetime(?, ?)
+                 ) reserved_units
+               ) as reserved_unit_count,
+               (
+                 SELECT COUNT(*)
+                 FROM bookings b2
+                 WHERE b2.item_type = 'motor'
+                   AND b2.unit_id IS NULL
+                   AND b2.status NOT IN ('cancelled', 'completed', 'selesai')
+                   AND ${dtExpr('b2.start_date')} < datetime(?, ?)
+                   AND ${dtExpr('b2.end_date')}   > datetime(?, ?)
+                   AND (
+                     lower(COALESCE(b2.item_name, '')) = lower(COALESCE(m.display_name, ''))
+                     OR lower(COALESCE(b2.item_name, '')) = lower(COALESCE(m.name, ''))
+                   )
+                   AND ${cityExpr('b2.location')} = ${cityExpr('m.location')}
+               ) as pending_unassigned_booking_count
+        FROM motors m
+        ORDER BY m.base_price ASC
+        `,
+        [
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+        ]
+      )
+      : await dbAll(`
+        SELECT m.*, 
+               (SELECT COUNT(*) FROM motor_units mu WHERE mu.motor_id = m.id AND mu.status = 'RDY') as stock
+        FROM motors m 
+        ORDER BY m.base_price ASC
+      `);
 
     const formattedMotors = motors.map(motor => {
       let currentPrice = motor.base_price;
       let currentPrice12h = motor.price_12h || 0;
       let isSurge = false;
+      const totalRdyUnits = Number(motor.total_rdy_units) || 0;
+      const reservedUnitCount = Number(motor.reserved_unit_count) || 0;
+      const pendingUnassignedBookingCount = Number(motor.pending_unassigned_booking_count) || 0;
+      const computedStock = hasRange
+        ? Math.max(0, totalRdyUnits - reservedUnitCount - pendingUnassignedBookingCount)
+        : (Number(motor.stock) || 0);
 
       // Cek whitelist: apakah motor ini boleh kena dynamic pricing
       const isDynamicAllowed = motor.allow_dynamic_pricing === undefined 
@@ -78,6 +172,7 @@ router.get('/motors', async (req, res) => {
 
       return {
         ...motor,
+        stock: computedStock,
         public_name: motor.display_name || motor.name,
         current_price: currentPrice,
         current_price_12h: currentPrice12h,

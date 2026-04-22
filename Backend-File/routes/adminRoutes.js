@@ -80,13 +80,20 @@ router.use(verifyAdmin);
 router.use(auditAdmin({ actionPrefix: 'adminRoutes' }));
 
 // Normalize ISO date strings (e.g. 2026-04-22T02:00:00.000Z) into a SQLite-friendly datetime
-const dtExpr = (col) => `datetime(replace(substr(COALESCE(${col}, ''), 1, 19), 'T', ' '))`;
+const dtExpr = (col) => `CASE
+  WHEN trim(COALESCE(${col}, '')) LIKE '%Z' THEN datetime(${col}, 'localtime')
+  ELSE datetime(replace(substr(COALESCE(${col}, ''), 1, 19), 'T', ' '))
+END`;
 
 const normalizeToSqliteDateTime = (value) => {
   if (!value) return null;
-  const s = String(value);
-  // Keep first 19 chars "YYYY-MM-DDTHH:MM:SS" and normalize to "YYYY-MM-DD HH:MM:SS"
-  return s.slice(0, 19).replace('T', ' ');
+  const raw = String(value).trim();
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+  return raw.slice(0, 19).replace('T', ' ');
 };
 
 const hasUnitConflict = async ({ unitId, orderId, startDate, endDate, bufferMinutes = 0 }) => {

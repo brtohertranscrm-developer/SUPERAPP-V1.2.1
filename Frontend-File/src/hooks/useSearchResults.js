@@ -75,7 +75,14 @@ export const useSearchResults = () => {
   // Fetch motor
   useEffect(() => {
     setIsLoading(true);
-    fetch(`${API_URL}/api/motors`)
+    const startDateTime = `${startDate}T${startTime || DEFAULT_PICKUP_TIME}:00`;
+    const endDateTime = `${endDate}T${endTime || DEFAULT_RETURN_TIME}:00`;
+    const qs = new URLSearchParams({
+      start_date: startDateTime,
+      end_date: endDateTime,
+    }).toString();
+
+    fetch(`${API_URL}/api/motors?${qs}`)
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.data)) {
@@ -91,11 +98,12 @@ export const useSearchResults = () => {
         setError('Gagal mengambil data. Pastikan server Backend menyala.');
         setIsLoading(false);
       });
-  }, [API_URL]);
+  }, [API_URL, startDate, startTime, endDate, endTime]);
 
   // Filter lokal berdasarkan kota dan tipe
   const filteredResults = motors.filter(motor => {
     if (!motor) return false;
+    if ((Number(motor.stock) || 0) <= 0) return false;
     // FIX: motor.location di DB masih bisa 'Lempuyangan' atau 'Balapan'
     // → normalize dulu sebelum dibandingkan
     const motorCity = sanitizeCity(motor.location || '');

@@ -172,9 +172,11 @@ const referralRoutes    = require('./routes/referralRoutes');
 const lokerAdminRoutes  = require('./routes/lokerAdminRoutes');
 const lokerPublicRoutes = require('./routes/lokerPublicRoutes');
 const adminReferralRoutes = require('./routes/adminReferralRoutes');
+const logisticsRoutes   = require('./routes/logisticsRoutes');
 
 // Urutan penting: spesifik dulu, wildcard belakang
 app.use('/api/admin/loker',   lokerAdminRoutes);
+app.use('/api/admin/logistics', logisticsRoutes);
 app.use('/api/loker',         lokerPublicRoutes);
 app.use('/api/auth',          authRoutes);
 app.use('/api',               publicRoutes);

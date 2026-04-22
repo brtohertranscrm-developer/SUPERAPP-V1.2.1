@@ -46,6 +46,7 @@ import AdminSettings from '../pages/admin/AdminSettings';
 import AdminFinance from '../pages/admin/AdminFinance';
 import AdminReferral from '../pages/admin/AdminReferral';
 import AdminAddons from '../pages/admin/AdminAddons';
+import AdminLogistics from '../pages/admin/AdminLogistics';
 
 const AppRoutes = () => {
   return (
@@ -96,6 +97,7 @@ const AppRoutes = () => {
           <Route path="finance" element={<AdminFinance />} />
           <Route path="referral" element={<AdminReferral />} />
           <Route path="fleet" element={<AdminFleet />} />
+          <Route path="logistics" element={<AdminLogistics />} />
           
         </Route>
 

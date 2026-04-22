@@ -461,9 +461,9 @@ router.post('/bookings', async (req, res) => {
 
         const unitPrice = Math.max(0, parseInt(row.price, 10) || 0);
         const lineTotal = unitPrice * qty;
-        if (lineTotal <= 0) continue;
-
-        aFee += lineTotal;
+        // Penting untuk operasional: add-on gratis (0 rupiah) tetap disimpan
+        // agar bisa dipakai untuk info perlengkapan (helm/jas hujan) di modul logistics.
+        if (lineTotal > 0) aFee += lineTotal;
         addonLines.push({
           addon_id: row.id,
           name_snapshot: row.name,

@@ -257,6 +257,39 @@ db.serialize(() => {
     )
   `);
 
+  // --- LOGISTICS TASKS (Jadwal Pengantaran/Pengembalian Unit) ---
+  // task_type:
+  //   - 'delivery' (pengantaran unit)
+  //   - 'return'   (pengembalian unit)
+  // status:
+  //   - 'scheduled' | 'completed' | 'cancelled'
+  db.run(`
+    CREATE TABLE IF NOT EXISTS logistics_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_type TEXT NOT NULL,
+      order_id TEXT,
+      unit_id INTEGER,
+      motor_type TEXT,
+      customer_name TEXT,
+      customer_phone TEXT,
+      location_text TEXT,
+      scheduled_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      assigned_to_name TEXT,
+      notes TEXT,
+      completed_at TEXT,
+      completed_by TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (order_id) REFERENCES bookings(order_id) ON DELETE SET NULL,
+      FOREIGN KEY (unit_id) REFERENCES motor_units(id) ON DELETE SET NULL,
+      FOREIGN KEY (completed_by) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_logistics_tasks_type_status_time ON logistics_tasks(task_type, status, scheduled_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_logistics_tasks_order_id ON logistics_tasks(order_id)`);
+
   // --- ADMIN AUDIT LOGS ---
   // Audit trail untuk aksi admin (booking, finance, kyc, armada, dll).
   db.run(`

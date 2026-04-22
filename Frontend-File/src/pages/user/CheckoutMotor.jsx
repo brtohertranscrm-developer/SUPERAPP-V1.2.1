@@ -20,6 +20,8 @@ const SERVICE_FEE = 2500;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
+const normalizeName = (s) => String(s || '').trim().toLowerCase();
+
 const generateOrderId = () => {
   const now = new Date();
   const y = now.getFullYear();
@@ -263,6 +265,7 @@ export default function CheckoutMotor() {
   const [selectedAddons, setSelectedAddons] = useState({});
   const [isAddonsLoading, setIsAddonsLoading] = useState(false);
   const [addonsError, setAddonsError] = useState('');
+  const [gearInitDone, setGearInitDone] = useState(false);
 
   // Redirect if no booking data
   useEffect(() => {
@@ -408,6 +411,39 @@ export default function CheckoutMotor() {
     return items;
   }, [motorAddons, selectedAddons]);
 
+  const gearAddons = useMemo(() => {
+    const list = Array.isArray(motorAddons) ? motorAddons : [];
+
+    const find = (predicate) => {
+      const exact = list.find((a) => predicate(normalizeName(a?.name)));
+      return exact ? Number(exact.id) : null;
+    };
+
+    const helmAnakId = find((n) => n.includes('helm anak') || (n.includes('helm') && n.includes('anak')));
+    const jasHujanId = find((n) => n.includes('jas hujan'));
+    const helmId = find((n) => n.includes('helm') && !n.includes('anak'));
+
+    return { helmId, jasHujanId, helmAnakId };
+  }, [motorAddons]);
+
+  // Default operasional: 2 helm + 2 jas hujan (sekali saja, dan tidak override pilihan user)
+  useEffect(() => {
+    if (gearInitDone) return;
+    if (!motorAddons || motorAddons.length === 0) return;
+
+    const { helmId, jasHujanId } = gearAddons || {};
+    if (!helmId && !jasHujanId) return;
+
+    setSelectedAddons((prev) => {
+      const next = { ...(prev || {}) };
+      if (helmId && (next[helmId] === undefined || next[helmId] === null)) next[helmId] = 2;
+      if (jasHujanId && (next[jasHujanId] === undefined || next[jasHujanId] === null)) next[jasHujanId] = 2;
+      return next;
+    });
+
+    setGearInitDone(true);
+  }, [gearInitDone, motorAddons, gearAddons]);
+
   const addonTotal = useMemo(() => {
     const byId = new Map((motorAddons || []).map((a) => [Number(a.id), a]));
     let sum = 0;
@@ -544,6 +580,19 @@ const handleRemovePromo = () => {
       return next;
     });
   }, [motorAddons]);
+
+  const setAddonQtyById = useCallback((addonId, nextQty) => {
+    const id = Number(addonId);
+    if (!id) return;
+    const addon = (motorAddons || []).find((a) => Number(a.id) === id);
+    if (!addon) return;
+    setAddonQty(addon, nextQty);
+  }, [motorAddons, setAddonQty]);
+
+  const otherAddons = useMemo(() => {
+    const hide = new Set([gearAddons?.helmId, gearAddons?.jasHujanId, gearAddons?.helmAnakId].filter(Boolean));
+    return (motorAddons || []).filter((a) => !hide.has(Number(a.id)));
+  }, [motorAddons, gearAddons]);
 
   // ── Submit Handler ──────────────────────────────────────────────────────────
   const handleCheckout = async () => {
@@ -722,9 +771,24 @@ const handleRemovePromo = () => {
               </div>
               <div className="px-5 pb-4 flex flex-wrap gap-2">
                 {[
-                  { icon: <Users size={12} />, label: '2 Helm SNI' },
-                  { icon: <CloudRain size={12} />, label: 'Jas Hujan' },
-                  ...addonItems.map((it) => {
+                  ...(gearAddons?.helmId ? (() => {
+                    const q = Number(selectedAddons?.[gearAddons.helmId]) || 0;
+                    return q > 0 ? [{ icon: <Users size={12} />, label: `Helm x${q}` }] : [];
+                  })() : []),
+                  ...(gearAddons?.jasHujanId ? (() => {
+                    const q = Number(selectedAddons?.[gearAddons.jasHujanId]) || 0;
+                    return q > 0 ? [{ icon: <CloudRain size={12} />, label: `Jas Hujan x${q}` }] : [];
+                  })() : []),
+                  ...(gearAddons?.helmAnakId ? (() => {
+                    const q = Number(selectedAddons?.[gearAddons.helmAnakId]) || 0;
+                    return q > 0 ? [{ icon: <Users size={12} />, label: `Helm Anak x${q}` }] : [];
+                  })() : []),
+                  ...addonItems
+                    .filter((it) => {
+                      const hide = new Set([gearAddons?.helmId, gearAddons?.jasHujanId, gearAddons?.helmAnakId].filter(Boolean));
+                      return !hide.has(Number(it.id));
+                    })
+                    .map((it) => {
                     const row = motorAddons.find((a) => Number(a.id) === Number(it.id));
                     if (!row) return null;
                     const qty = Number(it.qty) || 1;
@@ -993,7 +1057,92 @@ const handleRemovePromo = () => {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {motorAddons.map((a) => {
+                  {/* Perlengkapan (sinkron untuk operasional delivery) */}
+                  <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perlengkapan</p>
+                        <p className="font-black text-slate-900 text-sm">Checklist yang dibawa tim pengantaran</p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border bg-white text-slate-700 border-slate-200">
+                        Operasional
+                      </span>
+                    </div>
+
+                    {(!gearAddons?.helmId && !gearAddons?.jasHujanId && !gearAddons?.helmAnakId) ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <p className="text-amber-700 text-xs font-bold">
+                          Add-on perlengkapan belum ada. Buat add-on bernama “Helm”, “Jas Hujan”, dan (opsional) “Helm Anak” agar sinkron ke jadwal pengantaran.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          { id: gearAddons?.helmId, label: 'Helm', icon: <Users size={16} className="text-rose-500" /> },
+                          { id: gearAddons?.jasHujanId, label: 'Jas Hujan', icon: <CloudRain size={16} className="text-rose-500" /> },
+                          { id: gearAddons?.helmAnakId, label: 'Helm Anak', icon: <Users size={16} className="text-rose-500" /> },
+                        ].filter((x) => x.id).map((x) => {
+                          const row = motorAddons.find((a) => Number(a.id) === Number(x.id));
+                          const qty = Number(selectedAddons?.[x.id]) || 0;
+                          const allowQty = Number(row?.allow_quantity) === 1;
+                          const maxQty = allowQty ? Math.max(1, Number(row?.max_qty) || 1) : 1;
+
+                          return (
+                            <div key={x.id} className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                                    {x.icon}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-slate-900 text-sm truncate">{x.label}</p>
+                                    <p className="text-[11px] text-slate-500 font-bold truncate">{row?.price ? fmtRp(row.price) : 'Gratis'}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {allowQty ? (
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setAddonQtyById(x.id, qty - 1)}
+                                    disabled={qty <= 0}
+                                    className="w-9 h-9 rounded-xl border border-slate-200 bg-white font-black text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                                  >
+                                    -
+                                  </button>
+                                  <div className="w-10 text-center font-black text-slate-900">{qty}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setAddonQtyById(x.id, qty + 1)}
+                                    disabled={qty >= maxQty}
+                                    className="w-9 h-9 rounded-xl border border-slate-200 bg-white font-black text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setAddonQtyById(x.id, qty > 0 ? 0 : 1)}
+                                  className={`shrink-0 px-4 py-2 rounded-xl font-black text-xs transition-colors ${
+                                    qty > 0
+                                      ? 'bg-slate-900 text-white hover:bg-rose-500'
+                                      : 'bg-slate-50 text-slate-900 border border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  {qty > 0 ? 'Hapus' : 'Tambah'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add-ons lainnya */}
+                  {otherAddons.map((a) => {
                     const qty = Number(selectedAddons?.[a.id]) || 0;
                     const allowQty = Number(a.allow_quantity) === 1;
                     const maxQty = allowQty ? Math.max(1, Number(a.max_qty) || 1) : 1;

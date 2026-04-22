@@ -38,7 +38,14 @@ export const useSearchPage = () => {
     setIsLoading(true);
     setError(null);
 
-    fetch(`${API_URL}/api/motors`)
+    const startDateTime = `${activeSearch.startDate}T${activeSearch.startTime || DEFAULT_PICKUP_TIME}:00`;
+    const endDateTime = `${activeSearch.endDate}T${activeSearch.endTime || DEFAULT_RETURN_TIME}:00`;
+    const qs = new URLSearchParams({
+      start_date: startDateTime,
+      end_date: endDateTime,
+    }).toString();
+
+    fetch(`${API_URL}/api/motors?${qs}`)
       .then(res => {
         if (!res.ok) throw new Error('Gagal terhubung ke server');
         return res.json();
@@ -48,6 +55,7 @@ export const useSearchPage = () => {
           // Filter berdasarkan kota yang dipilih
           const city = activeSearch.pickupLocation;
           const filtered = data.data.filter(m => {
+            if ((Number(m?.stock) || 0) <= 0) return false;
             const loc = (m.location || '').toLowerCase();
             if (city === 'Solo') return loc.includes('solo') || loc.includes('balapan');
             // Yogyakarta = semua yang bukan Solo
