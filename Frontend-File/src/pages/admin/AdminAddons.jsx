@@ -5,7 +5,14 @@ import AddonsList from '../../components/admin/addons/AddonsList';
 import AddonModal from '../../components/admin/addons/AddonModal';
 
 export default function AdminAddons() {
-  const { addons, isLoading, addAddon, editAddon, deleteAddon } = useMotorAddons();
+  const {
+    addons,
+    isLoading,
+    addAddon,
+    editAddon,
+    deleteAddon,
+    unavailableMessage,
+  } = useMotorAddons();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingData, setEditingData] = useState(null);
@@ -38,11 +45,18 @@ export default function AdminAddons() {
         </div>
         <button
           onClick={handleOpenAdd}
+          disabled={Boolean(unavailableMessage)}
           className="w-full sm:w-auto bg-slate-900 text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-500 transition-all shadow-lg active:scale-95"
         >
           <Plus size={18} /> Tambah Item
         </button>
       </div>
+
+      {unavailableMessage ? (
+        <div className="mb-6 rounded-[1.75rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800">
+          {unavailableMessage} Pull update backend terbaru lalu restart service backend untuk mengaktifkan halaman ini.
+        </div>
+      ) : null}
 
       <AddonsList
         addons={addons}
@@ -61,4 +75,3 @@ export default function AdminAddons() {
     </div>
   );
 }
-

@@ -312,8 +312,8 @@ router.post('/support/tickets', async (req, res) => {
     const ticketNumber = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     await dbRun(
-      `INSERT INTO support_tickets (ticket_number, user_id, order_id, subject, message) VALUES (?, ?, ?, ?, ?)`,
-      [ticketNumber, req.user.id, order_id || null, subject.trim(), message.trim()]
+      `INSERT INTO support_tickets (ticket_number, user_id, order_id, subject, message, status) VALUES (?, ?, ?, ?, ?, ?)`,
+      [ticketNumber, req.user.id, order_id || null, subject.trim(), message.trim(), 'pending']
     );
 
     res.status(201).json({ success: true, ticket_number: ticketNumber });

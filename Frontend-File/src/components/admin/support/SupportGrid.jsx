@@ -1,5 +1,30 @@
 import React from 'react';
-import { CheckCircle, Clock, Loader2 } from 'lucide-react';
+import { CheckCircle, Clock, Loader2, Mail, MessageCircle, Phone } from 'lucide-react';
+
+const normalizeWhatsAppNumber = (value) => {
+  const raw = String(value || '').replace(/[^\d+]/g, '');
+  if (!raw) return '';
+
+  if (raw.startsWith('62')) return raw;
+  if (raw.startsWith('+62')) return raw.slice(1);
+  if (raw.startsWith('0')) return `62${raw.slice(1)}`;
+  return raw;
+};
+
+const buildWhatsAppLink = (ticket) => {
+  const phone = normalizeWhatsAppNumber(ticket?.user_phone);
+  if (!phone) return '';
+
+  const lines = [
+    `Halo ${ticket?.user_name || 'Kak'},`,
+    `kami dari Brother Trans sedang follow up tiket ${ticket?.ticket_number || '-'}.`,
+    '',
+    `Subjek: ${ticket?.subject || '-'}`,
+    ticket?.order_id ? `Order ID: ${ticket.order_id}` : '',
+  ].filter(Boolean);
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`;
+};
 
 const SupportGrid = ({ tickets, isLoading, onUpdateStatus }) => {
   if (isLoading) {
@@ -50,6 +75,22 @@ const SupportGrid = ({ tickets, isLoading, onUpdateStatus }) => {
                 <p className="text-[10px] font-bold text-slate-400 mt-0.5">{new Date(ticket.created_at).toLocaleString('id-ID')}</p>
               </div>
             </div>
+
+            <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <Phone size={14} className="text-emerald-600 shrink-0" />
+                <span className="text-xs font-bold text-slate-700 truncate">
+                  {ticket.user_phone || 'Nomor belum tersedia'}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <Mail size={14} className="text-indigo-600 shrink-0" />
+                <span className="text-xs font-bold text-slate-700 truncate">
+                  {ticket.user_email || 'Email belum tersedia'}
+                </span>
+              </div>
+            </div>
+
             <h4 className="font-black text-slate-900 text-lg mb-2">{ticket.subject}</h4>
             <p className="text-slate-600 text-sm leading-relaxed bg-slate-50 p-4 rounded-2xl italic border border-slate-100">
               "{ticket.message}"
@@ -57,7 +98,35 @@ const SupportGrid = ({ tickets, isLoading, onUpdateStatus }) => {
           </div>
 
           {/* Action Button */}
-          <div className="mt-auto pt-2">
+          <div className="mt-auto pt-2 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <a
+                href={buildWhatsAppLink(ticket) || undefined}
+                target="_blank"
+                rel="noreferrer"
+                className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-xs font-black uppercase tracking-widest transition-colors ${
+                  ticket.user_phone
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'pointer-events-none border-slate-200 bg-slate-50 text-slate-300'
+                }`}
+              >
+                <MessageCircle size={15} />
+                Chat WA
+              </a>
+
+              <a
+                href={ticket.user_email ? `mailto:${ticket.user_email}?subject=${encodeURIComponent(`Follow up tiket ${ticket.ticket_number}`)}` : undefined}
+                className={`flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-xs font-black uppercase tracking-widest transition-colors ${
+                  ticket.user_email
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                    : 'pointer-events-none border-slate-200 bg-slate-50 text-slate-300'
+                }`}
+              >
+                <Mail size={15} />
+                Email
+              </a>
+            </div>
+
             <button 
               onClick={() => onUpdateStatus(ticket.id, ticket.status)}
               className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 shadow-sm

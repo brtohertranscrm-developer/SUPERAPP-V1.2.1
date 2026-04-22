@@ -6,7 +6,7 @@ import CodeGenerator from '../../components/admin/kyc/CodeGenerator';
 import KycTable from '../../components/admin/kyc/KycTable';
 
 export default function AdminKyc() {
-  const { kycData, isLoading, updateKycStatus } = useKyc();
+  const { kycData, isLoading, updateKycStatus, generateCode } = useKyc();
   const { rows: blacklistRows, isLoading: blacklistLoading, add, remove } = useKtpBlacklist();
 
   const blacklistedSet = new Set(
@@ -35,6 +35,7 @@ export default function AdminKyc() {
             data={kycData} 
             isLoading={isLoading} 
             onUpdateStatus={updateKycStatus}
+            onGenerateCode={generateCode}
             blacklistedSet={blacklistedSet}
           />
         </div>

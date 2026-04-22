@@ -751,6 +751,62 @@ router.get('/audit-logs', requirePermission('settings'), async (req, res) => {
 });
 
 // ==========================================
+// SUPPORT TICKETS (Akses: settings)
+// ==========================================
+router.get('/support/tickets', requirePermission('settings'), async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT
+         st.id,
+         st.ticket_number,
+         st.user_id,
+         st.order_id,
+         st.subject,
+         st.message,
+         CASE
+           WHEN st.status IN ('open', 'pending', '') OR st.status IS NULL THEN 'pending'
+           WHEN st.status IN ('done', 'closed', 'resolved', 'completed') THEN 'completed'
+           ELSE st.status
+         END AS status,
+         st.created_at,
+         COALESCE(u.name, 'Pelanggan') AS user_name,
+         u.phone AS user_phone,
+         u.email AS user_email
+       FROM support_tickets st
+       LEFT JOIN users u ON u.id = st.user_id
+       ORDER BY datetime(st.created_at) DESC, st.id DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/support/tickets error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data tiket bantuan.' });
+  }
+});
+
+router.put('/support/tickets/:id/status', requirePermission('settings'), async (req, res) => {
+  try {
+    const { status } = req.body || {};
+    if (!['pending', 'completed'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Status tiket tidak valid.' });
+    }
+
+    const result = await dbRun(
+      `UPDATE support_tickets SET status = ? WHERE id = ?`,
+      [status, req.params.id]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Tiket bantuan tidak ditemukan.' });
+    }
+
+    res.json({ success: true, message: 'Status tiket bantuan berhasil diperbarui.' });
+  } catch (err) {
+    console.error('PUT /admin/support/tickets/:id/status error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui status tiket bantuan.' });
+  }
+});
+
+// ==========================================
 // ARMADA MOTOR (Akses: armada)
 // ==========================================
 router.get('/motors', requirePermission('armada'), async (req, res) => {

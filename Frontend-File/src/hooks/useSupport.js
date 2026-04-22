@@ -1,28 +1,29 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '../utils/api';
 
 export const useSupport = () => {
   const [tickets, setTickets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  const authToken = localStorage.getItem('admin_token') || localStorage.getItem('token');
-  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+  const [unavailableMessage, setUnavailableMessage] = useState('');
+  const hasFetchedRef = useRef(false);
 
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/support/tickets`, {
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTickets(data.data);
-      }
+      const data = await apiFetch('/api/admin/support/tickets');
+      setTickets(Array.isArray(data?.data) ? data.data : []);
+      setUnavailableMessage('');
     } catch (error) {
-      console.error('Gagal mengambil data tiket bantuan:', error);
+      if (error?.status === 404) {
+        setTickets([]);
+        setUnavailableMessage('Fitur tiket bantuan belum aktif di backend yang sedang berjalan.');
+      } else {
+        console.error('Gagal mengambil data tiket bantuan:', error);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [authToken, API_URL]);
+  }, []);
 
   const updateTicketStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
@@ -33,16 +34,11 @@ export const useSupport = () => {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const res = await fetch(`${API_URL}/api/admin/support/tickets/${id}/status`, {
+      const data = await apiFetch(`/api/admin/support/tickets/${id}/status`, {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`
-        },
         body: JSON.stringify({ status: newStatus })
       });
-      const data = await res.json();
-      
+
       if (data.success) {
         fetchTickets(); 
       } else {
@@ -54,8 +50,10 @@ export const useSupport = () => {
   };
 
   useEffect(() => {
-    if (authToken) fetchTickets();
-  }, [fetchTickets, authToken]);
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+    fetchTickets();
+  }, [fetchTickets]);
 
-  return { tickets, isLoading, updateTicketStatus };
+  return { tickets, isLoading, updateTicketStatus, unavailableMessage, refetchTickets: fetchTickets };
 };

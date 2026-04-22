@@ -5,7 +5,7 @@ import SupportToolbar from '../../components/admin/support/SupportToolbar';
 import SupportGrid from '../../components/admin/support/SupportGrid';
 
 export default function AdminSupport() {
-  const { tickets, isLoading, updateTicketStatus } = useSupport();
+  const { tickets, isLoading, updateTicketStatus, unavailableMessage } = useSupport();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('Semua');
 
@@ -39,6 +39,12 @@ export default function AdminSupport() {
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
       />
+
+      {unavailableMessage ? (
+        <div className="mb-6 rounded-[1.75rem] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800">
+          {unavailableMessage} Pull update backend terbaru lalu restart service backend untuk menampilkan tiket user di halaman ini.
+        </div>
+      ) : null}
 
       {/* GRID DAFTAR TIKET */}
       <SupportGrid 

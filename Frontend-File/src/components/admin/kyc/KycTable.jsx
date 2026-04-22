@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Search, Loader2, MessageCircle, CheckCircle, XCircle, User, Power } from 'lucide-react';
+import { Search, Loader2, MessageCircle, CheckCircle, XCircle, User, Power, Key } from 'lucide-react';
 
-const KycTable = ({ data, isLoading, onUpdateStatus, blacklistedSet }) => {
+const KycTable = ({ data, isLoading, onUpdateStatus, onGenerateCode, blacklistedSet }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const formatWaNumber = (phone) => {
@@ -78,9 +78,11 @@ const KycTable = ({ data, isLoading, onUpdateStatus, blacklistedSet }) => {
                         <MessageCircle size={16} /> WA: {user.phone}
                       </a>
                     </td>
-                    <td className="p-5 text-center">
+	                    <td className="p-5 text-center">
 	                      {user.kyc_status === 'verified' ? (
 	                        <span className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 w-fit mx-auto"><CheckCircle size={12}/> Terverifikasi</span>
+	                      ) : user.kyc_status === 'pending' ? (
+	                        <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 w-fit mx-auto"><User size={12}/> Pending</span>
 	                      ) : user.kyc_status === 'rejected' ? (
                         <span className="bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 w-fit mx-auto"><XCircle size={12}/> Ditolak</span>
                       ) : (
@@ -89,6 +91,14 @@ const KycTable = ({ data, isLoading, onUpdateStatus, blacklistedSet }) => {
                     </td>
                     <td className="p-5 text-right">
                       <div className="flex justify-end items-center gap-2">
+	                        {user.kyc_status !== 'verified' && (
+	                          <button
+                              onClick={() => onGenerateCode(user.id, user.name)}
+                              className="px-4 py-2 bg-white text-indigo-600 text-xs font-bold rounded-xl border border-indigo-100 hover:bg-indigo-50 transition-colors shadow-sm active:scale-95 inline-flex items-center gap-1.5"
+                            >
+                              <Key size={14} /> {user.kyc_code ? 'Kode Baru' : 'Buat Kode'}
+                            </button>
+                          )}
 	                        {user.kyc_status !== 'verified' ? (
 	                          <button onClick={() => onUpdateStatus(user.id, 'verified', user.name)} className="px-4 py-2 bg-brand-dark text-white text-xs font-bold rounded-xl hover:bg-amber-500 transition-colors shadow-sm active:scale-95">Verifikasi Manual</button>
 	                        ) : (
