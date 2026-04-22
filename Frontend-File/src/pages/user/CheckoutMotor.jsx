@@ -11,7 +11,7 @@ import {
   formatBillableSummary,
   formatDateTimeForInput,
 } from '../../utils/motorRentalPricing';
-import { parseLatLngFromText } from '../../utils/geo';
+import { formatLatLng, parseLatLngFromText } from '../../utils/geo';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
@@ -390,6 +390,26 @@ export default function CheckoutMotor() {
     }
   }, [pickupLocation]);
 
+  const parsedLatLng = parseLatLngFromText(mapsInput);
+
+  // Auto quote when user pastes maps link/coords (no Google API needed)
+  useEffect(() => {
+    if (handoverMethod !== 'delivery') return;
+    if (deliveryTarget !== 'address') return;
+    if (!parsedLatLng) return;
+
+    const t = setTimeout(() => {
+      requestDeliveryQuote({
+        type: 'address',
+        lat: parsedLatLng.lat,
+        lng: parsedLatLng.lng,
+        address: deliveryAddress || null,
+      });
+    }, 700);
+
+    return () => clearTimeout(t);
+  }, [handoverMethod, deliveryTarget, parsedLatLng?.lat, parsedLatLng?.lng, deliveryAddress, requestDeliveryQuote]);
+
   // Auto quote for station-free delivery
   useEffect(() => {
     if (handoverMethod !== 'delivery') {
@@ -736,7 +756,7 @@ export default function CheckoutMotor() {
                           placeholder="Tempel link Google Maps atau: -7.79,110.37"
                         />
                         <p className="text-[11px] text-slate-500 font-medium mt-1">
-                          Tip: di Google Maps pilih Share lalu Copy link, tempel di sini.
+                          Tip: di Google Maps tekan tahan lokasi sampai pin muncul, lalu Share → Copy link.
                         </p>
                       </div>
 
@@ -754,8 +774,40 @@ export default function CheckoutMotor() {
                         className="w-full py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-slate-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {isDeliveryLoading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
-                        Hitung Biaya Pengantaran
+                        Hitung Ulang Estimasi
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeliveryError('');
+                          if (!navigator?.geolocation) {
+                            setDeliveryError('Browser tidak mendukung GPS.');
+                            return;
+                          }
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              const lat = pos.coords.latitude;
+                              const lng = pos.coords.longitude;
+                              const text = formatLatLng(lat, lng);
+                              setMapsInput(text);
+                              requestDeliveryQuote({ type: 'address', lat, lng, address: deliveryAddress || null });
+                            },
+                            () => setDeliveryError('Gagal mengambil lokasi. Pastikan izin lokasi (GPS) diizinkan.'),
+                            { enableHighAccuracy: true, timeout: 8000 }
+                          );
+                        }}
+                        disabled={isDeliveryLoading}
+                        className="w-full py-3 bg-white text-slate-900 font-black rounded-xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        <MapPin size={16} /> Gunakan Lokasi Saya
+                      </button>
+
+                      {parsedLatLng && (
+                        <p className="text-[11px] text-slate-500 font-medium">
+                          Koordinat terbaca: <span className="font-mono font-black">{formatLatLng(parsedLatLng.lat, parsedLatLng.lng)}</span>
+                        </p>
+                      )}
 
                       {deliveryQuote && (
                         <div className="bg-white border border-emerald-200 rounded-2xl p-4">
@@ -764,6 +816,9 @@ export default function CheckoutMotor() {
                           </p>
                           <p className="text-[11px] text-slate-500 font-medium mt-1">
                             Jarak: {deliveryQuote.distance_km} km ({deliveryQuote.method})
+                          </p>
+                          <p className="text-[11px] text-amber-700 font-bold mt-2">
+                            Catatan: estimasi jarak dihitung garis lurus (tanpa Maps API). Biaya final bisa disesuaikan admin.
                           </p>
                         </div>
                       )}
