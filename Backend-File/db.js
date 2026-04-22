@@ -41,6 +41,7 @@ db.serialize(() => {
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       phone TEXT NOT NULL,
+      ktp_id TEXT,
       role TEXT DEFAULT 'user',
       permissions TEXT DEFAULT '[]',
       kyc_status TEXT DEFAULT 'unverified',
@@ -60,6 +61,18 @@ db.serialize(() => {
       locked_until INTEGER DEFAULT NULL,
       last_login TEXT DEFAULT NULL,
       join_date TEXT NOT NULL
+    )
+  `);
+
+  // --- KTP BLACKLIST ---
+  // Dipakai untuk menolak registrasi berdasarkan ID KTP yang bermasalah.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ktp_blacklist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ktp_id TEXT UNIQUE NOT NULL,
+      reason TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
     )
   `);
 
@@ -421,6 +434,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'bank_name', 'TEXT');
   addColumnIfNotExists('users', 'referred_by', 'TEXT');
   addColumnIfNotExists('users', 'has_reviewed_gmaps', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'ktp_id', 'TEXT');
 
   // [FIX 3] Users — kolom auth yang sebelumnya hilang
   addColumnIfNotExists('users', 'login_attempts', 'INTEGER DEFAULT 0');
@@ -505,6 +519,8 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_price_rules_type ON price_rules(rule_type, is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_promotions_code ON promotions(code)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_ktp_id ON users(ktp_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ktp_blacklist_ktp_id ON ktp_blacklist(ktp_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id)`);
 
   // Finance indexes

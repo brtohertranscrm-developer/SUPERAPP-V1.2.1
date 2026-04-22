@@ -178,12 +178,65 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
 router.get('/kyc', requirePermission('users'), async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT id, name, email, phone, kyc_status, kyc_code, miles FROM users WHERE role = 'user' ORDER BY join_date DESC`
+      `SELECT id, name, email, phone, ktp_id, kyc_status, kyc_code, miles
+       FROM users WHERE role = 'user' ORDER BY join_date DESC`
     );
     res.json({ success: true, data: rows });
   } catch (err) {
     console.error('GET /admin/kyc error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data KYC.' });
+  }
+});
+
+// ==========================================
+// KTP BLACKLIST (Akses: users)
+// ==========================================
+router.get('/ktp-blacklist', requirePermission('users'), async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, ktp_id, reason, created_by, created_at
+       FROM ktp_blacklist ORDER BY created_at DESC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/ktp-blacklist error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil blacklist KTP.' });
+  }
+});
+
+router.post('/ktp-blacklist', requirePermission('users'), async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const ktp_id = String(raw.ktp_id || raw.nik || '').replace(/\D/g, '');
+    const reason = raw.reason ? String(raw.reason).trim().slice(0, 500) : null;
+    if (!ktp_id || ktp_id.length !== 16) {
+      return res.status(400).json({ success: false, error: 'ID KTP harus 16 digit angka.' });
+    }
+
+    await dbRun(
+      `INSERT OR REPLACE INTO ktp_blacklist (ktp_id, reason, created_by, created_at)
+       VALUES (?, ?, ?, datetime('now'))`,
+      [ktp_id, reason, req.user.id]
+    );
+
+    res.status(201).json({ success: true, message: 'KTP berhasil ditambahkan ke blacklist.' });
+  } catch (err) {
+    console.error('POST /admin/ktp-blacklist error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan blacklist KTP.' });
+  }
+});
+
+router.delete('/ktp-blacklist/:ktpId', requirePermission('users'), async (req, res) => {
+  try {
+    const ktp_id = String(req.params.ktpId || '').replace(/\D/g, '');
+    if (!ktp_id || ktp_id.length !== 16) {
+      return res.status(400).json({ success: false, error: 'ID KTP tidak valid.' });
+    }
+    await dbRun(`DELETE FROM ktp_blacklist WHERE ktp_id = ?`, [ktp_id]);
+    res.json({ success: true, message: 'KTP berhasil dihapus dari blacklist.' });
+  } catch (err) {
+    console.error('DELETE /admin/ktp-blacklist/:ktpId error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus blacklist KTP.' });
   }
 });
 
@@ -427,7 +480,9 @@ router.get('/bookings', requirePermission('booking'), async (req, res) => {
         (Number(b.addon_fee) || 0) + (Number(b.delivery_fee) || 0);
         
       const final_total  = calc_total > 0 ? calc_total : (Number(b.total_price) || 0);
-      const outstanding  = Math.max(0, final_total - (Number(b.paid_amount) || 0));
+      const outstanding  = b.payment_status === 'paid'
+        ? 0
+        : Math.max(0, final_total - (Number(b.paid_amount) || 0));
 
       return { ...b, total_price: final_total, outstanding_amount: outstanding };
     });
@@ -465,7 +520,9 @@ router.get('/bookings/:orderId', requirePermission('booking'), async (req, res) 
         (Number(row.addon_fee) || 0) + (Number(row.delivery_fee) || 0);
         
     const final_total = calc_total > 0 ? calc_total : (Number(row.total_price) || 0);
-    const outstanding = Math.max(0, final_total - (Number(row.paid_amount) || 0));
+    const outstanding = row.payment_status === 'paid'
+      ? 0
+      : Math.max(0, final_total - (Number(row.paid_amount) || 0));
 
     res.json({ success: true, data: { ...row, total_price: final_total, outstanding_amount: outstanding } });
   } catch (err) {
@@ -514,12 +571,52 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
       return res.status(400).json({ success: false, error: 'Status tidak valid.' });
     }
 
+    // Fetch current booking to support syncing paid_amount when payment_status is changed.
+    const current = await dbGet(
+      `SELECT order_id,
+              IFNULL(base_price, 0) as base_price,
+              IFNULL(discount_amount, 0) as discount_amount,
+              IFNULL(service_fee, 0) as service_fee,
+              IFNULL(extend_fee, 0) as extend_fee,
+              IFNULL(addon_fee, 0) as addon_fee,
+              IFNULL(delivery_fee, 0) as delivery_fee,
+              IFNULL(paid_amount, 0) as paid_amount,
+              IFNULL(total_price, 0) as total_price,
+              payment_status
+       FROM bookings WHERE order_id = ? LIMIT 1`,
+      [req.params.orderId]
+    );
+    if (!current) {
+      return res.status(404).json({ success: false, error: 'Transaksi tidak ditemukan.' });
+    }
+
+    const calcTotal =
+      (Number(current.base_price) || 0) -
+      (Number(current.discount_amount) || 0) +
+      (Number(current.service_fee) || 0) +
+      (Number(current.extend_fee) || 0) +
+      (Number(current.addon_fee) || 0) +
+      (Number(current.delivery_fee) || 0);
+
+    const finalTotal = calcTotal > 0 ? calcTotal : (Number(current.total_price) || 0);
+
     let setClauses = ['status = ?'];
     let params = [status];
 
     if (payment_status) { setClauses.push('payment_status = ?'); params.push(payment_status); }
     if (unit_id)        { setClauses.push('unit_id = ?');        params.push(unit_id); }
     if (plate_number)   { setClauses.push('plate_number = ?');   params.push(plate_number); }
+
+    // Sync paid_amount so "outstanding" becomes correct.
+    // This complements finance reconciliation flow which already updates paid_amount.
+    if (payment_status === 'paid') {
+      setClauses.push('paid_amount = ?');
+      params.push(finalTotal);
+    }
+    if (payment_status === 'unpaid') {
+      setClauses.push('paid_amount = ?');
+      params.push(0);
+    }
 
     params.push(req.params.orderId);
 

@@ -276,10 +276,12 @@ router.post('/register', registerLimiter, async (req, res) => {
     const name       = sanitize(raw.name       || '');
     const email      = sanitize(raw.email      || '').toLowerCase();
     const phone      = sanitize(raw.phone      || '');
+    const ktpIdRaw   = sanitize(raw.ktp_id || raw.nik || '');
+    const ktp_id     = ktpIdRaw.replace(/\D/g, '');
     const password   = typeof raw.password === 'string' ? raw.password : '';
     const referredBy = raw.referred_by ? sanitize(raw.referred_by).toUpperCase() : null;
 
-    if (!name || !email || !password || !phone) {
+    if (!name || !email || !password || !phone || !ktp_id) {
       return res.status(400).json({ success: false, error: 'Semua field wajib diisi.' });
     }
     if (name.length < 2) {
@@ -290,6 +292,9 @@ router.post('/register', registerLimiter, async (req, res) => {
     }
     if (!isValidPhone(phone)) {
       return res.status(400).json({ success: false, error: 'Format nomor HP tidak valid.' });
+    }
+    if (ktp_id.length !== 16) {
+      return res.status(400).json({ success: false, error: 'ID KTP (NIK) harus 16 digit angka.' });
     }
     if (password.length < 6) {
       return res.status(400).json({ success: false, error: 'Password minimal 6 karakter.' });
@@ -304,15 +309,27 @@ router.post('/register', registerLimiter, async (req, res) => {
       return res.status(409).json({ success: false, error: 'Email sudah terdaftar.' });
     }
 
+    const existingKtp = await dbGet(`SELECT id FROM users WHERE ktp_id = ? LIMIT 1`, [ktp_id]);
+    if (existingKtp) {
+      await new Promise((r) => setTimeout(r, 250 + Math.random() * 150));
+      return res.status(409).json({ success: false, error: 'ID KTP sudah terdaftar.' });
+    }
+
+    const blacklisted = await dbGet(`SELECT id FROM ktp_blacklist WHERE ktp_id = ? LIMIT 1`, [ktp_id]);
+    if (blacklisted) {
+      await new Promise((r) => setTimeout(r, 250 + Math.random() * 150));
+      return res.status(403).json({ success: false, error: 'Registrasi ditolak. Silakan hubungi admin.' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userId         = crypto.randomUUID();
     const joinDate       = new Date().toISOString();
     const referralCode   = generateReferralCode();
 
     await dbRun(
-      `INSERT INTO users (id, name, email, phone, password, join_date, referral_code, referred_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [userId, name, email, phone, hashedPassword, joinDate, referralCode, referredBy]
+      `INSERT INTO users (id, name, email, phone, ktp_id, password, join_date, referral_code, referred_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, name, email, phone, ktp_id, hashedPassword, joinDate, referralCode, referredBy]
     );
 
     let referralBonus = 0;

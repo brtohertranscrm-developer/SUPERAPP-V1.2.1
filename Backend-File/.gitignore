@@ -16,3 +16,7 @@ yarn-error.log*
 *.db
 *.db-shm
 *.db-wal
+
+# 6. Uploads runtime (bukti transfer, artikel, dll)
+uploads/
+uploads/**

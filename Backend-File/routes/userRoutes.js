@@ -272,7 +272,9 @@ router.get('/users/history', async (req, res) => {
         (Number(booking.delivery_fee) || 0);
 
       const totalPrice = calcTotal > 0 ? calcTotal : (Number(booking.total_price) || 0);
-      const outstandingAmount = Math.max(0, totalPrice - (Number(booking.paid_amount) || 0));
+      const outstandingAmount = booking.payment_status === 'paid'
+        ? 0
+        : Math.max(0, totalPrice - (Number(booking.paid_amount) || 0));
 
       return {
         ...booking,
@@ -528,7 +530,9 @@ router.get('/bookings/:orderId', async (req, res) => {
       (Number(row.delivery_fee) || 0);
 
     const totalPrice = calcTotal > 0 ? calcTotal : (Number(row.total_price) || 0);
-    const outstandingAmount = Math.max(0, totalPrice - (Number(row.paid_amount) || 0));
+    const outstandingAmount = row.payment_status === 'paid'
+      ? 0
+      : Math.max(0, totalPrice - (Number(row.paid_amount) || 0));
 
     res.json({
       success: true,

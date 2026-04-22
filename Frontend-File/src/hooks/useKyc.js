@@ -32,7 +32,7 @@ export const useKyc = () => {
   }, [API_URL]); // Hapus ketergantungan pada token statis
 
   const updateKycStatus = async (id, newStatus, userName) => {
-    const actionName = newStatus === 'approved' ? 'MENYETUJUI' : 'MENCABUT';
+    const actionName = newStatus === 'verified' ? 'MEMVERIFIKASI' : 'MENCABUT';
     if (!window.confirm(`Anda yakin ingin ${actionName} verifikasi akun ${userName}?`)) return;
 
     try {

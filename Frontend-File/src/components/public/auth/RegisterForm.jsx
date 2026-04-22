@@ -152,7 +152,7 @@ const FieldErr = ({ msg }) =>
 // --- Komponen utama -----------------------------------------------------------
 const RegisterForm = ({ isLoading, error, onSubmit }) => {
   const [formData, setFormData] = useState({
-    name: '', email: '', phone: '', password: '', referred_by: '',
+    name: '', email: '', phone: '', ktp_id: '', password: '', referred_by: '',
   });
   const [fieldError, setFieldError] = useState({});
   const [submitted,  setSubmitted]  = useState(false);
@@ -169,6 +169,8 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
     if (!isValidEmail(sanitize(formData.email)))           errs.email    = 'Format email tidak valid.';
     const ph = formatPhone(formData.phone);
     if (!ph || ph.length < 10 || ph.length > 15)          errs.phone    = 'Nomor HP tidak valid (10-15 digit).';
+    const ktp = String(formData.ktp_id || '').replace(/\D/g, '');
+    if (ktp.length !== 16)                                 errs.ktp_id   = 'ID KTP (NIK) harus 16 digit angka.';
     if (!formData.password || formData.password.length < 6) errs.password = 'Password minimal 6 karakter.';
     setFieldError(errs);
     return Object.keys(errs).length === 0;
@@ -184,6 +186,7 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
       name:        sanitize(formData.name),
       email:       sanitize(formData.email).toLowerCase(),
       phone:       formatPhone(formData.phone),
+      ktp_id:      String(formData.ktp_id || '').replace(/\D/g, ''),
       password:    formData.password,
       referred_by: formData.referred_by || undefined,
     });
@@ -255,6 +258,29 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
             />
           </div>
           <FieldErr msg={fieldError.phone} />
+        </div>
+
+        {/* KTP / NIK */}
+        <div>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">ID KTP (NIK)</label>
+          <div className="relative">
+            <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+            <input
+              type="text"
+              name="ktp_id"
+              value={formData.ktp_id}
+              onChange={(e) => handleChange({ target: { name: 'ktp_id', value: e.target.value.replace(/\\D/g, '').slice(0, 16) } })}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="16 digit"
+              className={`w-full py-4 bg-slate-50 border rounded-2xl text-sm font-bold text-slate-900 focus:ring-2 focus:border-transparent outline-none transition-all placeholder:text-slate-300 placeholder:font-normal ${fieldError.ktp_id ? 'border-red-300 focus:ring-red-300' : 'border-slate-200 focus:ring-brand-primary'}`}
+              style={{ paddingLeft: '3.25rem' }}
+            />
+          </div>
+          <FieldErr msg={fieldError.ktp_id} />
+          <p className="text-[10px] text-slate-400 font-medium mt-1 ml-1">
+            Dipakai untuk pencocokan saat verifikasi dan pencegahan akun bermasalah.
+          </p>
         </div>
 
         {/* Password + strength */}

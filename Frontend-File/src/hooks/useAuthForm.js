@@ -176,6 +176,7 @@ export const useAuthForm = () => {
     const name      = sanitize(rawData.name);
     const email     = sanitize(rawData.email).toLowerCase();
     const phone     = formatPhone(sanitize(rawData.phone));
+    const ktp_id    = sanitize(rawData.ktp_id || '').replace(/\D/g, '');
     const password  = rawData.password;
     const referredBy = rawData.referred_by ? sanitize(rawData.referred_by).toUpperCase() : undefined;
 
@@ -195,6 +196,11 @@ export const useAuthForm = () => {
       setIsLoading(false);
       return;
     }
+    if (!ktp_id || ktp_id.length !== 16) {
+      setError('ID KTP (NIK) harus 16 digit angka.');
+      setIsLoading(false);
+      return;
+    }
     if (!password || password.length < 6) {
       setError('Password minimal 6 karakter.');
       setIsLoading(false);
@@ -203,7 +209,7 @@ export const useAuthForm = () => {
 
     try {
       const result = await authFetch('/api/auth/register', {
-        name, email, phone, password,
+        name, email, phone, ktp_id, password,
         ...(referredBy ? { referred_by: referredBy } : {}),
       });
 
