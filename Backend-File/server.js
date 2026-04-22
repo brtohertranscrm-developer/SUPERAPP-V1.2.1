@@ -152,6 +152,17 @@ app.use('/uploads', (req, res, next) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 // 7. ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
+// 8. HEALTH CHECK (PUBLIC)
+// Harus didefinisikan SEBELUM mount routes '/api' yang mungkin memakai verifyUser.
+app.get('/api/health', (req, res) => {
+  res.json({
+    success:   true,
+    status:    'ok',
+    timestamp: new Date().toISOString(),
+    uptime:    Math.round(process.uptime()),
+  });
+});
+
 const authRoutes        = require('./routes/authRoutes');
 const publicRoutes      = require('./routes/publicRoutes');
 const userRoutes        = require('./routes/userRoutes');
@@ -172,18 +183,6 @@ app.use('/api',               referralRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/admin/finance', financeRoutes);
 app.use('/api/admin/referral', adminReferralRoutes);
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// 8. HEALTH CHECK
-// ═══════════════════════════════════════════════════════════════════════════════
-app.get('/api/health', (req, res) => {
-  res.json({
-    success:   true,
-    status:    'ok',
-    timestamp: new Date().toISOString(),
-    uptime:    Math.round(process.uptime()),
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 9. 404 HANDLER
