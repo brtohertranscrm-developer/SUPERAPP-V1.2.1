@@ -1,9 +1,9 @@
 import React from 'react';
-import { TrendingUp, Bike, Package, AlertCircle, ClipboardList, Wallet } from 'lucide-react';
+import { TrendingUp, Bike, Package, AlertCircle, ClipboardList, Wallet, BadgeCheck } from 'lucide-react';
 
 const StatsPanel = ({ stats, formatRupiah }) => {
-  const paidRevenue = stats?.revenue_paid ?? stats?.revenue ?? 0;
-  const grossRevenue = stats?.revenue_gross ?? 0;
+  const grossRevenue = stats?.revenue_gross ?? stats?.revenue ?? 0;
+  const paidRevenue = stats?.revenue_paid ?? 0;
   const pendingAmount = stats?.pending_payment_amount ?? 0;
   const pendingCount = stats?.pending_payment_count ?? 0;
 
@@ -15,17 +15,17 @@ const StatsPanel = ({ stats, formatRupiah }) => {
         </div>
         <div className="relative z-10">
           <div className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 flex items-center gap-2 italic">
-            <TrendingUp size={14} className="text-emerald-400" /> Pendapatan Dibayar
+            <TrendingUp size={14} className="text-emerald-400" /> Nilai Transaksi (Gross)
           </div>
           <div className="text-4xl sm:text-5xl font-black text-white tracking-tighter drop-shadow-lg">
-            {formatRupiah(paidRevenue)}
+            {formatRupiah(grossRevenue)}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold">
             <span className="px-3 py-1 rounded-full bg-white/10 text-slate-200">
               {stats?.periodLabel || 'Periode Terpilih'}
             </span>
-            <span className="px-3 py-1 rounded-full bg-white/10 text-slate-200">
-              Gross: {formatRupiah(grossRevenue)}
+            <span className="px-3 py-1 rounded-full bg-emerald-400/20 text-emerald-200 flex items-center gap-1.5">
+              <BadgeCheck size={14} /> Paid: {formatRupiah(paidRevenue)}
             </span>
             <span className={`px-3 py-1 rounded-full ${pendingCount > 0 ? 'bg-amber-400/20 text-amber-200' : 'bg-white/10 text-slate-200'}`}>
               Outstanding: {formatRupiah(pendingAmount)}

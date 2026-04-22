@@ -223,7 +223,8 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
       data: {
         period: period,
         periodLabel,
-        revenue: revenuePaid.total, // backward-compatible: "revenue" means paid revenue for selected period
+        // backward-compatible: "revenue" historically meant total nilai booking (gross)
+        revenue: revenueGross.total,
         revenue_paid: revenuePaid.total,
         revenue_gross: revenueGross.total,
         paid_bookings: paidCount.count,
