@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Bike, Package, MapPin, AlertTriangle, QrCode, CalendarPlus,
   ChevronLeft, ChevronRight, CheckCircle2, Clock,
   AlertCircle, Flame, CreditCard, Wrench
 } from 'lucide-react';
+import { apiFetch } from '../../../utils/api';
+import TripTicketModal from '../history/TripTicketModal';
 
 // ─── Helper: hitung hari tersisa ─────────────────────────────────────────────
 const getDaysRemaining = (endDateStr) => {
@@ -125,10 +127,14 @@ const StatusBanner = ({ ticketState }) => {
 // ─── Main Component ───────────────────────────────────────────────────────────
 const ActiveBookingCard = ({
   order, activeOrder, navigate, handleExtend,
+  user,
   currentOrderIndex = 0, totalOrders = 1,
   goToPrevOrder, goToNextOrder,
 }) => {
   const data = activeOrder || order;
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const [ticketDetail, setTicketDetail] = useState(null);
+  const [isTicketLoading, setIsTicketLoading] = useState(false);
 
   // Empty state
   if (!data && totalOrders === 0) {
@@ -150,12 +156,41 @@ const ActiveBookingCard = ({
 
   if (!data) return null;
 
+  const fmtDateTime = (value) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   const ticketState = useMemo(
     () => resolveTicketState(data.status, data.payment_status, data.endDate),
     [data.status, data.payment_status, data.endDate]
   );
 
   const ItemIcon = data.item_type === 'locker' ? Package : Bike;
+  const startText = fmtDateTime(data.startDate);
+  const endText = fmtDateTime(data.endDate);
+
+  const openTicket = async () => {
+    setTicketOpen(true);
+    setIsTicketLoading(true);
+    setTicketDetail(null);
+    try {
+      const res = await apiFetch(`/api/bookings/${encodeURIComponent(String(data.id))}`);
+      setTicketDetail(res?.data || null);
+    } catch {
+      setTicketDetail(null);
+    } finally {
+      setIsTicketLoading(false);
+    }
+  };
 
   return (
     <div className="relative w-full mx-auto mb-10 animate-fade-in-up">
@@ -227,6 +262,11 @@ const ActiveBookingCard = ({
                 <p className="text-slate-300 text-xs sm:text-sm font-medium flex items-center gap-1.5">
                   <MapPin size={14} className="text-rose-500" /> {data.location || 'Lokasi belum diset'}
                 </p>
+                {data.plate_number && (
+                  <p className="text-slate-400 text-[11px] font-black mt-1 uppercase tracking-widest">
+                    Plat: <span className="text-white">{data.plate_number}</span>
+                  </p>
+                )}
               </div>
             </div>
 
@@ -234,11 +274,11 @@ const ActiveBookingCard = ({
             <div className="grid grid-cols-2 gap-4 bg-white/5 p-5 rounded-2xl border border-white/10 relative z-10">
               <div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pick-up (Ambil)</span>
-                <span className="font-bold text-white text-xs sm:text-sm">{data.startDate}</span>
+                <span className="font-bold text-white text-xs sm:text-sm">{startText}</span>
               </div>
               <div>
                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Drop-off (Kembali)</span>
-                <span className="font-bold text-white text-xs sm:text-sm">{data.endDate}</span>
+                <span className="font-bold text-white text-xs sm:text-sm">{endText}</span>
               </div>
             </div>
 
@@ -296,6 +336,10 @@ const ActiveBookingCard = ({
                 <AlertTriangle size={14} className="text-rose-500 group-hover:scale-110 transition-transform" /> Darurat
               </button>
               <div className="w-px h-6 bg-white/10" />
+              <button onClick={openTicket} className="text-[10px] font-black text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors uppercase tracking-widest flex-1 justify-center group">
+                <QrCode size={14} className="text-emerald-400 group-hover:scale-110 transition-transform" /> E-Tiket
+              </button>
+              <div className="w-px h-6 bg-white/10" />
               <button onClick={() => handleExtend && handleExtend(data.id)} className="text-[10px] font-black text-slate-400 hover:text-white flex items-center gap-1.5 transition-colors uppercase tracking-widest flex-1 justify-center group">
                 <CalendarPlus size={14} className="text-blue-400 group-hover:scale-110 transition-transform" /> Extend
               </button>
@@ -304,6 +348,15 @@ const ActiveBookingCard = ({
           </div>
         </div>
       </div>
+
+      {ticketOpen && (
+        <TripTicketModal
+          ticket={ticketDetail || (isTicketLoading ? { order_id: data.id, item_name: data.item, location: data.location, start_date: data.startDate, end_date: data.endDate, total_price: data.total_price, status: data.status, payment_status: data.payment_status, plate_number: data.plate_number, delivery_type: data.delivery_type, delivery_address: data.delivery_address } : null)}
+          onClose={() => { setTicketOpen(false); setTicketDetail(null); setIsTicketLoading(false); }}
+          user={user}
+          isLoading={isTicketLoading}
+        />
+      )}
 
       {totalOrders > 1 && (
         <p className="text-center text-[10px] text-slate-400 font-medium mt-2">

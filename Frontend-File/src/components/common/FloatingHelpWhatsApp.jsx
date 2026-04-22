@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, X, MapPin, Headset, Search, Calendar, CreditCard, ChevronRight, Bike } from 'lucide-react';
+import { MessageCircle, X, MapPin, Headset, Search, Calendar, CreditCard, ChevronRight, Bike, ChevronDown } from 'lucide-react';
 import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 export default function FloatingHelpWhatsApp({ cityHint }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [showAdminHelp, setShowAdminHelp] = useState(false);
 
   const tutorialSteps = [
     {
@@ -107,6 +108,7 @@ export default function FloatingHelpWhatsApp({ cityHint }) {
               type="button"
               onClick={() => {
                 setOpen(false);
+                setShowAdminHelp(false);
                 navigate('/motor');
               }}
               className="w-full mt-4 bg-slate-900 text-white rounded-2xl px-4 py-3 font-black text-sm hover:bg-rose-500 transition-colors flex items-center justify-center gap-2"
@@ -114,38 +116,57 @@ export default function FloatingHelpWhatsApp({ cityHint }) {
               Mulai Booking Sekarang <ChevronRight size={16} />
             </button>
 
-            <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2 flex items-center gap-2">
-                <Headset size={12} /> Jika Masih Perlu Bantuan
-              </p>
-              <div className="space-y-2">
-                {items.map((it) => (
-                  <a
-                    key={it.key}
-                    href={it.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-emerald-100 bg-white hover:bg-emerald-50 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-black text-slate-900 text-sm truncate flex items-center gap-2">
-                        <MapPin size={14} className="text-emerald-600" />
-                        {it.title}
-                      </p>
-                      <p className="text-xs text-slate-500 font-medium truncate mt-1">
-                        {it.subtitle}
-                      </p>
-                    </div>
-                    <div className="shrink-0 px-3 py-2 rounded-xl bg-[#25D366] text-white font-black text-xs">
-                      Chat
-                    </div>
-                  </a>
-                ))}
-              </div>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <button
+                type="button"
+                onClick={() => setShowAdminHelp((v) => !v)}
+                className="w-full flex items-center justify-between gap-3 text-left px-1"
+              >
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <Headset size={12} /> Bantuan Admin
+                  </p>
+                  <p className="text-sm font-black text-slate-900 mt-1">
+                    Masih bingung atau belum berhasil booking?
+                  </p>
+                </div>
+                <div className={`w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 transition-transform ${showAdminHelp ? 'rotate-180' : ''}`}>
+                  <ChevronDown size={16} />
+                </div>
+              </button>
 
-              <p className="text-[11px] text-slate-500 font-medium mt-3 leading-relaxed">
-                Kalau sudah sampai checkout atau sudah punya kode booking, kirim detail itu ke admin agar dibantu lebih cepat.
-              </p>
+              {showAdminHelp && (
+                <div className="mt-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 animate-fade-in-up">
+                  <div className="space-y-2">
+                    {items.map((it) => (
+                      <a
+                        key={it.key}
+                        href={it.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-emerald-100 bg-white hover:bg-emerald-50 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-black text-slate-900 text-sm truncate flex items-center gap-2">
+                            <MapPin size={14} className="text-emerald-600" />
+                            {it.title}
+                          </p>
+                          <p className="text-xs text-slate-500 font-medium truncate mt-1">
+                            {it.subtitle}
+                          </p>
+                        </div>
+                        <div className="shrink-0 px-3 py-2 rounded-xl bg-[#25D366] text-white font-black text-xs">
+                          Chat
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 font-medium mt-3 leading-relaxed">
+                    Kalau sudah sampai checkout atau sudah punya kode booking, kirim detail itu ke admin agar dibantu lebih cepat.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -153,7 +174,13 @@ export default function FloatingHelpWhatsApp({ cityHint }) {
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => {
+            const next = !v;
+            if (!next) setShowAdminHelp(false);
+            return next;
+          });
+        }}
         className="w-14 h-14 rounded-2xl shadow-2xl bg-[#25D366] hover:bg-[#20bd5a] text-white flex items-center justify-center transition-colors active:scale-95"
         aria-label="Panduan Booking"
       >

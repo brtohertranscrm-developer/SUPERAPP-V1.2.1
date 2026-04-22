@@ -161,6 +161,7 @@ export default function Dashboard() {
             <ActiveBookingCard
               order={activeOrder}
               activeOrder={activeOrder}
+              user={user}
               navigate={navigate}
               handleExtend={handleExtend}
               currentOrderIndex={currentOrderIndex}
