@@ -8,7 +8,7 @@ import RecentBookings from '../../components/admin/dashboard/RecentBookings';
 
 export default function AdminDashboard() {
   const [period, setPeriod] = useState('7d');
-  const { isLoading, stats, recentBookings, formatRupiah, lastUpdatedAt, refetch } = useDashboard({ period });
+  const { isLoading, stats, recentBookings, bookings, formatRupiah, lastUpdatedAt, refetch } = useDashboard({ period });
 
   const periodOptions = useMemo(() => ([
     { value: 'today', label: 'Hari Ini' },
@@ -68,7 +68,7 @@ export default function AdminDashboard() {
       </div>
 
       <StatsPanel stats={stats} formatRupiah={formatRupiah} />
-      <TodayOpsPanel />
+      <TodayOpsPanel bookings={bookings} onRefresh={refetch} />
       <QuickMenu />
       <RecentBookings bookings={recentBookings} />
     </div>

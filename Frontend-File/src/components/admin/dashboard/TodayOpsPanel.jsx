@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarCheck2, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react';
-import { useTodayOps } from '../../../hooks/useTodayOps';
 
 const fmtTime = (d) => {
   if (!d) return '—';
@@ -43,19 +42,86 @@ const BookingRow = ({ b, label, danger = false }) => {
   );
 };
 
-export default function TodayOpsPanel() {
-  const navigate = useNavigate();
-  const { isLoading, data, refetch } = useTodayOps();
+const startOfLocalDay = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
 
-  const counts = data?.counts || {};
+const endOfLocalDay = () => {
+  const d = startOfLocalDay();
+  d.setDate(d.getDate() + 1);
+  return d;
+};
+
+const isBetween = (dt, start, end) => {
+  if (!dt || Number.isNaN(dt.getTime())) return false;
+  return dt.getTime() >= start.getTime() && dt.getTime() < end.getTime();
+};
+
+export default function TodayOpsPanel({ bookings = [], onRefresh }) {
+  const navigate = useNavigate();
+
+  const computed = useMemo(() => {
+    const list = Array.isArray(bookings) ? bookings : [];
+    const s = startOfLocalDay();
+    const e = endOfLocalDay();
+    const now = new Date();
+
+    const pickupsToday = [];
+    const returnsToday = [];
+    const newBookingsToday = [];
+    const overdue = [];
+    const preparing = [];
+
+    for (const b of list) {
+      const start = normalizeDt(b.start_date);
+      const end = normalizeDt(b.end_date);
+      const created = normalizeDt(b.created_at);
+
+      if (isBetween(start, s, e) && b.status !== 'cancelled') pickupsToday.push(b);
+      if (isBetween(end, s, e) && b.status !== 'cancelled') returnsToday.push(b);
+      if (isBetween(created, s, e) && b.status !== 'cancelled') newBookingsToday.push(b);
+
+      if (String(b.status) === 'active' && end && end.getTime() < now.getTime()) overdue.push(b);
+      if (String(b.status) === 'pending' && b.status !== 'cancelled' && (String(b.payment_status) === 'paid' || Number(b.paid_amount) > 0)) {
+        preparing.push(b);
+      }
+    }
+
+    pickupsToday.sort((a, b) => (normalizeDt(a.start_date)?.getTime() || 0) - (normalizeDt(b.start_date)?.getTime() || 0));
+    returnsToday.sort((a, b) => (normalizeDt(a.end_date)?.getTime() || 0) - (normalizeDt(b.end_date)?.getTime() || 0));
+    newBookingsToday.sort((a, b) => (normalizeDt(b.created_at)?.getTime() || 0) - (normalizeDt(a.created_at)?.getTime() || 0));
+    overdue.sort((a, b) => (normalizeDt(a.end_date)?.getTime() || 0) - (normalizeDt(b.end_date)?.getTime() || 0));
+    preparing.sort((a, b) => (normalizeDt(b.created_at)?.getTime() || 0) - (normalizeDt(a.created_at)?.getTime() || 0));
+
+    const counts = {
+      pickups_today: pickupsToday.length,
+      returns_today: returnsToday.length,
+      new_bookings_today: newBookingsToday.length,
+      preparing: preparing.length,
+      overdue: overdue.length,
+    };
+
+    return {
+      counts,
+      pickupsToday,
+      returnsToday,
+      newBookingsToday,
+      overdue,
+      preparing,
+    };
+  }, [bookings]);
+
+  const counts = computed.counts || {};
 
   const topRows = useMemo(() => {
-    const overdue = Array.isArray(data?.overdue) ? data.overdue.slice(0, 3) : [];
-    const pickups = Array.isArray(data?.pickupsToday) ? data.pickupsToday.slice(0, 3) : [];
-    const returns = Array.isArray(data?.returnsToday) ? data.returnsToday.slice(0, 3) : [];
+    const overdue = Array.isArray(computed?.overdue) ? computed.overdue.slice(0, 3) : [];
+    const pickups = Array.isArray(computed?.pickupsToday) ? computed.pickupsToday.slice(0, 3) : [];
+    const returns = Array.isArray(computed?.returnsToday) ? computed.returnsToday.slice(0, 3) : [];
 
     return { overdue, pickups, returns };
-  }, [data]);
+  }, [computed]);
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden mb-10">
@@ -66,7 +132,7 @@ export default function TodayOpsPanel() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => refetch()}
+            onClick={() => onRefresh?.()}
             className="px-3 py-2 rounded-2xl bg-white border border-slate-200 text-slate-700 font-black text-xs hover:border-rose-300 hover:text-rose-600 transition-colors flex items-center gap-2"
           >
             <RotateCcw size={14} /> Refresh
@@ -92,13 +158,13 @@ export default function TodayOpsPanel() {
             <div key={c.k} className={`rounded-3xl border p-4 ${c.danger ? 'bg-amber-50 border-amber-200' : 'bg-slate-50/60 border-slate-100'}`}>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{c.label}</div>
               <div className={`text-2xl font-black mt-1 ${c.danger ? 'text-amber-700' : 'text-slate-900'}`}>
-                {isLoading ? '…' : c.value}
+                {c.value}
               </div>
             </div>
           ))}
         </div>
 
-        {!isLoading && (counts.overdue || 0) > 0 && (
+        {(counts.overdue || 0) > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-3xl p-5 flex items-start gap-3">
             <AlertTriangle className="text-amber-600 mt-0.5" size={18} />
             <div>
@@ -143,4 +209,3 @@ export default function TodayOpsPanel() {
     </div>
   );
 }
-

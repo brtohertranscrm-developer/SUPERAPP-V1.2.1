@@ -134,6 +134,7 @@ export const useDashboard = ({ period = '7d' } = {}) => {
     pendingKyc: 0,
   });
   const [recentBookings, setRecentBookings] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const fetchDashboardData = useCallback(async () => {
@@ -153,6 +154,7 @@ export const useDashboard = ({ period = '7d' } = {}) => {
       // 3. Tembak API Bookings
       const dataBookings = await apiFetch('/api/admin/bookings');
       const bookings = Array.isArray(dataBookings?.data) ? dataBookings.data : [];
+      setBookings(bookings);
       setRecentBookings(bookings.slice(0, 4));
 
       const fallbackStats = computeStatsFromBookings(bookings, String(period || '7d'));
@@ -195,5 +197,5 @@ export const useDashboard = ({ period = '7d' } = {}) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka || 0);
   };
 
-  return { isLoading, stats, recentBookings, formatRupiah, lastUpdatedAt, refetch: fetchDashboardData };
+  return { isLoading, stats, recentBookings, bookings, formatRupiah, lastUpdatedAt, refetch: fetchDashboardData };
 };
