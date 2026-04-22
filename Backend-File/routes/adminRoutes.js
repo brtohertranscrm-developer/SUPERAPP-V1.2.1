@@ -152,7 +152,26 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
     const period = String(req.query.period || '7d').toLowerCase();
 
     // Use created_at if available; fallback to start_date for older rows
-    const tsExpr = `datetime(COALESCE(created_at, start_date))`;
+    // Note: some historical rows store start_date as ISO (e.g. 2026-04-22T02:00:00.000Z) which SQLite can't always parse.
+    // We normalize to "YYYY-MM-DD HH:MM:SS" (first 19 chars) when falling back to start_date.
+    const startDateExpr = `datetime(replace(substr(COALESCE(start_date, ''), 1, 19), 'T', ' '))`;
+    const tsExpr = `datetime(COALESCE(created_at, ${startDateExpr}))`;
+
+    // Robust booking total: prefer calculated breakdown when available, fallback to stored total_price.
+    // This protects the dashboard if legacy rows have total_price = 0 or inconsistent.
+    const calcTotalExpr = `
+      (
+        (IFNULL(base_price,0) - IFNULL(discount_amount,0)) +
+        IFNULL(service_fee,0) + IFNULL(extend_fee,0) + IFNULL(addon_fee,0) + IFNULL(delivery_fee,0) +
+        IFNULL(pickup_fee,0) + IFNULL(drop_fee,0)
+      )
+    `;
+    const bookingTotalExpr = `
+      CASE
+        WHEN ${calcTotalExpr} > 0 THEN ${calcTotalExpr}
+        ELSE IFNULL(total_price, 0)
+      END
+    `;
 
     let timeWhere = '1=1';
     let periodLabel = '7 Hari Terakhir';
@@ -182,12 +201,22 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
 
     const [revenuePaid, revenueGross, paidCount, pendingPay, activeBookings, activeMotors, activeLockers, pendingKyc] = await Promise.all([
       dbGet(
-        `SELECT COALESCE(SUM(total_price), 0) as total
+        `SELECT COALESCE(SUM(
+           CASE
+             WHEN payment_status = 'paid' THEN (
+               CASE
+                 WHEN IFNULL(paid_amount, 0) > 0 THEN IFNULL(paid_amount, 0)
+                 ELSE ${bookingTotalExpr}
+               END
+             )
+             ELSE 0
+           END
+         ), 0) as total
          FROM bookings
-         WHERE payment_status = 'paid' AND status != 'cancelled' AND ${timeWhere}`
+         WHERE status != 'cancelled' AND ${timeWhere}`
       ),
       dbGet(
-        `SELECT COALESCE(SUM(total_price), 0) as total
+        `SELECT COALESCE(SUM(${bookingTotalExpr}), 0) as total
          FROM bookings
          WHERE status != 'cancelled' AND ${timeWhere}`
       ),
@@ -203,9 +232,7 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
              CASE
                WHEN payment_status = 'paid' THEN 0
                ELSE (
-                 (IFNULL(base_price,0) - IFNULL(discount_amount,0)) +
-                 IFNULL(service_fee,0) + IFNULL(extend_fee,0) + IFNULL(addon_fee,0) + IFNULL(delivery_fee,0) -
-                 IFNULL(paid_amount,0)
+                 ${bookingTotalExpr} - IFNULL(paid_amount,0)
                )
              END
            ), 0) as amount
