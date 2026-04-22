@@ -10,6 +10,7 @@ import ReviewPopup from '../../components/user/dashboard/ReviewPopup';
 import ReviewMissionBanner from '../../components/user/dashboard/ReviewMissionBanner';
 import MissionBanner from '../../components/user/dashboard/MissionBanner';
 import TCOnboardingModal from '../../components/user/dashboard/TCOnboardingModal';
+import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 import {
   Trophy, Gift, Navigation, MapPin, ChevronRight,
@@ -270,7 +271,7 @@ export default function Dashboard() {
               </p>
               <div className="space-y-3">
                 <a
-                  href="https://wa.me/6281234567890"
+                  href={buildWaLink(WA_CONTACTS.SUPPORT_ADMIN.phone_wa, 'Halo Admin Brother Trans, saya butuh bantuan.')}
                   target="_blank" rel="noreferrer"
                   className="w-full py-3.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all"
                 >

@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { ShieldAlert, MessageCircle, KeyRound, Loader2, AlertTriangle, XCircle } from 'lucide-react';
+import { WA_CONTACTS, buildWaLink } from '../../../config/contacts';
 
 const KycStatus = ({ status, verifyKycCode }) => {
   const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Sesuaikan nomor WA admin dan pesannya di sini
-  const adminWaNumber = "6281234567890"; 
-  const waMessage = encodeURIComponent("Halo Admin Brother Trans, saya ingin melakukan verifikasi KYC (KTP & Foto Selfie) untuk akun saya.");
+  const waMessage = "Halo Admin Brother Trans, saya ingin melakukan verifikasi KYC (KTP & Foto Selfie) untuk akun saya.";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,7 +73,7 @@ const KycStatus = ({ status, verifyKycCode }) => {
           </p>
 
           <a
-            href={`https://wa.me/${adminWaNumber}?text=${waMessage}`}
+            href={buildWaLink(WA_CONTACTS.KYC_ADMIN.phone_wa, waMessage)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 px-6 py-3.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-black rounded-xl text-sm transition-all hover:scale-105 shadow-xl active:scale-95"
