@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, User, FileText, CreditCard } from 'lucide-react';
+import { X, User, FileText, CreditCard, MessageCircle, Bike } from 'lucide-react';
 import BookingPricePanel from './BookingPricePanel';
 
 const fmtRp  = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
@@ -14,20 +14,78 @@ const TABS = [
 const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
   const [activeTab, setActiveTab] = useState('info');
   const [isSaving, setIsSaving] = useState(false);
+  const [unitOptions, setUnitOptions] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
+  const [statusError, setStatusError] = useState('');
   const [formData, setFormData] = useState({
     status: 'pending',
-    payment_status: 'unpaid'
+    payment_status: 'unpaid',
+    unit_id: '',
+    plate_number: ''
   });
+
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+  const buildUrl = (path, query = {}) => {
+    const base = API_URL.replace(/\/$/, '');
+    const url = base ? `${base}${path}` : path;
+    const qs = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(query).filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+      )
+    ).toString();
+    return qs ? `${url}?${qs}` : url;
+  };
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  };
 
   // Sinkronkan form saat data awal masuk
   useEffect(() => {
     if (initialData) {
       setFormData({
         status:         initialData.status         || 'pending',
-        payment_status: initialData.payment_status || 'unpaid'
+        payment_status: initialData.payment_status || 'unpaid',
+        unit_id:        initialData.unit_id || '',
+        plate_number:   initialData.plate_number || ''
       });
+      setStatusError('');
     }
   }, [initialData]);
+
+  const isMotor = String(initialData?.item_type || '').toLowerCase() === 'motor';
+
+  // Load unit options for motor booking (available only, to avoid collisions)
+  useEffect(() => {
+    const run = async () => {
+      if (!initialData || !isMotor) return;
+      setUnitsLoading(true);
+      try {
+        const motorName = initialData.item_name || '';
+        const startDate = initialData.start_date || '';
+        const endDate = initialData.end_date || '';
+        const res = await fetch(
+          buildUrl('/api/admin/units/available', { motor_name: motorName, start_date: startDate, end_date: endDate }),
+          { headers: getAuthHeaders() }
+        );
+        const json = await res.json();
+        if (res.ok && json.success) {
+          setUnitOptions(Array.isArray(json.data) ? json.data : []);
+        } else {
+          setUnitOptions([]);
+        }
+      } catch {
+        setUnitOptions([]);
+      } finally {
+        setUnitsLoading(false);
+      }
+    };
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData?.order_id, isMotor]);
 
   // Kalkulasi finansial secara dinamis untuk menghindari angka 0 jika backend tidak mengirim total
   const financials = useMemo(() => {
@@ -60,8 +118,13 @@ const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
 
   const handleStatusSubmit = (e) => {
     e.preventDefault();
-    onSubmit(initialData.order_id, formData);
-    onClose();
+    setStatusError('');
+    Promise.resolve(onSubmit(initialData.order_id, formData))
+      .then((ok) => {
+        if (ok) onClose();
+        else setStatusError('Gagal menyimpan status. Cek pesan error.');
+      })
+      .catch(() => setStatusError('Gagal menyimpan status. Cek koneksi/server.'));
   };
 
   const handleSavePricing = async (pricingPayload) => {
@@ -179,6 +242,12 @@ const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
           {/* ---- TAB 3: UPDATE STATUS ---- */}
           {activeTab === 'status' && (
             <form onSubmit={handleStatusSubmit} className="space-y-4">
+              {statusError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-sm font-bold text-rose-700">
+                  {statusError}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Status Pembayaran</label>
                 <select
@@ -192,6 +261,41 @@ const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
                   <option value="refunded">Refunded — Dana dikembalikan</option>
                 </select>
               </div>
+
+              {isMotor && (
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Assign Unit / Plat</label>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                      <Bike size={12} /> {unitsLoading ? 'Memuat...' : `${unitOptions.length} unit tersedia`}
+                    </span>
+                  </div>
+                  <select
+                    name="unit_id"
+                    value={String(formData.unit_id || '')}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      const unit = unitOptions.find((u) => String(u.id) === String(nextId));
+                      setFormData((prev) => ({
+                        ...prev,
+                        unit_id: nextId,
+                        plate_number: unit?.plate_number || prev.plate_number || '',
+                      }));
+                    }}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                  >
+                    <option value="">Pilih unit (opsional)</option>
+                    {unitOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.plate_number} {u.status ? `(${u.status})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-2 text-xs text-slate-500 font-semibold">
+                    Unit yang muncul di sini sudah difilter agar tidak bentrok jadwal.
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Status Booking</label>
@@ -216,6 +320,36 @@ const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
               </button>
             </form>
           )}
+        </div>
+
+        {/* ===== FOOTER ACTIONS ===== */}
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const phone = (initialData?.user_phone || '').replace(/\D/g, '');
+              const target = phone.startsWith('0') ? `62${phone.slice(1)}` : phone;
+              const text = encodeURIComponent(
+                `Halo Kak ${initialData?.user_name || ''}.\n\n` +
+                `Konfirmasi booking ${initialData?.order_id} (${initialData?.item_name}).\n` +
+                `Periode: ${fmtDate(initialData?.start_date)} → ${fmtDate(initialData?.end_date)}\n` +
+                `Total: ${fmtRp(financials.total)}\n\n` +
+                `Jika sudah transfer, mohon kirim bukti transfer ya. Terima kasih.`
+              );
+              if (!target) return;
+              window.open(`https://wa.me/${target}?text=${text}`, '_blank');
+            }}
+            className="px-4 py-3 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-emerald-600 transition-colors flex items-center gap-2"
+          >
+            <MessageCircle size={16} /> Kirim WA
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-700 font-black text-sm hover:border-rose-300 hover:text-rose-600 transition-colors"
+          >
+            Tutup
+          </button>
         </div>
       </div>
     </div>

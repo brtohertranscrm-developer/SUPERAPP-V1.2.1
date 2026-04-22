@@ -203,6 +203,41 @@ db.serialize(() => {
      VALUES (1, 'calendar', 12)`
   );
 
+  // --- UNIT BLOCKS (Manual block jadwal unit) ---
+  // Dipakai untuk: buffer cleaning, servis, unit dipinjam internal, dll.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS unit_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id INTEGER NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      reason TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (unit_id) REFERENCES motor_units(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+
+  // --- ADMIN AUDIT LOGS ---
+  // Audit trail untuk aksi admin (booking, finance, kyc, armada, dll).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS admin_audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      admin_id TEXT,
+      admin_role TEXT,
+      action TEXT NOT NULL,
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status_code INTEGER,
+      ip_address TEXT,
+      user_agent TEXT,
+      context TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (admin_id) REFERENCES users(id)
+    )
+  `);
+
   // --- PRICE RULES (Surge & Seasonal) ---
   db.run(`
     CREATE TABLE IF NOT EXISTS price_rules (
@@ -539,6 +574,13 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_lockers_type ON lockers(type)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_locker_addons_type ON locker_addons(addon_type, is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_bookings_duration ON bookings(duration_hours)`);
+
+  // Unit blocks + audit logs indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_unit_blocks_unit_id ON unit_blocks(unit_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_unit_blocks_range ON unit_blocks(start_at, end_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_id ON admin_audit_logs(admin_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_path ON admin_audit_logs(path)`);
 
   // Referral indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_referral_logs_referrer ON referral_logs(referrer_id)`);

@@ -9,6 +9,22 @@ import {
 // Data sekarang diambil dari API
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
+const buildUrl = (path, query = {}) => {
+  const base = API_URL.replace(/\/$/, '');
+  const url = base ? `${base}${path}` : path;
+  const qs = new URLSearchParams(
+    Object.fromEntries(
+      Object.entries(query).filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+    )
+  ).toString();
+  return qs ? `${url}?${qs}` : url;
+};
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+  return { Authorization: `Bearer ${token}` };
+};
+
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS = {
   booked:  { bg: '#16a34a', text: '#fff',         label: 'Tersewa' },
@@ -159,6 +175,7 @@ export default function FleetInventoryTable() {
 
   // [FIX P8] State untuk data dari API
   const [units, setUnits]         = useState([]);
+  const [unitBlocks, setUnitBlocks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -172,10 +189,7 @@ export default function FleetInventoryTable() {
   // [FIX P8] Fetch units (motor_units) dari API
   const fetchUnits = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/admin/motor-units-all`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(buildUrl('/api/admin/motor-units-all'), { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         // Transform format dari DB ke format yang dipakai komponen
@@ -198,13 +212,27 @@ export default function FleetInventoryTable() {
     }
   }, []);
 
-  // [FIX P8] Fetch bookings aktif dari API dan konversi ke format calendar
-  const fetchBookings = useCallback(async () => {
+  const fetchUnitBlocks = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/api/admin/bookings?item_type=motor`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(buildUrl('/api/admin/units/blocks'), { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        setUnitBlocks(data.data);
+        return data.data;
+      } else {
+        setUnitBlocks([]);
+        return [];
+      }
+    } catch {
+      setUnitBlocks([]);
+      return [];
+    }
+  }, []);
+
+  // [FIX P8] Fetch bookings aktif dari API dan konversi ke format calendar
+  const fetchBookings = useCallback(async (blocksOverride = null) => {
+    try {
+      const res = await fetch(buildUrl('/api/admin/bookings', { item_type: 'motor' }), { headers: getAuthHeaders() });
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         // Konversi array booking ke format key-value calendar
@@ -236,24 +264,49 @@ export default function FleetInventoryTable() {
             cur.setDate(cur.getDate() + 1);
           }
         });
+        const blocks = Array.isArray(blocksOverride) ? blocksOverride : unitBlocks;
+        if (Array.isArray(blocks) && blocks.length > 0) {
+          blocks.forEach((blk) => {
+            if (!blk.unit_id || !blk.start_at || !blk.end_at) return;
+            const start = new Date(blk.start_at);
+            const end = new Date(blk.end_at);
+            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+            const cur = new Date(start);
+            while (cur <= end) {
+              const key = `${blk.unit_id}_${fmtDateKey(cur)}`;
+              if (!bookingMap[key]) {
+                bookingMap[key] = {
+                  name: 'Blocked',
+                  status: 'blocked',
+                  time: '',
+                  notes: blk.reason || 'Diblokir',
+                  block_id: blk.id,
+                };
+              }
+              cur.setDate(cur.getDate() + 1);
+            }
+          });
+        }
+
         setBookings(bookingMap);
       }
     } catch {
       // Bookings gagal dimuat — calendar tetap tampil, hanya kosong
       console.warn('FleetInventoryTable: gagal memuat bookings');
     }
-  }, []);
+  }, [unitBlocks]);
 
   // [FIX P8] Load data saat mount
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       await fetchUnits();
-      await fetchBookings();
+      const blocks = await fetchUnitBlocks();
+      await fetchBookings(blocks);
       setIsLoading(false);
     };
     load();
-  }, [fetchUnits, fetchBookings]);
+  }, [fetchUnits, fetchUnitBlocks, fetchBookings]);
 
   // ── Filtered units ──────────────────────────────────────────────────────────
   const types = useMemo(() => [...new Set(units.map(u => u.type))], [units]);
@@ -285,25 +338,116 @@ export default function FleetInventoryTable() {
       unitId:   unit.id,
       unitName: unit.name,
       plat:     unit.plat,
+      dateKey:  fmtDateKey(date),
       dateStr:  `${date.getDate()} ${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`,
       dayLabel: DAY_LABELS[date.getDay()],
       booking:  bookings[key] || null,
     });
   };
 
-  // [FIX P8] handleSave: update local state dulu, biarkan admin klik "Refresh" untuk sync ke DB
-  // Karena fleet calendar adalah manual booking tambahan, tidak perlu auto-POST ke booking API
-  const handleSave = (form) => {
-    if (form.status === 'free') {
-      setBookings(b => { const n = { ...b }; delete n[modalCell.key]; return n; });
-    } else {
-      setBookings(b => ({ ...b, [modalCell.key]: form }));
+  const refreshAll = useCallback(async () => {
+    const blocks = await fetchUnitBlocks();
+    await fetchBookings(blocks);
+  }, [fetchUnitBlocks, fetchBookings]);
+
+  // handleSave:
+  // - status "blocked": simpan ke DB unit_blocks
+  // - status "free": hapus block jika ada
+  // - selain itu: tetap local overlay (booking manual)
+  const handleSave = async (form) => {
+    if (!modalCell) return;
+
+    if (form.status === 'blocked') {
+      try {
+        const startAt = `${modalCell.dateKey} 00:00:00`;
+        const endAt = `${modalCell.dateKey} 23:59:59`;
+        const res = await fetch(buildUrl('/api/admin/units/blocks'), {
+          method: 'POST',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            unit_id: modalCell.unitId,
+            start_at: startAt,
+            end_at: endAt,
+            reason: form.notes || 'Diblokir',
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          alert(json.error || 'Gagal memblokir unit.');
+        }
+      } catch {
+        alert('Gagal memblokir unit (koneksi/server).');
+      } finally {
+        await refreshAll();
+        setModalCell(null);
+      }
+      return;
     }
+
+    if (form.status === 'free') {
+      // If cell is a block, delete it from DB. Otherwise remove local overlay.
+      const existing = bookings?.[modalCell.key];
+      const blockId = existing?.status === 'blocked' ? existing?.block_id : null;
+      if (blockId) {
+        try {
+          const res = await fetch(buildUrl(`/api/admin/units/blocks/${blockId}`), {
+            method: 'DELETE',
+            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) {
+            alert(json.error || 'Gagal menghapus blokir unit.');
+          }
+        } catch {
+          alert('Gagal menghapus blokir unit (koneksi/server).');
+        } finally {
+          await refreshAll();
+          setModalCell(null);
+        }
+      } else {
+        setBookings((b) => {
+          const n = { ...b };
+          delete n[modalCell.key];
+          return n;
+        });
+        setModalCell(null);
+      }
+      return;
+    }
+
+    setBookings((b) => ({ ...b, [modalCell.key]: form }));
     setModalCell(null);
   };
 
-  const handleDelete = () => {
-    setBookings(b => { const n = { ...b }; delete n[modalCell.key]; return n; });
+  const handleDelete = async () => {
+    if (!modalCell) return;
+    const existing = bookings?.[modalCell.key];
+    const blockId = existing?.status === 'blocked' ? existing?.block_id : null;
+
+    if (blockId) {
+      try {
+        const res = await fetch(buildUrl(`/api/admin/units/blocks/${blockId}`), {
+          method: 'DELETE',
+          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+          alert(json.error || 'Gagal menghapus blokir unit.');
+        }
+      } catch {
+        alert('Gagal menghapus blokir unit (koneksi/server).');
+      } finally {
+        await refreshAll();
+        setModalCell(null);
+      }
+      return;
+    }
+
+    setBookings((b) => {
+      const n = { ...b };
+      delete n[modalCell.key];
+      return n;
+    });
     setModalCell(null);
   };
 

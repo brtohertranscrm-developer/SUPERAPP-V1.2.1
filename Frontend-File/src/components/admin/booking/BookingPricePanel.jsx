@@ -86,9 +86,6 @@ const BookingPricePanel = ({ booking, onSavePricing, isSaving = false }) => {
   const [editingPromo, setEditingPromo] = useState(false);
 
   useEffect(() => {
-    // 💡 TAMBAHKAN BARIS INI UNTUK DEBUGGING
-    console.log("Data Booking masuk ke Price Panel:", booking); 
-
     if (booking) {
       setFields({
         base_price:        booking.base_price        || 0,

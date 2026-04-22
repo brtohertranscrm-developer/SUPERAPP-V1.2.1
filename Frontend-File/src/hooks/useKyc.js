@@ -9,7 +9,7 @@ export const useKyc = () => {
 
   // 2. Fungsi penarik token yang selalu fresh (segar) saat API dipanggil
   const getAuthHeaders = () => {
-    const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
+    const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
     return {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`

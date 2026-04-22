@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useDashboard } from '../../hooks/useDashboard';
 import StatsPanel from '../../components/admin/dashboard/StatsPanel';
+import TodayOpsPanel from '../../components/admin/dashboard/TodayOpsPanel';
 import QuickMenu from '../../components/admin/dashboard/QuickMenu';
 import RecentBookings from '../../components/admin/dashboard/RecentBookings';
 
@@ -67,6 +68,7 @@ export default function AdminDashboard() {
       </div>
 
       <StatsPanel stats={stats} formatRupiah={formatRupiah} />
+      <TodayOpsPanel />
       <QuickMenu />
       <RecentBookings bookings={recentBookings} />
     </div>

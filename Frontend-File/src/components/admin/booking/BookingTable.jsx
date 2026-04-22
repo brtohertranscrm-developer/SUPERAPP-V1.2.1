@@ -1,5 +1,5 @@
 import React, { useState, useMemo, memo, useCallback } from 'react';
-import { Search, Calendar, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { Search, Calendar, ChevronDown, ChevronUp, AlertCircle, MessageCircle, CheckCircle2, PlayCircle, Flag } from 'lucide-react';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 
 const fmtRp   = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
@@ -34,10 +34,27 @@ const getFinancials = (b) => {
 // ==========================================
 // KARTU BOOKING — di-memo agar tidak re-render
 // ==========================================
-const BookingCard = memo(({ b, isExpanded, onToggle, onEdit }) => {
+const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate }) => {
   const { total, paid, outstanding } = getFinancials(b);
   const hasOutstanding = outstanding > 0;
   const statusCfg      = STATUS_BOOKING[b.status] || STATUS_BOOKING.pending;
+  const isPaid = b.payment_status === 'paid';
+  const isPending = b.status === 'pending';
+  const isActive = b.status === 'active';
+
+  const openWa = () => {
+    const phone = String(b.user_phone || '').replace(/\D/g, '');
+    const target = phone.startsWith('0') ? `62${phone.slice(1)}` : phone;
+    if (!target) return;
+    const text = encodeURIComponent(
+      `Halo Kak ${b.user_name || ''}.\n\n` +
+      `Konfirmasi booking ${b.order_id} (${b.item_name}).\n` +
+      `Periode: ${fmtDate(b.start_date)} → ${fmtDate(b.end_date)}\n` +
+      `Total: ${fmtRp(total)}\n\n` +
+      `Jika sudah transfer, mohon kirim bukti transfer ya. Terima kasih.`
+    );
+    window.open(`https://wa.me/${target}?text=${text}`, '_blank');
+  };
 
   return (
     <div className={`bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col transition-shadow duration-200 hover:shadow-md ${
@@ -156,12 +173,56 @@ const BookingCard = memo(({ b, isExpanded, onToggle, onEdit }) => {
 
           {/* Tombol */}
           <div className="p-3 bg-slate-50/50 border-t border-slate-100">
-            <button
-              onClick={() => onEdit(b)}
-              className="w-full bg-blue-600 text-white font-black py-2.5 rounded-xl text-sm hover:bg-blue-700 transition-colors shadow-sm"
-            >
-              Detail &amp; Update
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onEdit(b)}
+                className="col-span-2 bg-blue-600 text-white font-black py-2.5 rounded-xl text-sm hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                Detail &amp; Update
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openWa()}
+                className="bg-slate-900 text-white font-black py-2.5 rounded-xl text-xs hover:bg-emerald-600 transition-colors shadow-sm flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={16} /> WA
+              </button>
+
+              <button
+                type="button"
+                disabled={isPaid}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: b.status, payment_status: 'paid' })}
+                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
+                  isPaid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
+              >
+                <CheckCircle2 size={16} /> Lunaskan
+              </button>
+
+              <button
+                type="button"
+                disabled={!isPending}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: 'active', payment_status: b.payment_status })}
+                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
+                  !isPending ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                }`}
+              >
+                <PlayCircle size={16} /> Aktifkan
+              </button>
+
+              <button
+                type="button"
+                disabled={!isActive}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: 'completed', payment_status: b.payment_status })}
+                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
+                  !isActive ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'
+                }`}
+              >
+                <Flag size={16} /> Selesaikan
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -173,7 +234,7 @@ BookingCard.displayName = 'BookingCard';
 // ==========================================
 // KOMPONEN UTAMA
 // ==========================================
-const BookingTable = ({ data, onEdit }) => {
+const BookingTable = ({ data, onEdit, onQuickUpdate }) => {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [searchTerm,    setSearchTerm]    = useState('');
   const [filterDate,    setFilterDate]    = useState('');
@@ -331,6 +392,7 @@ const BookingTable = ({ data, onEdit }) => {
               isExpanded={expandedOrderId === b.order_id}
               onToggle={() => toggleExpand(b.order_id)}
               onEdit={handleEdit}
+              onQuickUpdate={onQuickUpdate}
             />
           ))}
         </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Loader2, MessageCircle, CheckCircle, XCircle, User, Power } from 'lucide-react';
 
-const KycTable = ({ data, isLoading, onUpdateStatus }) => {
+const KycTable = ({ data, isLoading, onUpdateStatus, blacklistedSet }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
   const formatWaNumber = (phone) => {
@@ -16,7 +16,8 @@ const KycTable = ({ data, isLoading, onUpdateStatus }) => {
   const filteredData = data.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.phone.includes(searchTerm)
+    user.phone.includes(searchTerm) ||
+    String(user.ktp_id || '').includes(searchTerm.trim())
   );
 
   return (
@@ -59,7 +60,14 @@ const KycTable = ({ data, isLoading, onUpdateStatus }) => {
 	                          <div className="font-bold text-brand-dark text-sm">{user.name}</div>
 	                          <div className="text-[10px] text-gray-400 font-bold">{user.email}</div>
 	                          {user.ktp_id && (
-	                            <div className="text-[10px] text-gray-400 font-black font-mono">KTP: {user.ktp_id}</div>
+	                            <div className="text-[10px] text-gray-400 font-black font-mono flex items-center gap-2">
+                                <span>KTP: {user.ktp_id}</span>
+                                {blacklistedSet?.has?.(String(user.ktp_id)) && (
+                                  <span className="px-2 py-0.5 rounded-md bg-red-100 text-red-700 border border-red-200 text-[9px] font-black uppercase tracking-widest">
+                                    Blacklist
+                                  </span>
+                                )}
+                              </div>
 	                          )}
 	                        </div>
 	                      </div>

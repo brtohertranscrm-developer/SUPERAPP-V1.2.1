@@ -21,6 +21,115 @@ const availableMenus = [
   { key: 'settings',  label: 'Pengaturan & Akses' },
 ];
 
+// ─── Section: Audit Logs ──────────────────────────────────────────────────────
+const AuditLogsSection = ({ token }) => {
+  const [logs, setLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [limit, setLimit] = useState(50);
+
+  const fetchLogs = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/audit-logs?limit=${limit}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setLogs(Array.isArray(data.data) ? data.data : []);
+    } catch {
+      // silent
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchLogs(); }, [limit]);
+
+  const fmtDateTime = (d) => d
+    ? new Date(d).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—';
+
+  const short = (s, n = 70) => {
+    if (!s) return '—';
+    const v = String(s);
+    return v.length > n ? `${v.slice(0, n)}…` : v;
+  };
+
+  return (
+    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold flex items-center gap-2">
+          <Clock className="text-slate-700" size={18} /> Audit Logs (Aktivitas Admin)
+        </h2>
+        <div className="flex items-center gap-2">
+          <select
+            value={limit}
+            onChange={(e) => setLimit(parseInt(e.target.value, 10))}
+            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 outline-none"
+          >
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+          </select>
+          <button
+            onClick={fetchLogs}
+            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-50 transition-colors"
+            title="Refresh logs"
+            disabled={isLoading}
+          >
+            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 font-medium mb-4">
+        Logs dicatat otomatis untuk request non-GET ke endpoint admin (booking, finance, settings, dll).
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-gray-500">
+            <tr>
+              <th className="p-4 rounded-l-xl font-bold">Waktu</th>
+              <th className="p-4 font-bold">Admin</th>
+              <th className="p-4 font-bold">Action</th>
+              <th className="p-4 font-bold">Path</th>
+              <th className="p-4 font-bold text-center">Status</th>
+              <th className="p-4 rounded-r-xl font-bold">Context</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.length === 0 ? (
+              <tr>
+                <td className="p-5 text-slate-400 font-bold" colSpan={6}>
+                  {isLoading ? 'Memuat audit logs...' : 'Belum ada log atau tidak ada akses.'}
+                </td>
+              </tr>
+            ) : (
+              logs.map((l) => (
+                <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                  <td className="p-4 text-xs font-bold text-slate-700">{fmtDateTime(l.created_at)}</td>
+                  <td className="p-4 text-xs text-slate-500 font-mono">{short(l.admin_id, 16)}</td>
+                  <td className="p-4 text-xs font-black text-slate-800">{short(`${l.method} ${l.action}`, 28)}</td>
+                  <td className="p-4 text-xs text-slate-600 font-mono">{short(l.path, 50)}</td>
+                  <td className="p-4 text-center">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
+                      Number(l.status_code) >= 400 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {l.status_code || '—'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-xs text-slate-500 font-mono">{short(l.context, 70)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 // ─── Section: Database Backup & Restore ──────────────────────────────────────
 const DatabaseSection = ({ token }) => {
   const [dbInfo, setDbInfo]           = useState(null);
@@ -485,6 +594,9 @@ const AdminSettings = () => {
 
       {/* Section: Database */}
       <DatabaseSection token={token} />
+
+      {/* Section: Audit Logs */}
+      <AuditLogsSection token={token} />
 
       {/* Section: Daftar Admin */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">

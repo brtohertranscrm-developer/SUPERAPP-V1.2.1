@@ -8,6 +8,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
+const { auditAdmin } = require('../middlewares/auditMiddleware');
 
 // ==========================================
 // HELPER: Promisify DB
@@ -76,6 +77,47 @@ const upload = multer({
 
 // Semua route admin butuh verifikasi admin
 router.use(verifyAdmin);
+router.use(auditAdmin({ actionPrefix: 'adminRoutes' }));
+
+// Normalize ISO date strings (e.g. 2026-04-22T02:00:00.000Z) into a SQLite-friendly datetime
+const dtExpr = (col) => `datetime(replace(substr(COALESCE(${col}, ''), 1, 19), 'T', ' '))`;
+
+const normalizeToSqliteDateTime = (value) => {
+  if (!value) return null;
+  const s = String(value);
+  // Keep first 19 chars "YYYY-MM-DDTHH:MM:SS" and normalize to "YYYY-MM-DD HH:MM:SS"
+  return s.slice(0, 19).replace('T', ' ');
+};
+
+const hasUnitConflict = async ({ unitId, orderId, startDate, endDate, bufferMinutes = 0 }) => {
+  const buf = Number.isFinite(Number(bufferMinutes)) ? Number(bufferMinutes) : 0;
+  const startNorm = normalizeToSqliteDateTime(startDate);
+  const endNorm = normalizeToSqliteDateTime(endDate);
+  if (!startNorm || !endNorm) return false;
+
+  const row = await dbGet(
+    `
+    SELECT order_id
+    FROM bookings
+    WHERE unit_id = ?
+      AND order_id != ?
+      AND status NOT IN ('cancelled', 'completed', 'selesai')
+      AND ${dtExpr('start_date')} < datetime(?, ?)
+      AND ${dtExpr('end_date')}   > datetime(?, ?)
+    LIMIT 1
+    `,
+    [
+      unitId,
+      orderId,
+      endNorm,
+      buf > 0 ? `+${buf} minutes` : '+0 minutes',
+      startNorm,
+      buf > 0 ? `-${buf} minutes` : '+0 minutes',
+    ]
+  );
+  return !!row;
+};
+
 
 // ==========================================
 // SETTINGS: MOTOR BILLING MODE (Akses: settings)
@@ -302,6 +344,96 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
 });
 
 // ==========================================
+// OPS "TODAY" BOARD (Akses: dashboard)
+// ==========================================
+router.get('/ops/today', requirePermission('dashboard'), async (req, res) => {
+  try {
+    const startOfDay = `datetime('now','localtime','start of day')`;
+    const endOfDay = `datetime('now','localtime','start of day','+1 day')`;
+    const now = `datetime('now','localtime')`;
+
+    const pickupsToday = await dbAll(
+      `
+      SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+             status, payment_status, unit_id, plate_number, created_at
+      FROM bookings
+      WHERE status != 'cancelled'
+        AND ${dtExpr('start_date')} >= ${startOfDay}
+        AND ${dtExpr('start_date')} <  ${endOfDay}
+      ORDER BY ${dtExpr('start_date')} ASC
+      `
+    );
+
+    const returnsToday = await dbAll(
+      `
+      SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+             status, payment_status, unit_id, plate_number, created_at
+      FROM bookings
+      WHERE status != 'cancelled'
+        AND ${dtExpr('end_date')} >= ${startOfDay}
+        AND ${dtExpr('end_date')} <  ${endOfDay}
+      ORDER BY ${dtExpr('end_date')} ASC
+      `
+    );
+
+    const newBookingsToday = await dbAll(
+      `
+      SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+             status, payment_status, unit_id, plate_number, created_at
+      FROM bookings
+      WHERE status != 'cancelled'
+        AND datetime(COALESCE(created_at, '1970-01-01')) >= ${startOfDay}
+      ORDER BY datetime(COALESCE(created_at, '1970-01-01')) DESC
+      `
+    );
+
+    const overdue = await dbAll(
+      `
+      SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+             status, payment_status, unit_id, plate_number, created_at
+      FROM bookings
+      WHERE status = 'active'
+        AND ${dtExpr('end_date')} < ${now}
+      ORDER BY ${dtExpr('end_date')} ASC
+      `
+    );
+
+    const preparing = await dbAll(
+      `
+      SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+             status, payment_status, unit_id, plate_number, created_at
+      FROM bookings
+      WHERE status = 'pending'
+        AND status != 'cancelled'
+        AND (payment_status = 'paid' OR IFNULL(paid_amount, 0) > 0)
+      ORDER BY datetime(COALESCE(created_at, '1970-01-01')) DESC
+      `
+    );
+
+    res.json({
+      success: true,
+      data: {
+        counts: {
+          pickups_today: pickupsToday.length,
+          returns_today: returnsToday.length,
+          new_bookings_today: newBookingsToday.length,
+          overdue: overdue.length,
+          preparing: preparing.length,
+        },
+        pickupsToday,
+        returnsToday,
+        newBookingsToday,
+        overdue,
+        preparing,
+      },
+    });
+  } catch (err) {
+    console.error('GET /admin/ops/today error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data operasional hari ini.' });
+  }
+});
+
+// ==========================================
 // KYC MANAGEMENT (Akses: users)
 // ==========================================
 router.get('/kyc', requirePermission('users'), async (req, res) => {
@@ -424,6 +556,197 @@ router.get('/motor-units-all', requirePermission('armada'), async (req, res) => 
   } catch (err) {
     console.error('GET /admin/motor-units-all error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data unit.' });
+  }
+});
+
+// ==========================================
+// UNITS (Akses: booking) — untuk assign unit tanpa perlu permission armada
+// ==========================================
+router.get('/units', requirePermission('booking'), async (req, res) => {
+  try {
+    const motorName = req.query.motor_name ? String(req.query.motor_name).trim() : null;
+    const params = [];
+    const where = motorName ? 'WHERE m.name = ?' : '';
+    if (motorName) params.push(motorName);
+
+    const rows = await dbAll(
+      `
+      SELECT mu.id, mu.motor_id, mu.plate_number, mu.status, mu.condition_notes,
+             m.name AS motor_name, m.category AS motor_category
+      FROM motor_units mu
+      JOIN motors m ON mu.motor_id = m.id
+      ${where}
+      ORDER BY m.category ASC, m.name ASC, mu.plate_number ASC
+      `,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/units error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data unit.' });
+  }
+});
+
+// ==========================================
+// UNIT AVAILABILITY (Akses: booking)
+// Query: start_date, end_date, motor_name (optional)
+// ==========================================
+router.get('/units/available', requirePermission('booking'), async (req, res) => {
+  try {
+    const startDate = normalizeToSqliteDateTime(req.query.start_date || req.query.start || '');
+    const endDate = normalizeToSqliteDateTime(req.query.end_date || req.query.end || '');
+    const motorName = req.query.motor_name ? String(req.query.motor_name).trim() : null;
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ success: false, error: 'start_date dan end_date wajib diisi.' });
+    }
+
+    const params = [
+      endDate,
+      bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+      startDate,
+      bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+      endDate,
+      bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+      startDate,
+      bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+    ];
+
+    let motorWhere = '';
+    if (motorName) {
+      motorWhere = 'AND m.name = ?';
+      params.push(motorName);
+    }
+
+    const rows = await dbAll(
+      `
+      SELECT mu.id, mu.plate_number, mu.status,
+             m.name AS motor_name, m.category AS motor_category
+      FROM motor_units mu
+      JOIN motors m ON mu.motor_id = m.id
+      WHERE mu.status != 'OUT'
+        ${motorWhere}
+        AND mu.id NOT IN (
+          SELECT b.unit_id
+          FROM bookings b
+          WHERE b.unit_id IS NOT NULL
+            AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+            AND ${dtExpr('b.start_date')} < datetime(?, ?)
+            AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+        )
+        AND mu.id NOT IN (
+          SELECT ub.unit_id
+          FROM unit_blocks ub
+          WHERE datetime(ub.start_at) < datetime(?, ?)
+            AND datetime(ub.end_at)   > datetime(?, ?)
+        )
+      ORDER BY m.category ASC, m.name ASC, mu.plate_number ASC
+      `,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/units/available error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil ketersediaan unit.' });
+  }
+});
+
+// ==========================================
+// UNIT BLOCKS (Akses: booking)
+// ==========================================
+router.post('/units/blocks', requirePermission('booking'), async (req, res) => {
+  try {
+    const unitId = parseInt(req.body?.unit_id, 10);
+    const startAt = normalizeToSqliteDateTime(req.body?.start_at);
+    const endAt = normalizeToSqliteDateTime(req.body?.end_at);
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+
+    if (!unitId || !startAt || !endAt) {
+      return res.status(400).json({ success: false, error: 'unit_id, start_at, end_at wajib diisi.' });
+    }
+
+    await dbRun(
+      `INSERT INTO unit_blocks (unit_id, start_at, end_at, reason, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [unitId, startAt, endAt, reason, req.user?.id || null]
+    );
+
+    res.status(201).json({ success: true, message: 'Blokir unit berhasil dibuat.' });
+  } catch (err) {
+    console.error('POST /admin/units/blocks error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal membuat blokir unit.' });
+  }
+});
+
+router.get('/units/blocks', requirePermission('booking'), async (req, res) => {
+  try {
+    const unitId = req.query.unit_id ? parseInt(req.query.unit_id, 10) : null;
+    const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
+    const end = normalizeToSqliteDateTime(req.query.end || req.query.end_at || '');
+
+    const where = [];
+    const params = [];
+
+    if (unitId) {
+      where.push('unit_id = ?');
+      params.push(unitId);
+    }
+
+    // Optional range filter
+    if (start && end) {
+      where.push(`datetime(start_at) < datetime(?)`);
+      where.push(`datetime(end_at) > datetime(?)`);
+      params.push(end, start);
+    }
+
+    const rows = await dbAll(
+      `
+      SELECT id, unit_id, start_at, end_at, reason, created_by, created_at
+      FROM unit_blocks
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY datetime(start_at) ASC
+      `,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/units/blocks error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil blokir unit.' });
+  }
+});
+
+router.delete('/units/blocks/:id', requirePermission('booking'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'ID blokir tidak valid.' });
+    await dbRun(`DELETE FROM unit_blocks WHERE id = ?`, [id]);
+    res.json({ success: true, message: 'Blokir unit berhasil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/units/blocks/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus blokir unit.' });
+  }
+});
+
+// ==========================================
+// AUDIT LOGS (Akses: settings)
+// ==========================================
+router.get('/audit-logs', requirePermission('settings'), async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
+    const rows = await dbAll(
+      `SELECT id, admin_id, admin_role, action, method, path, status_code, ip_address, created_at, context
+       FROM admin_audit_logs
+       ORDER BY id DESC
+       LIMIT ?`,
+      [limit]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/audit-logs error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil audit logs.' });
   }
 });
 
@@ -703,6 +1026,10 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
     // Fetch current booking to support syncing paid_amount when payment_status is changed.
     const current = await dbGet(
       `SELECT order_id,
+              item_type,
+              start_date,
+              end_date,
+              unit_id,
               IFNULL(base_price, 0) as base_price,
               IFNULL(discount_amount, 0) as discount_amount,
               IFNULL(service_fee, 0) as service_fee,
@@ -729,11 +1056,75 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
 
     const finalTotal = calcTotal > 0 ? calcTotal : (Number(current.total_price) || 0);
 
+    // Prevent unit collision (motor only)
+    const candidateUnitIdRaw = unit_id !== undefined && unit_id !== null && unit_id !== '' ? unit_id : current.unit_id;
+    const candidateUnitId = candidateUnitIdRaw ? parseInt(candidateUnitIdRaw, 10) : null;
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
+
+    if (String(current.item_type || '').toLowerCase() === 'motor') {
+      const nextStatus = String(status || '').toLowerCase();
+      const wantsUnitCheck = !!candidateUnitId && (unit_id || nextStatus === 'active');
+
+      if (wantsUnitCheck) {
+        const conflict = await hasUnitConflict({
+          unitId: candidateUnitId,
+          orderId: current.order_id,
+          startDate: current.start_date,
+          endDate: current.end_date,
+          bufferMinutes,
+        });
+
+        if (conflict) {
+          return res.status(409).json({
+            success: false,
+            error: 'Unit ini bentrok dengan booking lain pada rentang tanggal yang sama.',
+          });
+        }
+
+        // Manual blocks (cleaning/maintenance/etc)
+        const startNorm = normalizeToSqliteDateTime(current.start_date);
+        const endNorm = normalizeToSqliteDateTime(current.end_date);
+        const block = await dbGet(
+          `
+          SELECT id, reason
+          FROM unit_blocks
+          WHERE unit_id = ?
+            AND datetime(start_at) < datetime(?, ?)
+            AND datetime(end_at)   > datetime(?, ?)
+          LIMIT 1
+          `,
+          [
+            candidateUnitId,
+            endNorm,
+            bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+            startNorm,
+            bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          ]
+        );
+
+        if (block) {
+          return res.status(409).json({
+            success: false,
+            error: `Unit sedang diblokir: ${block.reason || 'Tidak tersedia'}.`,
+          });
+        }
+
+        // Ensure unit exists (and is not OUT)
+        const unitRow = await dbGet(`SELECT id, status, plate_number FROM motor_units WHERE id = ? LIMIT 1`, [candidateUnitId]);
+        if (!unitRow) {
+          return res.status(400).json({ success: false, error: 'Unit/plat tidak ditemukan.' });
+        }
+        if (String(unitRow.status || '').toUpperCase() === 'OUT') {
+          return res.status(400).json({ success: false, error: 'Unit sedang OUT dan tidak bisa dipakai.' });
+        }
+      }
+    }
+
     let setClauses = ['status = ?'];
     let params = [status];
 
     if (payment_status) { setClauses.push('payment_status = ?'); params.push(payment_status); }
-    if (unit_id)        { setClauses.push('unit_id = ?');        params.push(unit_id); }
+    if (unit_id)        { setClauses.push('unit_id = ?');        params.push(candidateUnitId); }
     if (plate_number)   { setClauses.push('plate_number = ?');   params.push(plate_number); }
 
     // Sync paid_amount so "outstanding" becomes correct.

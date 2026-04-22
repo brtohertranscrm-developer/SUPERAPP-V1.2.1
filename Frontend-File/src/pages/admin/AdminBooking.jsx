@@ -15,7 +15,7 @@ const AdminBooking = () => {
   };
 
   const handleModalSubmit = (orderId, formData) => {
-    updateBookingStatus(orderId, formData);
+    return updateBookingStatus(orderId, formData);
   };
 
   return (
@@ -30,6 +30,7 @@ const AdminBooking = () => {
         <BookingTable 
           data={bookings} 
           onEdit={handleOpenEdit} 
+          onQuickUpdate={updateBookingStatus}
         />
       )}
 
