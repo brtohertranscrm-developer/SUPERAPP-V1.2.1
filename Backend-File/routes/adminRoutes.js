@@ -151,25 +151,56 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
   try {
     const period = String(req.query.period || '7d').toLowerCase();
 
+    // Legacy SQLite rows can contain formatted strings like "Rp 87.500" instead of clean integers.
+    // Normalize them before SUM/COUNT logic so dashboard stays reliable after import/restore.
+    const sqlMoney = (columnName) => `
+      CAST(
+        COALESCE(
+          NULLIF(
+            REPLACE(
+              REPLACE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(TRIM(COALESCE(${columnName}, '0')), 'Rp', ''),
+                  'rp', ''),
+                '.', ''),
+              ',', ''),
+            ' ', ''),
+          ''),
+        '0')
+      AS INTEGER)
+    `;
+
     // Use created_at if available; fallback to start_date for older rows
     // Note: some historical rows store start_date as ISO (e.g. 2026-04-22T02:00:00.000Z) which SQLite can't always parse.
     // We normalize to "YYYY-MM-DD HH:MM:SS" (first 19 chars) when falling back to start_date.
     const startDateExpr = `datetime(replace(substr(COALESCE(start_date, ''), 1, 19), 'T', ' '))`;
     const tsExpr = `datetime(COALESCE(created_at, ${startDateExpr}))`;
 
+    const basePriceExpr = sqlMoney('base_price');
+    const discountExpr = sqlMoney('discount_amount');
+    const serviceFeeExpr = sqlMoney('service_fee');
+    const extendFeeExpr = sqlMoney('extend_fee');
+    const addonFeeExpr = sqlMoney('addon_fee');
+    const deliveryFeeExpr = sqlMoney('delivery_fee');
+    const pickupFeeExpr = sqlMoney('pickup_fee');
+    const dropFeeExpr = sqlMoney('drop_fee');
+    const paidAmountExpr = sqlMoney('paid_amount');
+    const totalPriceExpr = sqlMoney('total_price');
+
     // Robust booking total: prefer calculated breakdown when available, fallback to stored total_price.
     // This protects the dashboard if legacy rows have total_price = 0 or inconsistent.
     const calcTotalExpr = `
       (
-        (IFNULL(base_price,0) - IFNULL(discount_amount,0)) +
-        IFNULL(service_fee,0) + IFNULL(extend_fee,0) + IFNULL(addon_fee,0) + IFNULL(delivery_fee,0) +
-        IFNULL(pickup_fee,0) + IFNULL(drop_fee,0)
+        (${basePriceExpr} - ${discountExpr}) +
+        ${serviceFeeExpr} + ${extendFeeExpr} + ${addonFeeExpr} + ${deliveryFeeExpr} +
+        ${pickupFeeExpr} + ${dropFeeExpr}
       )
     `;
     const bookingTotalExpr = `
       CASE
         WHEN ${calcTotalExpr} > 0 THEN ${calcTotalExpr}
-        ELSE IFNULL(total_price, 0)
+        ELSE ${totalPriceExpr}
       END
     `;
 
@@ -205,7 +236,7 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
            CASE
              WHEN payment_status = 'paid' THEN (
                CASE
-                 WHEN IFNULL(paid_amount, 0) > 0 THEN IFNULL(paid_amount, 0)
+                 WHEN ${paidAmountExpr} > 0 THEN ${paidAmountExpr}
                  ELSE ${bookingTotalExpr}
                END
              )
@@ -232,7 +263,7 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
              CASE
                WHEN payment_status = 'paid' THEN 0
                ELSE (
-                 ${bookingTotalExpr} - IFNULL(paid_amount,0)
+                 ${bookingTotalExpr} - ${paidAmountExpr}
                )
              END
            ), 0) as amount
