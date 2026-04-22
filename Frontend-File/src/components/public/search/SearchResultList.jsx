@@ -14,6 +14,7 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
 
         const isOutofStock = motor.stock <= 0;
         const isLowStock = motor.stock > 0 && motor.stock <= 2;
+        const publicName = motor.display_name || motor.public_name || motor.name;
         const price24h = motor.current_price || motor.base_price;
         const price12h = motor.current_price_12h || motor.price_12h || Math.round(price24h * 0.7);
         const category = String(motor.category || '');
@@ -30,7 +31,7 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
               
               {/* Gambar Kecil */}
               <div className="relative w-full sm:w-48 h-40 sm:h-36 bg-slate-50 rounded-2xl overflow-hidden shrink-0">
-                <img src={motor.image_url} alt={motor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                <img src={motor.image_url} alt={publicName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 <div className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[8px] font-black text-slate-900 uppercase tracking-widest shadow-sm">
                   {motor.category}
                 </div>
@@ -44,7 +45,7 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
               {/* Info Tengah */}
               <div className="flex-1 flex flex-col justify-center">
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">{motor.name}</h3>
+                  <h3 className="text-lg sm:text-xl font-black text-slate-900 leading-tight">{publicName}</h3>
                   {isOutofStock ? (
                     <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md text-[10px] font-black uppercase">Habis</span>
                   ) : (

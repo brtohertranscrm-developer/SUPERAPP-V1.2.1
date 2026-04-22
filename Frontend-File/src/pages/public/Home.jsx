@@ -38,16 +38,21 @@ export default function Home() {
           <div className="flex flex-col items-center justify-center py-12"><Loader2 className="animate-spin text-rose-500 mb-3" size={32} /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {featuredMotors.map((motor) => (
+            {featuredMotors.map((motor) => {
+              const publicName = motor.display_name || motor.public_name || motor.name;
+              return (
               <div key={motor.id} className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden group transition-all hover:shadow-xl">
                 <div className="h-56 bg-slate-100 overflow-hidden relative">
-                  <img src={motor.image_url} alt={motor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <img src={motor.image_url} alt={publicName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm">
                     {motor.category}
                   </div>
+                  <div className="absolute bottom-4 left-4 bg-slate-900/75 backdrop-blur-sm px-3 py-1 rounded-full text-[9px] font-black text-white uppercase tracking-widest shadow-sm">
+                    {motor.location || 'Yogyakarta'}
+                  </div>
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-black mb-2 text-slate-900">{motor.name}</h3>
+                  <h3 className="text-xl font-black mb-2 text-slate-900">{publicName}</h3>
                   <div className="flex items-center gap-1 text-amber-400 mb-6 text-sm font-bold">
                     <Star size={16} fill="currentColor" /> 4.9 <span className="text-slate-400 ml-1 font-medium">(120+ Sewa)</span>
                   </div>
@@ -62,7 +67,7 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
         <button onClick={() => navigate('/motor')} className="sm:hidden w-full mt-6 py-4 bg-white border border-slate-200 text-slate-900 font-black rounded-2xl flex items-center justify-center gap-2">

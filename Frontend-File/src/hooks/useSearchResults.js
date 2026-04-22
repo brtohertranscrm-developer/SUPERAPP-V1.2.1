@@ -116,7 +116,7 @@ export const useSearchResults = () => {
         startTime,
         endDate,
         endTime,
-        motorName:      motor.name,
+        motorName:      motor.display_name || motor.public_name || motor.name,
         price24h:       motor.current_price || motor.base_price || 0,
         price12h:       motor.current_price_12h || motor.price_12h || Math.round((motor.current_price || motor.base_price || 0) * 0.7),
         pickupLocation: currentCity,

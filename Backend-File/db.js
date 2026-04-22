@@ -106,6 +106,7 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS motors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      display_name TEXT,
       category TEXT NOT NULL,
       location TEXT DEFAULT 'Yogyakarta',
       cc INTEGER DEFAULT 125,
@@ -544,10 +545,18 @@ db.serialize(() => {
 
   // Motors
   addColumnIfNotExists('motors', 'location',               'TEXT DEFAULT "Yogyakarta"');
+  addColumnIfNotExists('motors', 'display_name',           'TEXT');
   addColumnIfNotExists('motors', 'price_12h',              'INTEGER DEFAULT 0');
   addColumnIfNotExists('motors', 'allow_dynamic_pricing',  'INTEGER DEFAULT 1');
   addColumnIfNotExists('motors', 'vendor_user_id',         'TEXT');
   addColumnIfNotExists('motors', 'vendor_rate',            'REAL DEFAULT 0');
+
+  // Backfill nama tampil agar data lama tetap rapi di katalog publik.
+  db.run(`
+    UPDATE motors
+    SET display_name = name
+    WHERE display_name IS NULL OR trim(display_name) = ''
+  `);
 
   // Promotions
   addColumnIfNotExists('promotions', 'usage_limit',      'INTEGER DEFAULT 0');

@@ -78,6 +78,7 @@ router.get('/motors', async (req, res) => {
 
       return {
         ...motor,
+        public_name: motor.display_name || motor.name,
         current_price: currentPrice,
         current_price_12h: currentPrice12h,
         is_surge: isSurge,

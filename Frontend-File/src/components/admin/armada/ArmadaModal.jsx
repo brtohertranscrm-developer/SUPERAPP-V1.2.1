@@ -15,6 +15,7 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
 
   const [formData, setFormData] = useState({
     name:                  '',
+    display_name:          '',
     cc:                    '125',
     category:              'Matic',
     location:              'Yogyakarta',
@@ -30,6 +31,7 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
       const normalizedCategory = normalizeCategory(initialData.category);
       setFormData({
         ...initialData,
+        display_name: initialData.display_name || initialData.name || '',
         cc: normalizeCc(initialData.cc, normalizedCategory),
         category: normalizedCategory,
         allow_dynamic_pricing:
@@ -95,7 +97,20 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Nama Motor</label>
             <input type="text" name="name" value={formData.name} onChange={handleChange} required
               className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Contoh: Honda Vario 160 - Yogyakarta" />
+            <p className="mt-1.5 text-[11px] text-slate-400 font-bold">
+              Pakai nama internal yang jelas per kota untuk memudahkan operasional.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Nama Tampil ke User</label>
+            <input type="text" name="display_name" value={formData.display_name} onChange={handleChange} required
+              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Contoh: Honda Vario 160" />
+            <p className="mt-1.5 text-[11px] text-slate-400 font-bold">
+              Nama ini yang muncul di katalog, search, checkout, dan detail booking user.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

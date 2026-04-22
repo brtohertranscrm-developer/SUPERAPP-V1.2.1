@@ -2,6 +2,7 @@ import React from 'react';
 import { Calendar, Users, CloudRain, Settings2, Clock, Flame, BatteryCharging, Zap } from 'lucide-react';
 
 const MotorCard = ({ motor, onClick }) => {
+  const publicName = motor.display_name || motor.public_name || motor.name;
   // Ambil harga 24 jam final (dari current_price hasil backend)
   const price24h = motor.current_price || motor.base_price;
   
@@ -23,9 +24,12 @@ const MotorCard = ({ motor, onClick }) => {
     >
       {/* GAMBAR MOTOR */}
       <div className="relative h-56 bg-slate-50 rounded-3xl overflow-hidden mb-5">
-        <img src={motor.image_url} alt={motor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+        <img src={motor.image_url} alt={publicName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
         <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-full text-[9px] font-black text-slate-900 uppercase tracking-widest shadow-sm">
           {motor.category}
+        </div>
+        <div className="absolute bottom-4 left-4 bg-slate-900/75 backdrop-blur-sm px-3 py-1.5 rounded-full text-[9px] font-black text-white uppercase tracking-widest shadow-sm">
+          {motor.location || 'Yogyakarta'}
         </div>
         {motor.is_surge && (
           <div className="absolute top-4 right-4 bg-rose-500 text-white px-3 py-1.5 rounded-full text-[9px] font-black uppercase shadow-sm flex items-center gap-1">
@@ -41,7 +45,7 @@ const MotorCard = ({ motor, onClick }) => {
 
       {/* INFO MOTOR */}
       <div className="flex-1 flex flex-col px-1">
-        <h2 className="text-xl font-black text-slate-900 leading-tight mb-4">{motor.name}</h2>
+        <h2 className="text-xl font-black text-slate-900 leading-tight mb-4">{publicName}</h2>
         
         {/* LABEL FASILITAS */}
         <div className="flex flex-wrap gap-2 mb-6 mt-auto">

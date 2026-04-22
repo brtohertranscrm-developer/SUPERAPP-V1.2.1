@@ -23,6 +23,7 @@ const ArmadaTable = ({ data, onEdit, onDelete, onManageUnit }) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
       motor.name?.toLowerCase().includes(searchLower) ||
+      motor.display_name?.toLowerCase().includes(searchLower) ||
       motor.id?.toString().toLowerCase().includes(searchLower);
 
     const matchLocation = filterLocation ? motor.location === filterLocation : true;
@@ -97,6 +98,11 @@ const ArmadaTable = ({ data, onEdit, onDelete, onManageUnit }) => {
                 >
                   <div className="flex-1 overflow-hidden">
                     <h3 className="font-black text-slate-800 text-base truncate">{motor.name}</h3>
+                    {!!motor.display_name && motor.display_name !== motor.name && (
+                      <p className="text-[11px] font-bold text-slate-400 truncate mt-0.5">
+                        Tampil ke user: {motor.display_name}
+                      </p>
+                    )}
                     <div className="flex items-center gap-2 mt-1">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
                         <MapPin size={10} /> {motor.location}

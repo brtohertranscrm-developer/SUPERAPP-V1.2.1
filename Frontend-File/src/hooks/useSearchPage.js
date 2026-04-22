@@ -80,7 +80,7 @@ export const useSearchPage = () => {
     navigate('/checkout-motor', {
       state: {
         motorId:        motor.id,
-        motorName:      motor.name,
+        motorName:      motor.display_name || motor.public_name || motor.name,
         pickupLocation: activeSearch.pickupLocation,
         startDate:      activeSearch.startDate,
         startTime:      activeSearch.startTime,

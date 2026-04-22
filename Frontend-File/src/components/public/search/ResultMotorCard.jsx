@@ -4,6 +4,7 @@ import { Flame, Settings2, ShieldCheck, CloudRain, Clock, ChevronRight, BatteryC
 const ResultMotorCard = ({ 
   motor, motorCity, totalDays, onRent 
 }) => {
+  const publicName = motor.display_name || motor.public_name || motor.name;
   const basePrice24h = Number(motor.current_price || motor.base_price || 0);
   const basePrice12h = Number(motor.current_price_12h || motor.price_12h || Math.round(basePrice24h * 0.7));
   
@@ -19,7 +20,7 @@ const ResultMotorCard = ({
       
       {/* Gambar Kiri */}
       <div className="relative h-64 lg:h-auto lg:w-[35%] bg-slate-100 overflow-hidden shrink-0">
-        <img src={safeImageUrl} alt={motor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+        <img src={safeImageUrl} alt={publicName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent"></div>
         
         <div className="absolute top-5 left-5 flex flex-col gap-2">
@@ -43,7 +44,7 @@ const ResultMotorCard = ({
 
       {/* Info Tengah */}
       <div className="flex-1 p-6 lg:p-8 flex flex-col justify-center bg-white relative z-10 border-r border-slate-100/50">
-        <h3 className="text-2xl lg:text-3xl font-black text-slate-900 mb-4 tracking-tight group-hover:text-rose-500 transition-colors duration-300">{motor.name}</h3>
+        <h3 className="text-2xl lg:text-3xl font-black text-slate-900 mb-4 tracking-tight group-hover:text-rose-500 transition-colors duration-300">{publicName}</h3>
         
         <div className="flex flex-wrap gap-2 mb-6">
           {/* Badge CC (Hanya muncul jika bukan listrik dan datanya ada) */}
