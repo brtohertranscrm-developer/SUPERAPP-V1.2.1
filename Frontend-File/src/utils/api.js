@@ -1,5 +1,15 @@
 const API_URL_RAW = import.meta.env.VITE_API_URL?.trim() || '';
-const API_URL = API_URL_RAW.endsWith('/') ? API_URL_RAW.slice(0, -1) : API_URL_RAW;
+const DEV_PROXY_TARGET_RAW = import.meta.env.VITE_DEV_PROXY_TARGET?.trim() || '';
+
+// Di mode dev, kalau VITE_API_URL kosong kita fallback langsung ke backend lokal
+// agar tidak tergantung proxy Vite yang kadang stale / salah target.
+const RESOLVED_API_URL_RAW =
+  API_URL_RAW ||
+  (import.meta.env.DEV ? (DEV_PROXY_TARGET_RAW || 'http://localhost:5001') : '');
+
+const API_URL = RESOLVED_API_URL_RAW.endsWith('/')
+  ? RESOLVED_API_URL_RAW.slice(0, -1)
+  : RESOLVED_API_URL_RAW;
 
 export const apiFetch = async (endpoint, options = {}) => {
   // Ambil token dari localStorage
