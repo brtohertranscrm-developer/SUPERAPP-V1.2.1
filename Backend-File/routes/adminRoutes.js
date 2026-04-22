@@ -149,9 +149,71 @@ router.put('/settings/motor-billing', requirePermission('settings'), async (req,
 // ==========================================
 router.get('/stats', requirePermission('dashboard'), async (req, res) => {
   try {
-    const [revenue, activeMotors, activeLockers, pendingKyc] = await Promise.all([
-      dbGet(`SELECT COALESCE(SUM(total_price), 0) as total FROM bookings WHERE status != 'cancelled'`),
-      dbGet(`SELECT COUNT(*) as count FROM bookings WHERE item_type = 'motor' AND status = 'active'`),
+    const period = String(req.query.period || '7d').toLowerCase();
+
+    // Use created_at if available; fallback to start_date for older rows
+    const tsExpr = `datetime(COALESCE(created_at, start_date))`;
+
+    let timeWhere = '1=1';
+    let periodLabel = '7 Hari Terakhir';
+
+    // Localtime so it matches admin expectation in Indonesia time on VPS (assuming server TZ is local).
+    // If VPS runs UTC, it still behaves consistently; labels remain truthful about "server time".
+    if (period === 'today') {
+      timeWhere = `${tsExpr} >= datetime('now','localtime','start of day')`;
+      periodLabel = 'Hari Ini';
+    } else if (period === '30d') {
+      timeWhere = `${tsExpr} >= datetime('now','localtime','-30 days')`;
+      periodLabel = '30 Hari Terakhir';
+    } else if (period === 'mtd') {
+      timeWhere = `${tsExpr} >= datetime('now','localtime','start of month')`;
+      periodLabel = 'Bulan Ini (MTD)';
+    } else if (period === 'ytd') {
+      timeWhere = `${tsExpr} >= datetime('now','localtime','start of year')`;
+      periodLabel = 'Tahun Ini (YTD)';
+    } else if (period === 'all') {
+      timeWhere = '1=1';
+      periodLabel = 'Semua Waktu';
+    } else {
+      // Default 7d
+      timeWhere = `${tsExpr} >= datetime('now','localtime','-7 days')`;
+      periodLabel = '7 Hari Terakhir';
+    }
+
+    const [revenuePaid, revenueGross, paidCount, pendingPay, activeBookings, activeMotors, activeLockers, pendingKyc] = await Promise.all([
+      dbGet(
+        `SELECT COALESCE(SUM(total_price), 0) as total
+         FROM bookings
+         WHERE payment_status = 'paid' AND status != 'cancelled' AND ${timeWhere}`
+      ),
+      dbGet(
+        `SELECT COALESCE(SUM(total_price), 0) as total
+         FROM bookings
+         WHERE status != 'cancelled' AND ${timeWhere}`
+      ),
+      dbGet(
+        `SELECT COUNT(*) as count
+         FROM bookings
+         WHERE payment_status = 'paid' AND status != 'cancelled' AND ${timeWhere}`
+      ),
+      dbGet(
+        `SELECT
+           COUNT(*) as count,
+           COALESCE(SUM(
+             CASE
+               WHEN payment_status = 'paid' THEN 0
+               ELSE (
+                 (IFNULL(base_price,0) - IFNULL(discount_amount,0)) +
+                 IFNULL(service_fee,0) + IFNULL(extend_fee,0) + IFNULL(addon_fee,0) + IFNULL(delivery_fee,0) -
+                 IFNULL(paid_amount,0)
+               )
+             END
+           ), 0) as amount
+         FROM bookings
+         WHERE status != 'cancelled' AND payment_status != 'paid' AND ${timeWhere}`
+      ),
+      dbGet(`SELECT COUNT(*) as count FROM bookings WHERE status = 'active' AND ${timeWhere}`),
+      dbGet(`SELECT COUNT(*) as count FROM bookings WHERE item_type = 'motor' AND status = 'active' AND ${timeWhere}`),
       dbGet(`SELECT COUNT(*) as count FROM lockers WHERE stock > 0`),
       dbGet(`SELECT COUNT(*) as count FROM users WHERE kyc_status = 'pending'`)
     ]);
@@ -159,10 +221,18 @@ router.get('/stats', requirePermission('dashboard'), async (req, res) => {
     res.json({
       success: true,
       data: {
-        revenue: revenue.total,
+        period: period,
+        periodLabel,
+        revenue: revenuePaid.total, // backward-compatible: "revenue" means paid revenue for selected period
+        revenue_paid: revenuePaid.total,
+        revenue_gross: revenueGross.total,
+        paid_bookings: paidCount.count,
+        pending_payment_count: pendingPay.count,
+        pending_payment_amount: pendingPay.amount,
+        activeBookings: activeBookings.count,
         activeMotors: activeMotors.count,
         activeLockers: activeLockers.count,
-        pendingKyc: pendingKyc.count
+        pendingKyc: pendingKyc.count,
       }
     });
 

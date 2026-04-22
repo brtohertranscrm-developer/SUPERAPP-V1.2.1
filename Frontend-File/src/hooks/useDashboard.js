@@ -1,16 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export const useDashboard = () => {
+export const useDashboard = ({ period = '7d' } = {}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState({
+    period: period,
+    periodLabel: '',
+    // revenue: backward-compatible alias (paid revenue)
     revenue: 0,
+    revenue_paid: 0,
+    revenue_gross: 0,
+    paid_bookings: 0,
+    pending_payment_count: 0,
+    pending_payment_amount: 0,
+    activeBookings: 0,
     activeMotors: 0,
     activeLockers: 0,
-    pendingKyc: 0
+    pendingKyc: 0,
   });
   const [recentBookings, setRecentBookings] = useState([]);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
   const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+
+  const buildUrl = (path, query = {}) => {
+    const base = API_URL.replace(/\/$/, '');
+    const url = base ? `${base}${path}` : path; // allow Vite proxy when base is empty
+    const qs = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(query).filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+      )
+    ).toString();
+    return qs ? `${url}?${qs}` : url;
+  };
 
   // 1. PERBAIKAN: Utamakan 'admin_token' agar tidak tertukar dengan token User
   const getAuthHeaders = () => {
@@ -25,7 +46,7 @@ export const useDashboard = () => {
     setIsLoading(true);
     try {
       // 2. Tembak API Stats
-      const resStats = await fetch(`${API_URL}/api/admin/stats`, {
+      const resStats = await fetch(buildUrl('/api/admin/stats', { period: String(period || '7d') }), {
         headers: getAuthHeaders() 
       });
       const dataStats = await resStats.json();
@@ -33,11 +54,16 @@ export const useDashboard = () => {
       if (!resStats.ok) {
          console.error("API Stats Ditolak:", dataStats.error || dataStats.message);
       } else if (dataStats.success) {
-         setStats(dataStats.data);
+         setStats((prev) => ({
+           ...prev,
+           ...dataStats.data,
+           period: dataStats.data?.period || String(period || '7d'),
+         }));
+         setLastUpdatedAt(Date.now());
       }
 
       // 3. Tembak API Bookings
-      const resBookings = await fetch(`${API_URL}/api/admin/bookings`, {
+      const resBookings = await fetch(buildUrl('/api/admin/bookings'), {
         headers: getAuthHeaders() 
       });
       const dataBookings = await resBookings.json();
@@ -50,7 +76,7 @@ export const useDashboard = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [API_URL]);
+  }, [API_URL, period]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -60,5 +86,5 @@ export const useDashboard = () => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(angka || 0);
   };
 
-  return { isLoading, stats, recentBookings, formatRupiah };
+  return { isLoading, stats, recentBookings, formatRupiah, lastUpdatedAt, refetch: fetchDashboardData };
 };
