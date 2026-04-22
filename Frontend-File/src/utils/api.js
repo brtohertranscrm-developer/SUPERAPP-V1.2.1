@@ -44,7 +44,10 @@ export const apiFetch = async (endpoint, options = {}) => {
         }
       }
 
-      throw new Error(data?.error || data?.message || 'Terjadi kesalahan pada server');
+      const err = new Error(data?.error || data?.message || 'Terjadi kesalahan pada server');
+      err.status = response.status;
+      err.payload = data;
+      throw err;
     }
     
     return data;

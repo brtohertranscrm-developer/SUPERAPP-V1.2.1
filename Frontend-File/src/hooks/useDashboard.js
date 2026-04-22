@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '../utils/api';
 
 const parseMoney = (value) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -135,87 +136,56 @@ export const useDashboard = ({ period = '7d' } = {}) => {
   const [recentBookings, setRecentBookings] = useState([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
 
-  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
-
-  const buildUrl = (path, query = {}) => {
-    const base = API_URL.replace(/\/$/, '');
-    const url = base ? `${base}${path}` : path; // allow Vite proxy when base is empty
-    const qs = new URLSearchParams(
-      Object.fromEntries(
-        Object.entries(query).filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
-      )
-    ).toString();
-    return qs ? `${url}?${qs}` : url;
-  };
-
-  // 1. PERBAIKAN: Utamakan 'admin_token' agar tidak tertukar dengan token User
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    };
-  };
-
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
     try {
       let statsPayload = null;
 
       // 2. Tembak API Stats
-      const resStats = await fetch(buildUrl('/api/admin/stats', { period: String(period || '7d') }), {
-        headers: getAuthHeaders() 
-      });
-      const dataStats = await resStats.json();
-      
-      if (!resStats.ok) {
-         console.error("API Stats Ditolak:", dataStats.error || dataStats.message);
-      } else if (dataStats.success) {
-         statsPayload = dataStats.data || null;
+      try {
+        const dataStats = await apiFetch(`/api/admin/stats?period=${encodeURIComponent(String(period || '7d'))}`);
+        statsPayload = dataStats?.data || null;
+      } catch (e) {
+        // apiFetch sudah handle auto-logout saat 401.
+        console.error('API Stats Ditolak:', e?.message || e);
       }
 
       // 3. Tembak API Bookings
-      const resBookings = await fetch(buildUrl('/api/admin/bookings'), {
-        headers: getAuthHeaders() 
-      });
-      const dataBookings = await resBookings.json();
-      
-      if (dataBookings.success) {
-         const bookings = Array.isArray(dataBookings.data) ? dataBookings.data : [];
-         setRecentBookings(bookings.slice(0, 4));
+      const dataBookings = await apiFetch('/api/admin/bookings');
+      const bookings = Array.isArray(dataBookings?.data) ? dataBookings.data : [];
+      setRecentBookings(bookings.slice(0, 4));
 
-         const fallbackStats = computeStatsFromBookings(bookings, String(period || '7d'));
-         const shouldUseFallback =
-           !statsPayload ||
-           typeof statsPayload.revenue_gross === 'undefined' ||
-           typeof statsPayload.periodLabel === 'undefined' ||
-           typeof statsPayload.pending_payment_amount === 'undefined' ||
-           typeof statsPayload.activeBookings === 'undefined' ||
-           (
-             parseMoney(statsPayload.revenue_gross ?? statsPayload.revenue) === 0 &&
-             fallbackStats.revenue_gross > 0
-           );
+      const fallbackStats = computeStatsFromBookings(bookings, String(period || '7d'));
+      const shouldUseFallback =
+        !statsPayload ||
+        typeof statsPayload.revenue_gross === 'undefined' ||
+        typeof statsPayload.periodLabel === 'undefined' ||
+        typeof statsPayload.pending_payment_amount === 'undefined' ||
+        typeof statsPayload.activeBookings === 'undefined' ||
+        (
+          parseMoney(statsPayload.revenue_gross ?? statsPayload.revenue) === 0 &&
+          fallbackStats.revenue_gross > 0
+        );
 
-         setStats((prev) => ({
-           ...prev,
-           ...(shouldUseFallback ? fallbackStats : statsPayload),
-           activeLockers: Number(statsPayload?.activeLockers ?? prev.activeLockers ?? 0),
-           pendingKyc: Number(statsPayload?.pendingKyc ?? prev.pendingKyc ?? 0),
-           period: shouldUseFallback
-             ? fallbackStats.period
-             : (statsPayload?.period || String(period || '7d')),
-           periodLabel: shouldUseFallback
-             ? fallbackStats.periodLabel
-             : (statsPayload?.periodLabel || getPeriodLabel(String(period || '7d'))),
-         }));
-         setLastUpdatedAt(Date.now());
-      }
+      setStats((prev) => ({
+        ...prev,
+        ...(shouldUseFallback ? fallbackStats : statsPayload),
+        activeLockers: Number(statsPayload?.activeLockers ?? prev.activeLockers ?? 0),
+        pendingKyc: Number(statsPayload?.pendingKyc ?? prev.pendingKyc ?? 0),
+        period: shouldUseFallback
+          ? fallbackStats.period
+          : (statsPayload?.period || String(period || '7d')),
+        periodLabel: shouldUseFallback
+          ? fallbackStats.periodLabel
+          : (statsPayload?.periodLabel || getPeriodLabel(String(period || '7d'))),
+      }));
+      setLastUpdatedAt(Date.now());
     } catch (error) {
       console.error('Gagal mengambil data dashboard:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [API_URL, period]);
+  }, [period]);
 
   useEffect(() => {
     fetchDashboardData();
