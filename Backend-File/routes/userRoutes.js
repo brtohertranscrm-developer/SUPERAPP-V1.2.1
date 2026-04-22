@@ -1,5 +1,6 @@
 const { notifyNewBooking, notifyExtendBooking, notifyKycPending, notifyGmapsReview } = require('../utils/telegram');
 const { calculateMotorRentalBreakdown } = require('../utils/motorRentalPricing');
+const { quoteDelivery } = require('../utils/deliveryPricing');
 const multer = require('multer');
 const path   = require('path');
 const crypto = require('crypto');
@@ -330,7 +331,8 @@ router.post('/bookings', async (req, res) => {
       order_id, item_type, item_name, location, start_date, end_date, total_price,
       base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
       basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
-      duration_hours, price_notes, payment_method
+      duration_hours, price_notes, payment_method,
+      delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng
     } = req.body || {};
 
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
@@ -422,9 +424,32 @@ router.post('/bookings', async (req, res) => {
     const dAmount = parseInt(discount_amount || discountAmount) || 0;
     const sFee    = parseInt(service_fee || serviceFee) || 0;
     const aFee    = parseInt(addon_fee || addonFee) || 0;
-    const delFee  = parseInt(delivery_fee || deliveryFee) || 0;
     const pCode   = promo_code || promoCode || null;
     const billableHours = rentalBreakdown?.billableHours || parseInt(duration_hours) || 0;
+
+    // Delivery fee: compute on server (source of truth)
+    let delFee = parseInt(delivery_fee || deliveryFee) || 0;
+    let deliveryDistanceKm = null;
+    let deliveryMethod = null;
+    const delType = delivery_type ? String(delivery_type) : null;
+
+    if (item_type === 'motor' && delType && delType !== 'self') {
+      const q = await quoteDelivery({
+        city: location,
+        target: delType === 'station'
+          ? { type: 'station', station_id: delivery_station_id || null }
+          : { type: 'address', lat: delivery_lat, lng: delivery_lng, address: delivery_address || null },
+      });
+
+      if (!q.ok) {
+        return res.status(400).json({ success: false, error: q.error || 'Data pengantaran tidak valid.' });
+      }
+
+      delFee = q.fee;
+      deliveryDistanceKm = q.distance_km;
+      deliveryMethod = q.method;
+    }
+
     finalPrice = Math.max(0, bPrice - dAmount + sFee + aFee + delFee);
     const payMethod = payment_method || req.body.payment_method || 'transfer';
     const computedPriceNotes = rentalBreakdown
@@ -433,13 +458,23 @@ router.post('/bookings', async (req, res) => {
 
     await dbRun(
       `INSERT INTO bookings (
-         order_id, user_id, item_type, item_name, location, start_date, end_date, 
+         order_id, user_id, item_type, item_name, location,
+         delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
+         start_date, end_date, 
          base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
          paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
        ) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
       [
-        order_id, req.user.id, item_type, item_name, location, start_date, end_date, 
+        order_id, req.user.id, item_type, item_name, location,
+        delType || null,
+        delivery_station_id || null,
+        delivery_address || null,
+        (delivery_lat !== undefined && delivery_lat !== null && delivery_lat !== '') ? Number(delivery_lat) : null,
+        (delivery_lng !== undefined && delivery_lng !== null && delivery_lng !== '') ? Number(delivery_lng) : null,
+        deliveryDistanceKm !== null ? Number(deliveryDistanceKm) : null,
+        deliveryMethod || null,
+        start_date, end_date, 
         bPrice, dAmount, pCode, sFee, aFee, delFee,
         0, finalPrice, payMethod, billableHours, computedPriceNotes
       ]
@@ -471,6 +506,7 @@ router.get('/bookings/:orderId', async (req, res) => {
 
     const row = await dbGet(
       `SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+              delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
               base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
               paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes, created_at
        FROM bookings

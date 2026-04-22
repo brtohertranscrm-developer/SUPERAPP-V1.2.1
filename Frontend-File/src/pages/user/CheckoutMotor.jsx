@@ -11,6 +11,7 @@ import {
   formatBillableSummary,
   formatDateTimeForInput,
 } from '../../utils/motorRentalPricing';
+import { parseLatLngFromText } from '../../utils/geo';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
@@ -241,6 +242,17 @@ export default function CheckoutMotor() {
   const [isSubmitting, setIsSubmitting]     = useState(false);
   const [submitError, setSubmitError]       = useState('');
 
+  // Delivery (pengantaran unit)
+  const [handoverMethod, setHandoverMethod] = useState('self'); // self | delivery
+  const [deliveryTarget, setDeliveryTarget] = useState('station'); // station | address
+  const [stations, setStations] = useState([]);
+  const [stationId, setStationId] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [mapsInput, setMapsInput] = useState('');
+  const [deliveryQuote, setDeliveryQuote] = useState(null);
+  const [deliveryError, setDeliveryError] = useState('');
+  const [isDeliveryLoading, setIsDeliveryLoading] = useState(false);
+
   // [FIX 4] State untuk info rekening dari API
   const [paymentInfo, setPaymentInfo]       = useState(null);
   const [remoteBreakdown, setRemoteBreakdown] = useState(null);
@@ -266,6 +278,22 @@ export default function CheckoutMotor() {
       .then((data) => { if (data.success) setPaymentInfo(data.data); })
       .catch(() => {/* silent fail — UI tetap jalan, hanya info rekening kosong */});
   }, []);
+
+  // Fetch delivery stations for city (Solo / Yogyakarta)
+  useEffect(() => {
+    const city = bookingData?.pickupLocation || '';
+    if (!city) return;
+    fetch(`${API_URL}/api/delivery/stations?city=${encodeURIComponent(city)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.success && Array.isArray(j.data)) {
+          setStations(j.data);
+          const free = j.data.find((s) => s.is_free);
+          if (free?.id) setStationId(free.id);
+        }
+      })
+      .catch(() => {});
+  }, [bookingData?.pickupLocation]);
 
   // ── Price Calculations ──────────────────────────────────────────────────────
   const {
@@ -330,9 +358,51 @@ export default function CheckoutMotor() {
   const serviceFee    = SERVICE_FEE;
   const beforeDiscount = subTotal + serviceFee;
   const safeDiscount  = Math.min(Math.max(0, Number(discountAmount) || 0), beforeDiscount);
-  const grandTotal    = beforeDiscount - safeDiscount;
+  const deliveryFee =
+    handoverMethod === 'delivery'
+      ? (Number(deliveryQuote?.fee) || 0)
+      : 0;
+  const grandTotal    = Math.max(0, beforeDiscount - safeDiscount + deliveryFee);
 
   const isKycVerified = user?.kyc_status === 'verified';
+
+  const requestDeliveryQuote = useCallback(async (target) => {
+    setIsDeliveryLoading(true);
+    setDeliveryError('');
+    try {
+      const res = await fetch(`${API_URL}/api/delivery/quote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city: pickupLocation, target }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.error || 'Gagal menghitung biaya pengantaran.');
+      }
+      setDeliveryQuote(json.data);
+      return json.data;
+    } catch (e) {
+      setDeliveryQuote(null);
+      setDeliveryError(e.message || 'Gagal menghitung biaya pengantaran.');
+      return null;
+    } finally {
+      setIsDeliveryLoading(false);
+    }
+  }, [pickupLocation]);
+
+  // Auto quote for station-free delivery
+  useEffect(() => {
+    if (handoverMethod !== 'delivery') {
+      setDeliveryQuote(null);
+      setDeliveryError('');
+      return;
+    }
+    if (deliveryTarget === 'station' && stationId) {
+      requestDeliveryQuote({ type: 'station', station_id: stationId });
+    } else {
+      setDeliveryQuote(null);
+    }
+  }, [handoverMethod, deliveryTarget, stationId, requestDeliveryQuote]);
 
   // ── Promo Handler ───────────────────────────────────────────────────────────
   const handleApplyPromo = useCallback(async (code) => {
@@ -373,6 +443,39 @@ export default function CheckoutMotor() {
     setSubmitError('');
     setIsSubmitting(true);
 
+    const deliveryType =
+      handoverMethod === 'delivery'
+        ? (deliveryTarget === 'station' ? 'station' : 'address')
+        : 'self';
+
+    let destLat = null;
+    let destLng = null;
+
+    if (handoverMethod === 'delivery' && deliveryTarget === 'address') {
+      const parsed = parseLatLngFromText(mapsInput);
+      if (!parsed) {
+        setSubmitError('Tempel link Google Maps atau koordinat (lat,lng) untuk menghitung ongkir.');
+        setIsSubmitting(false);
+        return;
+      }
+      destLat = parsed.lat;
+      destLng = parsed.lng;
+
+      // Ensure quote exists for this address
+      if (!deliveryQuote || Number(deliveryQuote?.fee) < 0) {
+        const q = await requestDeliveryQuote({
+          type: 'address',
+          lat: destLat,
+          lng: destLng,
+          address: deliveryAddress || null,
+        });
+        if (!q) {
+          setIsSubmitting(false);
+          return;
+        }
+      }
+    }
+
     const token   = localStorage.getItem('token');
     const orderId = generateOrderId();
 
@@ -384,6 +487,14 @@ export default function CheckoutMotor() {
       item_type:       'motor',
       item_name:       motorName,
       location:        pickupLocation,
+      delivery_type:   deliveryType,
+      delivery_station_id: deliveryType === 'station' ? stationId : null,
+      delivery_address: deliveryType === 'address' ? (deliveryAddress || null) : null,
+      delivery_lat:    deliveryType === 'address' ? destLat : null,
+      delivery_lng:    deliveryType === 'address' ? destLng : null,
+      delivery_distance_km: deliveryType !== 'self' ? (deliveryQuote?.distance_km ?? null) : null,
+      delivery_method: deliveryType !== 'self' ? (deliveryQuote?.method ?? null) : null,
+      delivery_fee:    deliveryFee,
       start_date:      startIso ? startIso : formatDateTimeForInput(rentalBreakdown.startAt),
       end_date:        endIso ? endIso : formatDateTimeForInput(rentalBreakdown.endAt),
       duration_hours:  rentalBreakdown.billableHours,
@@ -515,6 +626,166 @@ export default function CheckoutMotor() {
               </div>
             </div>
 
+            {/* Delivery / Handover */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <MapPin size={16} className="text-slate-500" /> Serah Terima Unit
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setHandoverMethod('self')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                    handoverMethod === 'self'
+                      ? 'border-slate-900 bg-slate-50'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-black text-slate-900">Ambil Sendiri</p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-1">Gratis, ambil di titik {pickupLocation}</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setHandoverMethod('delivery')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                    handoverMethod === 'delivery'
+                      ? 'border-slate-900 bg-slate-50'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-black text-slate-900">Minta Diantar</p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-1">
+                    Gratis untuk stasiun tertentu, di luar itu ada biaya
+                  </p>
+                </button>
+              </div>
+
+              {handoverMethod === 'delivery' && (
+                <div className="mt-4 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryTarget('station')}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                        deliveryTarget === 'station'
+                          ? 'border-emerald-600 bg-emerald-50/40'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <p className="text-xs font-black text-slate-900">Stasiun (Gratis)</p>
+                      <p className="text-[11px] font-medium text-slate-500 mt-1">Solo: Balapan, Jogja: Lempuyangan</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryTarget('address')}
+                      className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                        deliveryTarget === 'address'
+                          ? 'border-emerald-600 bg-emerald-50/40'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <p className="text-xs font-black text-slate-900">Alamat Lain</p>
+                      <p className="text-[11px] font-medium text-slate-500 mt-1">Rp 15.000 (0-3km) + Rp 5.000/km berikutnya</p>
+                    </button>
+                  </div>
+
+                  {deliveryTarget === 'station' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Stasiun</p>
+                      <select
+                        value={stationId}
+                        onChange={(e) => setStationId(e.target.value)}
+                        className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                      >
+                        {stations.length === 0 ? (
+                          <option value="">Memuat...</option>
+                        ) : (
+                          stations.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name} ({s.city})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <p className="text-xs text-emerald-700 font-black mt-2">
+                        {isDeliveryLoading ? 'Menghitung...' : `Biaya: ${fmtRp(deliveryFee)} (Gratis)`}
+                      </p>
+                    </div>
+                  )}
+
+                  {deliveryTarget === 'address' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Alamat (opsional)</p>
+                        <input
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value)}
+                          className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                          placeholder="Contoh: Jl. Malioboro No. 1, Jogja"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Link Google Maps / Koordinat</p>
+                        <input
+                          value={mapsInput}
+                          onChange={(e) => setMapsInput(e.target.value)}
+                          className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-500 outline-none"
+                          placeholder="Tempel link Google Maps atau: -7.79,110.37"
+                        />
+                        <p className="text-[11px] text-slate-500 font-medium mt-1">
+                          Tip: di Google Maps pilih Share lalu Copy link, tempel di sini.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parsed = parseLatLngFromText(mapsInput);
+                          if (!parsed) {
+                            setDeliveryError('Koordinat tidak terbaca. Tempel link Google Maps yang berisi pin lokasi.');
+                            return;
+                          }
+                          requestDeliveryQuote({ type: 'address', lat: parsed.lat, lng: parsed.lng, address: deliveryAddress || null });
+                        }}
+                        disabled={isDeliveryLoading}
+                        className="w-full py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-slate-900 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isDeliveryLoading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
+                        Hitung Biaya Pengantaran
+                      </button>
+
+                      {deliveryQuote && (
+                        <div className="bg-white border border-emerald-200 rounded-2xl p-4">
+                          <p className="text-xs font-black text-slate-900">
+                            Estimasi biaya: <span className="text-emerald-700">{fmtRp(deliveryQuote.fee)}</span>
+                          </p>
+                          <p className="text-[11px] text-slate-500 font-medium mt-1">
+                            Jarak: {deliveryQuote.distance_km} km ({deliveryQuote.method})
+                          </p>
+                        </div>
+                      )}
+
+                      {deliveryError && (
+                        <p className="text-rose-600 text-xs font-bold flex items-center gap-1.5">
+                          <XCircle size={12} /> {deliveryError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-2">
+                    <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700 font-medium">
+                      Biaya pengantaran dihitung otomatis. Admin masih bisa melakukan penyesuaian saat konfirmasi jika ada kondisi khusus.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Renter Info */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
@@ -607,6 +878,12 @@ export default function CheckoutMotor() {
                   />
                 ))}
                 <PriceRow label="Biaya layanan & aplikasi" value={serviceFee} />
+                {handoverMethod === 'delivery' && (
+                  <PriceRow
+                    label={deliveryTarget === 'station' ? 'Pengantaran (Stasiun)' : 'Pengantaran'}
+                    value={deliveryFee}
+                  />
+                )}
 
                 {safeDiscount > 0 && appliedPromo && (
                   <PriceRow

@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { calculateMotorRentalBreakdown } = require('../utils/motorRentalPricing');
+const { listStationsByCity, quoteDelivery } = require('../utils/deliveryPricing');
 const router = express.Router();
 
 // ==========================================
@@ -188,6 +189,51 @@ router.get('/promotions', async (req, res) => {
   } catch (err) {
     console.error('GET /promotions error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data promosi.' });
+  }
+});
+
+// ==========================================
+// DELIVERY QUOTE (Public)
+// ==========================================
+router.get('/delivery/stations', async (req, res) => {
+  try {
+    const city = req.query.city || '';
+    const rows = listStationsByCity(city).map((s) => ({
+      id: s.id,
+      city: s.city,
+      name: s.name,
+      lat: s.lat,
+      lng: s.lng,
+      is_free: !!s.is_free,
+    }));
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /delivery/stations error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data titik pengantaran.' });
+  }
+});
+
+router.post('/delivery/quote', async (req, res) => {
+  try {
+    const { city, target } = req.body || {};
+    const q = await quoteDelivery({ city, target });
+    if (!q.ok) return res.status(400).json({ success: false, error: q.error || 'Gagal menghitung ongkir.' });
+
+    res.json({
+      success: true,
+      data: {
+        fee: q.fee,
+        distance_km: q.distance_km,
+        currency: q.currency,
+        pricing: q.pricing,
+        origin: q.origin,
+        destination: q.destination,
+        method: q.method,
+      },
+    });
+  } catch (err) {
+    console.error('POST /delivery/quote error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghitung biaya pengantaran.' });
   }
 });
 

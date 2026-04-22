@@ -143,6 +143,13 @@ db.serialize(() => {
       item_type TEXT NOT NULL,
       item_name TEXT NOT NULL,
       location TEXT,
+      delivery_type TEXT,
+      delivery_station_id TEXT,
+      delivery_address TEXT,
+      delivery_lat REAL,
+      delivery_lng REAL,
+      delivery_distance_km REAL,
+      delivery_method TEXT,
       start_date TEXT NOT NULL,
       end_date TEXT NOT NULL,
       base_price INTEGER DEFAULT 0,
@@ -429,6 +436,14 @@ db.serialize(() => {
   addColumnIfNotExists('bookings', 'duration_hours',   'INTEGER DEFAULT 1');
   addColumnIfNotExists('bookings', 'pickup_fee',       'INTEGER DEFAULT 0');
   addColumnIfNotExists('bookings', 'drop_fee',         'INTEGER DEFAULT 0');
+  // Delivery details (motor handover)
+  addColumnIfNotExists('bookings', 'delivery_type',        'TEXT');
+  addColumnIfNotExists('bookings', 'delivery_station_id',  'TEXT');
+  addColumnIfNotExists('bookings', 'delivery_address',     'TEXT');
+  addColumnIfNotExists('bookings', 'delivery_lat',         'REAL');
+  addColumnIfNotExists('bookings', 'delivery_lng',         'REAL');
+  addColumnIfNotExists('bookings', 'delivery_distance_km', 'REAL');
+  addColumnIfNotExists('bookings', 'delivery_method',      'TEXT');
 
   // [FIX 3] Bookings — kolom rincian harga yang sebelumnya hilang
   addColumnIfNotExists('bookings', 'base_price',      'INTEGER DEFAULT 0');
