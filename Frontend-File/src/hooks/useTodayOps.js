@@ -26,6 +26,8 @@ export const useTodayOps = () => {
       const json = await res.json();
       if (res.ok && json.success) {
         setData(json.data);
+      } else if (res.status === 404) {
+        setData(null);
       } else {
         console.error('Today ops error:', json.error || json.message);
       }
@@ -42,4 +44,3 @@ export const useTodayOps = () => {
 
   return { isLoading, data, refetch: fetchTodayOps };
 };
-

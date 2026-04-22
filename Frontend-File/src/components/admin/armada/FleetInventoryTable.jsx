@@ -178,6 +178,7 @@ export default function FleetInventoryTable() {
   const [unitBlocks, setUnitBlocks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const unitBlocksRef = useRef([]);
 
   // ── Resize listener ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -218,13 +219,16 @@ export default function FleetInventoryTable() {
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         setUnitBlocks(data.data);
+        unitBlocksRef.current = data.data;
         return data.data;
       } else {
         setUnitBlocks([]);
+        unitBlocksRef.current = [];
         return [];
       }
     } catch {
       setUnitBlocks([]);
+      unitBlocksRef.current = [];
       return [];
     }
   }, []);
@@ -264,7 +268,7 @@ export default function FleetInventoryTable() {
             cur.setDate(cur.getDate() + 1);
           }
         });
-        const blocks = Array.isArray(blocksOverride) ? blocksOverride : unitBlocks;
+        const blocks = Array.isArray(blocksOverride) ? blocksOverride : unitBlocksRef.current;
         if (Array.isArray(blocks) && blocks.length > 0) {
           blocks.forEach((blk) => {
             if (!blk.unit_id || !blk.start_at || !blk.end_at) return;
@@ -294,7 +298,7 @@ export default function FleetInventoryTable() {
       // Bookings gagal dimuat — calendar tetap tampil, hanya kosong
       console.warn('FleetInventoryTable: gagal memuat bookings');
     }
-  }, [unitBlocks]);
+  }, []);
 
   // [FIX P8] Load data saat mount
   useEffect(() => {
