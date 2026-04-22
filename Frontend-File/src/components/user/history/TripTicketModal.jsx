@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Receipt, X, MapPin, QrCode, Copy, Loader2, Truck, CalendarPlus, MessageCircle, CheckCircle2, Clock, CreditCard } from 'lucide-react';
+import { Receipt, X, MapPin, QrCode, Copy, Loader2, Truck, MessageCircle, CheckCircle2, Clock, CreditCard } from 'lucide-react';
 import { WA_CONTACTS, buildWaLink } from '../../../config/contacts';
 
 const fmtDateTime = (value) => {
@@ -8,18 +8,6 @@ const fmtDateTime = (value) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-const toIcsUtc = (d) => {
-  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
-  // YYYYMMDDTHHMMSSZ
-  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
-};
-
-const buildMapsLink = (query) => {
-  const q = String(query || '').trim();
-  if (!q) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 };
 
 const safeCity = (value) => {
@@ -50,8 +38,6 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
   const endRaw = ticket.end_date || ticket.endDate;
   const startText = fmtDateTime(startRaw);
   const endText = fmtDateTime(endRaw);
-  const startDateObj = new Date(startRaw);
-  const endDateObj = new Date(endRaw);
   const totalPrice = Number(ticket.total_price ?? ticket.totalPrice ?? 0) || 0;
   const paidAmount = Number(ticket.paid_amount ?? ticket.paidAmount ?? 0) || 0;
   const outstanding = Number(ticket.outstanding_amount ?? ticket.outstandingAmount ?? 0) || 0;
@@ -66,9 +52,6 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
   const city = safeCity(ticket.location);
   const adminContact =
     city === 'Solo' ? WA_CONTACTS.SOLO_ADMIN : WA_CONTACTS.JOGJA_ADMIN;
-
-  const mapsQuery = deliveryAddress || ticket.location || '';
-  const mapsLink = buildMapsLink(mapsQuery);
 
   const waMessageLines = [
     `Halo ${adminContact.label} Brother Trans, saya butuh bantuan untuk booking.`,
@@ -106,48 +89,6 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
     }
   };
 
-  const handleAddToCalendar = () => {
-    const dtStart = toIcsUtc(startDateObj);
-    const dtEnd = toIcsUtc(endDateObj);
-    if (!dtStart || !dtEnd) return;
-
-    const title = `Brother Trans - ${itemName} (${orderId})`;
-    const location = deliveryAddress || ticket.location || '';
-    const desc = [
-      `Order ID: ${orderId}`,
-      `Status: ${ticket.status || '-'}`,
-      plateNumber ? `Plat: ${plateNumber}` : null,
-      location ? `Lokasi: ${location}` : null,
-    ].filter(Boolean).join('\\n');
-
-    const ics = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Brother Trans//Booking//ID',
-      'CALSCALE:GREGORIAN',
-      'BEGIN:VEVENT',
-      `UID:${String(orderId).replace(/[^A-Za-z0-9-]/g, '')}@brother-trans`,
-      `DTSTAMP:${toIcsUtc(new Date())}`,
-      `DTSTART:${dtStart}`,
-      `DTEND:${dtEnd}`,
-      `SUMMARY:${title.replace(/\n/g, ' ')}`,
-      location ? `LOCATION:${String(location).replace(/\n/g, ' ')}` : null,
-      `DESCRIPTION:${String(desc).replace(/\n/g, '\\n')}`,
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].filter(Boolean).join('\r\n');
-
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `brother-trans-${String(orderId).replace(/[^A-Za-z0-9-]/g, '')}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
   const modal = (
     <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
       <div
@@ -155,7 +96,7 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
         onClick={onClose}
       />
 
-      <div className="relative bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
+      <div className="relative bg-white rounded-[2rem] w-full max-w-md max-h-[90vh] shadow-2xl overflow-hidden animate-fade-in-up flex flex-col">
         
         {/* Modal Header */}
         <div className="bg-brand-dark text-white px-6 py-4 flex items-center justify-between relative overflow-hidden">
@@ -177,18 +118,18 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
         </div>
 
         {/* Modal Body - Ticket Style */}
-        <div className="p-8 border-b-2 border-dashed border-gray-200 relative">
+        <div className="p-6 border-b-2 border-dashed border-gray-200 relative overflow-y-auto flex-1 min-h-0">
           {/* Lubang Tiket Kiri Kanan */}
           <div className="absolute -left-4 bottom-[-16px] w-8 h-8 bg-slate-900/60 rounded-full"></div>
           <div className="absolute -right-4 bottom-[-16px] w-8 h-8 bg-slate-900/60 rounded-full"></div>
           
-          <div className="text-center mb-6">
+          <div className="text-center mb-4">
             <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Order ID</div>
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-50 border border-gray-200 font-mono font-black text-brand-dark">
               {orderId}
             </div>
 
-            <h3 className="text-2xl font-black text-brand-dark mt-4 mb-1">{itemName}</h3>
+            <h3 className="text-xl font-black text-brand-dark mt-3 mb-1">{itemName}</h3>
             <p className="text-xs font-bold text-gray-500 flex items-center justify-center gap-1.5">
               <MapPin size={12} className="text-brand-primary"/>
               {ticket.location || '—'}
@@ -200,7 +141,7 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
             )}
           </div>
 
-          <div className="bg-gray-50 p-4 rounded-2xl flex flex-col justify-center items-center border border-gray-200 mb-6 shadow-inner">
+          <div className="bg-gray-50 p-4 rounded-2xl flex flex-col justify-center items-center border border-gray-200 mb-4 shadow-inner">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-6">
                 <Loader2 size={28} className="animate-spin text-rose-500 mb-3" />
@@ -208,7 +149,7 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
               </div>
             ) : (
               <>
-                <QrCode size={160} strokeWidth={1} className="text-brand-dark" />
+                <QrCode size={128} strokeWidth={1} className="text-brand-dark" />
                 <div className="mt-3 text-[10px] font-black uppercase tracking-widest text-gray-400">
                   Tunjukkan kode ini saat serah terima
                 </div>
@@ -216,38 +157,12 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
             )}
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => { if (mapsLink) window.open(mapsLink, '_blank', 'noreferrer'); }}
-              disabled={!mapsLink}
-              className="bg-white border border-gray-200 rounded-2xl px-3 py-3 font-black text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              title="Buka lokasi di Google Maps"
-            >
-              <MapPin size={16} className="text-rose-500" /> Maps
-            </button>
-            <button
-              type="button"
-              onClick={handleAddToCalendar}
-              className="bg-white border border-gray-200 rounded-2xl px-3 py-3 font-black text-[11px] text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
-              title="Tambah jadwal ke kalender"
-            >
-              <CalendarPlus size={16} className="text-blue-500" /> Kalender
-            </button>
-            <a
-              href={waLink}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-[#25D366] rounded-2xl px-3 py-3 font-black text-[11px] text-white hover:brightness-95 flex items-center justify-center gap-2"
-              title="Chat admin via WhatsApp"
-            >
-              <MessageCircle size={16} /> Admin
-            </a>
-          </div>
-
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-6">
-            <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Progress</div>
-            <div className="space-y-2">
+          <details className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
+            <summary className="cursor-pointer list-none flex items-center justify-between">
+              <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Progress</span>
+              <span className="text-[10px] font-black text-slate-500">Lihat</span>
+            </summary>
+            <div className="space-y-2 mt-3">
               {timeline.map((t) => {
                 const Icon = t.icon;
                 return (
@@ -260,7 +175,7 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
                 );
               })}
             </div>
-          </div>
+          </details>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -278,9 +193,12 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
           </div>
 
           {(gear.helm || gear.jas_hujan || gear.helm_anak) ? (
-            <div className="mt-5 bg-slate-50 border border-slate-200 rounded-2xl p-4">
-              <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Perlengkapan</div>
-              <div className="flex flex-wrap gap-2">
+            <details className="mt-5 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <summary className="cursor-pointer list-none flex items-center justify-between">
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Perlengkapan</span>
+                <span className="text-[10px] font-black text-slate-500">Lihat</span>
+              </summary>
+              <div className="flex flex-wrap gap-2 mt-3">
                 {gear.helm ? (
                   <span className="text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-3 py-1.5 rounded-xl">
                     Helm x{gear.helm}
@@ -297,7 +215,7 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
                   </span>
                 ) : null}
               </div>
-            </div>
+            </details>
           ) : null}
 
           {(deliveryType && deliveryType !== 'self') && (
@@ -315,9 +233,12 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
           )}
 
           {addons.length > 0 && (
-            <div className="mt-5 bg-white border border-gray-200 rounded-2xl p-4">
-              <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2">Add-ons</div>
-              <div className="flex flex-wrap gap-2">
+            <details className="mt-5 bg-white border border-gray-200 rounded-2xl p-4">
+              <summary className="cursor-pointer list-none flex items-center justify-between">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Add-ons</span>
+                <span className="text-[10px] font-black text-slate-500">Lihat</span>
+              </summary>
+              <div className="flex flex-wrap gap-2 mt-3">
                 {addons.slice(0, 8).map((a) => {
                   const name = a?.name || a?.name_snapshot || 'Add-on';
                   const qty = Number(a?.qty || 1) || 1;
@@ -333,8 +254,27 @@ const TripTicketModal = ({ ticket, onClose, user, isLoading = false }) => {
                   +{addons.length - 8} add-on lainnya
                 </div>
               )}
-            </div>
+            </details>
           )}
+
+          <details className="mt-5 bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <summary className="cursor-pointer list-none flex items-center justify-between">
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Bantuan</span>
+              <span className="text-[10px] font-black text-slate-500">Chat admin</span>
+            </summary>
+            <div className="mt-3 text-xs text-slate-600 font-semibold leading-relaxed">
+              Jika ada kendala serah terima atau data booking tidak sesuai, chat admin dengan menyertakan Order ID.
+            </div>
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex items-center justify-center gap-2 bg-[#25D366] rounded-xl px-4 py-3 font-black text-[12px] text-white hover:brightness-95 w-full"
+              title="Chat admin via WhatsApp"
+            >
+              <MessageCircle size={16} /> Chat Admin (WA)
+            </a>
+          </details>
         </div>
 
         {/* Modal Footer */}
