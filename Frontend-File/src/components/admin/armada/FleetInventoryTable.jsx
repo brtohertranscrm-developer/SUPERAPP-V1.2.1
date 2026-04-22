@@ -4,26 +4,11 @@ import {
   AlertTriangle, Wrench, Calendar, Clock, Info,
   Bike, ChevronDown, Loader2, RefreshCw
 } from 'lucide-react';
+import { apiFetch } from '../../../utils/api';
 
 // [FIX P8] Hapus UNITS dan INITIAL_BOOKINGS hardcoded
 // Data sekarang diambil dari API
-const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
-
-const buildUrl = (path, query = {}) => {
-  const base = API_URL.replace(/\/$/, '');
-  const url = base ? `${base}${path}` : path;
-  const qs = new URLSearchParams(
-    Object.fromEntries(
-      Object.entries(query).filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
-    )
-  ).toString();
-  return qs ? `${url}?${qs}` : url;
-};
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('admin_token') || localStorage.getItem('token');
-  return { Authorization: `Bearer ${token}` };
-};
+// NOTE: semua request gunakan apiFetch supaya konsisten handle auth/401.
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS = {
@@ -190,9 +175,8 @@ export default function FleetInventoryTable() {
   // [FIX P8] Fetch units (motor_units) dari API
   const fetchUnits = useCallback(async () => {
     try {
-      const res = await fetch(buildUrl('/api/admin/motor-units-all'), { headers: getAuthHeaders() });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      const data = await apiFetch('/api/admin/motor-units-all');
+      if (data?.success && Array.isArray(data.data)) {
         // Transform format dari DB ke format yang dipakai komponen
         // DB: { id, motor_id, plate_number, status, condition_notes, motor_name, motor_category }
         // Komponen: { id, type, name, plat }
@@ -206,7 +190,7 @@ export default function FleetInventoryTable() {
         setUnits(transformed);
         setLoadError('');
       } else {
-        setLoadError(data.error || 'Gagal memuat data unit.');
+        setLoadError(data?.error || 'Gagal memuat data unit.');
       }
     } catch {
       setLoadError('Tidak dapat terhubung ke server.');
@@ -215,9 +199,8 @@ export default function FleetInventoryTable() {
 
   const fetchUnitBlocks = useCallback(async () => {
     try {
-      const res = await fetch(buildUrl('/api/admin/units/blocks'), { headers: getAuthHeaders() });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      const data = await apiFetch('/api/admin/units/blocks');
+      if (data?.success && Array.isArray(data.data)) {
         setUnitBlocks(data.data);
         unitBlocksRef.current = data.data;
         return data.data;
@@ -226,7 +209,13 @@ export default function FleetInventoryTable() {
         unitBlocksRef.current = [];
         return [];
       }
-    } catch {
+    } catch (e) {
+      // Endpoint ini optional; kalau backend belum update, anggap kosong.
+      if (e?.status === 404) {
+        setUnitBlocks([]);
+        unitBlocksRef.current = [];
+        return [];
+      }
       setUnitBlocks([]);
       unitBlocksRef.current = [];
       return [];
@@ -236,9 +225,8 @@ export default function FleetInventoryTable() {
   // [FIX P8] Fetch bookings aktif dari API dan konversi ke format calendar
   const fetchBookings = useCallback(async (blocksOverride = null) => {
     try {
-      const res = await fetch(buildUrl('/api/admin/bookings', { item_type: 'motor' }), { headers: getAuthHeaders() });
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
+      const data = await apiFetch('/api/admin/bookings?item_type=motor');
+      if (data?.success && Array.isArray(data.data)) {
         // Konversi array booking ke format key-value calendar
         // Format key: `${unit_id}_${YYYY-MM-DD}`
         const bookingMap = {};
@@ -294,9 +282,11 @@ export default function FleetInventoryTable() {
 
         setBookings(bookingMap);
       }
-    } catch {
+    } catch (e) {
       // Bookings gagal dimuat — calendar tetap tampil, hanya kosong
-      console.warn('FleetInventoryTable: gagal memuat bookings');
+      if (e?.status !== 401) {
+        console.warn('FleetInventoryTable: gagal memuat bookings');
+      }
     }
   }, []);
 
