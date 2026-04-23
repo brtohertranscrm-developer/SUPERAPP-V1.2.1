@@ -194,14 +194,14 @@ const PromoInput = ({ onApply, appliedPromo, onRemove, discountAmount, isCheckin
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <input
           type="text"
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); }}
           onKeyDown={handleKeyDown}
           placeholder="Masukkan kode promo..."
-          className={`flex-1 px-4 py-3 border rounded-xl text-sm font-bold uppercase focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all ${
+          className={`w-full flex-1 px-4 py-3 border rounded-xl text-sm font-bold uppercase focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all ${
             error ? 'border-rose-300 bg-rose-50/50' : 'border-slate-200 bg-white'
           }`}
           disabled={isChecking}
@@ -210,7 +210,7 @@ const PromoInput = ({ onApply, appliedPromo, onRemove, discountAmount, isCheckin
         <button
           onClick={handleApply}
           disabled={isChecking || !code.trim()}
-          className="px-5 py-3 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-rose-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+          className="w-full sm:w-auto px-5 py-3 bg-slate-900 text-white rounded-xl text-xs font-black hover:bg-rose-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
         >
           {isChecking ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
           <span>{isChecking ? 'Cek...' : 'Pasang'}</span>
@@ -1464,6 +1464,13 @@ const handleRemovePromo = () => {
                       <ShieldAlert size={18} /> Verifikasi KYC Dulu
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={goPrevStep}
+                    className="mt-3 w-full py-3 rounded-xl bg-white text-slate-700 font-black border border-slate-200 hover:bg-slate-50"
+                  >
+                    Kembali
+                  </button>
                   <p className="text-center text-[10px] font-medium text-slate-400 mt-3">
                     Dengan melanjutkan, kamu menyetujui Syarat & Ketentuan Brother Trans.
                   </p>
@@ -1472,30 +1479,46 @@ const handleRemovePromo = () => {
             </>
             )}
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={goPrevStep}
-                disabled={isFirstStep}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-black text-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Kembali
-              </button>
-              <div className="text-[11px] text-slate-500 font-bold">
-                Langkah {currentStepIdx + 1} dari {CHECKOUT_STEPS.length}
+            {checkoutStep !== 'payment' ? (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={goPrevStep}
+                  disabled={isFirstStep}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-black text-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Kembali
+                </button>
+                <div className="text-[11px] text-slate-500 font-bold">
+                  Langkah {currentStepIdx + 1} dari {CHECKOUT_STEPS.length}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  disabled={isLastStep}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Lanjut
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleNextStep}
-                disabled={isLastStep}
-                className="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Lanjut
-              </button>
-            </div>
+            ) : (
+              <div className="hidden lg:flex bg-white rounded-2xl border border-slate-200 shadow-sm p-4 items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={goPrevStep}
+                  disabled={isFirstStep}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-black text-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Kembali
+                </button>
+                <div className="text-[11px] text-slate-500 font-bold">
+                  Langkah {currentStepIdx + 1} dari {CHECKOUT_STEPS.length}
+                </div>
+              </div>
+            )}
 
             {isLastStep && (
-              <p className="text-center text-[11px] text-slate-500 font-bold">
+              <p className="hidden lg:block text-center text-[11px] text-slate-500 font-bold">
                 Terakhir, cek ringkasan pembayaran lalu klik tombol untuk membuat pesanan dan lanjut transfer.
               </p>
             )}
