@@ -506,7 +506,8 @@ router.post('/bookings', async (req, res) => {
       basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
       duration_hours, price_notes, payment_method,
       addon_items,
-      delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng
+      delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng,
+      trip_scope, trip_destination
     } = req.body || {};
 
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
@@ -669,11 +670,19 @@ router.post('/bookings', async (req, res) => {
       deliveryMethod = q.method;
     }
 
-    finalPrice = Math.max(0, bPrice - dAmount + sFee + aFee + delFee);
-    const payMethod = payment_method || req.body.payment_method || 'transfer';
-    const computedPriceNotes = rentalBreakdown
-      ? `Motor billing ${rentalBreakdown.packageSummary}`
-      : (price_notes || null);
+	    finalPrice = Math.max(0, bPrice - dAmount + sFee + aFee + delFee);
+	    const payMethod = payment_method || req.body.payment_method || 'transfer';
+	    const computedPriceNotes = rentalBreakdown
+	      ? `Motor billing ${rentalBreakdown.packageSummary}`
+	      : (price_notes || null);
+
+	    const tripScopeNormalized =
+	      trip_scope === 'out_of_town' ? 'out_of_town'
+	      : trip_scope === 'local' ? 'local'
+	      : null;
+	    const tripDestinationNormalized = trip_destination
+	      ? String(trip_destination).trim().slice(0, 140)
+	      : null;
 
     // Atomic: booking + addon lines
     await dbRun('BEGIN');
@@ -682,11 +691,12 @@ router.post('/bookings', async (req, res) => {
         `INSERT INTO bookings (
            order_id, user_id, item_type, item_name, location,
            delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
+           trip_scope, trip_destination,
            start_date, end_date, 
            base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
            paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
          ) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
         [
           order_id, req.user.id, item_type, item_name, location,
           delType || null,
@@ -696,6 +706,8 @@ router.post('/bookings', async (req, res) => {
           (delivery_lng !== undefined && delivery_lng !== null && delivery_lng !== '') ? Number(delivery_lng) : null,
           deliveryDistanceKm !== null ? Number(deliveryDistanceKm) : null,
           deliveryMethod || null,
+          tripScopeNormalized,
+          tripDestinationNormalized,
           start_date, end_date, 
           bPrice, dAmount, pCode, sFee, aFee, delFee,
           0, finalPrice, payMethod, billableHours, computedPriceNotes
@@ -751,14 +763,15 @@ router.get('/bookings/:orderId', async (req, res) => {
     const orderId = req.params.orderId;
     if (!orderId) return res.status(400).json({ success: false, error: 'Order ID wajib diisi.' });
 
-    const row = await dbGet(
-      `SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
-              delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
-              base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-              paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
-              unit_id, plate_number,
-              created_at
-       FROM bookings
+	    const row = await dbGet(
+	      `SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
+	              delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
+	              trip_scope, trip_destination,
+	              base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
+	              paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
+	              unit_id, plate_number,
+	              created_at
+	       FROM bookings
        WHERE order_id = ? AND user_id = ?
        LIMIT 1`,
       [orderId, req.user.id]

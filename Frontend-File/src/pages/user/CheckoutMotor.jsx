@@ -18,8 +18,7 @@ const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 const SERVICE_FEE = 2500;
 const CHECKOUT_STEPS = [
   { key: 'detail', label: 'Detail' },
-  { key: 'handover', label: 'Serah Terima' },
-  { key: 'addons', label: 'Add-on' },
+  { key: 'handover', label: 'Serah Terima & Add-on' },
   { key: 'payment', label: 'Pembayaran' },
 ];
 
@@ -272,6 +271,8 @@ export default function CheckoutMotor() {
   // Delivery (pengantaran unit)
   const [handoverMethod, setHandoverMethod] = useState('self'); // self | delivery
   const [deliveryTarget, setDeliveryTarget] = useState('station'); // station | address
+  const [tripScope, setTripScope] = useState('local'); // local | out_of_town
+  const [tripDestination, setTripDestination] = useState('');
   const [stations, setStations] = useState([]);
   const [stationId, setStationId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -669,7 +670,7 @@ const handleRemovePromo = () => {
     const startIso = rentalBreakdown.startAtIso || (rentalBreakdown.startAt ? new Date(rentalBreakdown.startAt).toISOString() : null);
     const endIso = rentalBreakdown.endAtIso || (rentalBreakdown.endAt ? new Date(rentalBreakdown.endAt).toISOString() : null);
 
-    const payload = {
+  const payload = {
       order_id:        orderId,
       item_type:       'motor',
       item_name:       motorName,
@@ -692,6 +693,8 @@ const handleRemovePromo = () => {
       promo_code:      appliedPromo?.code || null,
       total_price:     grandTotal,
       payment_method:  paymentMethod,
+      trip_scope:      tripScope,
+      trip_destination: tripDestination ? String(tripDestination).trim() : null,
       price_notes:     `Motor billing ${formatBillableSummary(rentalBreakdown.count24h, rentalBreakdown.count12h)}`,
     };
 
@@ -846,6 +849,8 @@ const handleRemovePromo = () => {
               </div>
               <div className="px-5 pb-4 flex flex-wrap gap-2">
                 {[
+                  ...(tripScope === 'out_of_town' ? [{ icon: <AlertTriangle size={12} />, label: 'Luar Kota (+Rp 50rb oleh admin)' }] : []),
+                  ...(tripDestination ? [{ icon: <MapPin size={12} />, label: `Tujuan: ${tripDestination}` }] : []),
                   ...(gearAddons?.helmId ? (() => {
                     const q = Number(selectedAddons?.[gearAddons.helmId]) || 0;
                     return q > 0 ? [{ icon: <Users size={12} />, label: `Helm x${q}` }] : [];
@@ -1080,6 +1085,64 @@ const handleRemovePromo = () => {
             </div>
             )}
 
+            {checkoutStep === 'handover' && (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                <MapPin size={16} className="text-slate-500" /> Tujuan Perjalanan
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTripScope('local')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                    tripScope === 'local'
+                      ? 'border-slate-900 bg-slate-50'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-black text-slate-900">Dalam Kota</p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-1">Dipakai di area Jogja / Solo</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTripScope('out_of_town')}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all active:scale-[0.99] ${
+                    tripScope === 'out_of_town'
+                      ? 'border-amber-600 bg-amber-50/50'
+                      : 'border-slate-200 hover:border-slate-300 bg-white'
+                  }`}
+                >
+                  <p className="text-xs font-black text-slate-900">Luar Kota</p>
+                  <p className="text-[11px] font-medium text-slate-500 mt-1">Admin akan menambahkan biaya Rp 50.000</p>
+                </button>
+              </div>
+
+              <div className="mt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tujuan (opsional)</p>
+                <input
+                  value={tripDestination}
+                  onChange={(e) => setTripDestination(e.target.value)}
+                  className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                  placeholder="Contoh: Magelang / Klaten / Gunung Kidul"
+                />
+                <p className="text-[11px] text-slate-500 font-medium mt-1">
+                  Info ini membantu admin memastikan aturan pemakaian unit.
+                </p>
+              </div>
+
+              {tripScope === 'out_of_town' && (
+                <div className="mt-4 bg-amber-50 border border-amber-100 rounded-2xl p-4 flex items-start gap-2">
+                  <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700 font-medium">
+                    Catatan: biaya luar kota <span className="font-black">Rp 50.000</span> akan ditambahkan oleh admin saat konfirmasi.
+                  </p>
+                </div>
+              )}
+            </div>
+            )}
+
             {checkoutStep === 'detail' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
@@ -1119,10 +1182,10 @@ const handleRemovePromo = () => {
             )}
 
             {/* Add-ons & Paket */}
-            {checkoutStep === 'addons' && (
+            {checkoutStep === 'handover' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
-                <Tag size={16} className="text-slate-500" /> Add-ons & Paket
+                <Tag size={16} className="text-slate-500" /> Perlengkapan & Add-ons
               </h3>
 
               {isAddonsLoading ? (

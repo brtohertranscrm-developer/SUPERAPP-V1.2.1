@@ -649,6 +649,9 @@ db.serialize(() => {
   addColumnIfNotExists('bookings', 'delivery_lng',         'REAL');
   addColumnIfNotExists('bookings', 'delivery_distance_km', 'REAL');
   addColumnIfNotExists('bookings', 'delivery_method',      'TEXT');
+  // Trip info (out-of-town flag handled by scope)
+  addColumnIfNotExists('bookings', 'trip_scope',           'TEXT');
+  addColumnIfNotExists('bookings', 'trip_destination',     'TEXT');
 
   // [FIX 3] Bookings — kolom rincian harga yang sebelumnya hilang
   addColumnIfNotExists('bookings', 'base_price',      'INTEGER DEFAULT 0');

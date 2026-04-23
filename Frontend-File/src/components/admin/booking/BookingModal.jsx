@@ -192,6 +192,8 @@ const BookingModal = ({ onClose, onSubmit, onSavePricing, initialData }) => {
                   { label: 'Tipe',         value: initialData?.item_type?.toUpperCase() },
                   { label: 'Lokasi',       value: initialData?.location || '—' },
                   { label: 'Plat/Unit',    value: initialData?.plate_number || '—' },
+                  { label: 'Area Pemakaian', value: (initialData?.trip_scope === 'out_of_town') ? 'Luar Kota' : (initialData?.trip_scope ? 'Dalam Kota' : '—') },
+                  { label: 'Tujuan Perjalanan', value: initialData?.trip_destination || '—' },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
