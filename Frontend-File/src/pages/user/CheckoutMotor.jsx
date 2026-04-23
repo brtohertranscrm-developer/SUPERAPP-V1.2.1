@@ -750,31 +750,33 @@ const handleRemovePromo = () => {
   const goNextStep = () => setCheckoutStep(stepKeys[Math.min(stepKeys.length - 1, currentStepIdx + 1)]);
 
   const CheckoutStepIndicator = () => (
-    <div className="flex items-center justify-center gap-2 mb-6">
-      {CHECKOUT_STEPS.map((s, i) => {
-        const isDone = i < currentStepIdx;
-        const isCurrent = i === currentStepIdx;
-        return (
-          <React.Fragment key={s.key}>
-            {i > 0 && <div className={`h-px w-8 ${isDone ? 'bg-slate-900' : 'bg-slate-200'}`} />}
-            <button
-              type="button"
-              disabled={!isKycVerified}
-              onClick={() => setCheckoutStep(s.key)}
-              className={`flex items-center gap-1.5 text-xs font-bold transition-all disabled:cursor-not-allowed ${
-                isCurrent ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
-              }`}
-            >
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                isDone ? 'bg-emerald-600 text-white' : isCurrent ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'
-              }`}>
-                {isDone ? '✓' : i + 1}
+    <div className="mb-6">
+      <div className="flex items-center justify-center gap-2">
+        {CHECKOUT_STEPS.map((s, i) => {
+          const isDone = i < currentStepIdx;
+          const isCurrent = i === currentStepIdx;
+          return (
+            <React.Fragment key={s.key}>
+              {i > 0 && <div className={`h-px w-8 ${isDone ? 'bg-slate-900' : 'bg-slate-200'}`} />}
+              <div
+                className={`flex items-center gap-1.5 text-xs font-bold ${
+                  isCurrent ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                  isDone ? 'bg-emerald-600 text-white' : isCurrent ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {isDone ? '✓' : i + 1}
+                </div>
+                <span className="hidden sm:inline">{s.label}</span>
               </div>
-              <span className="hidden sm:inline">{s.label}</span>
-            </button>
-          </React.Fragment>
-        );
-      })}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div className="mt-2 text-center text-[11px] font-bold text-slate-500">
+        Step aktif: <span className="text-slate-900">{CHECKOUT_STEPS[currentStepIdx]?.label}</span>
+      </div>
     </div>
   );
 
@@ -1331,6 +1333,50 @@ const handleRemovePromo = () => {
                   <Info size={11} /> Transfer tepat sesuai nominal hingga 3 digit terakhir untuk verifikasi otomatis.
                 </p>
               </div>
+
+              {/* Mobile: total + CTA hanya di step terakhir (biar tidak muncul di bawah saat isi form) */}
+              <div className="lg:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-900 px-5 py-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Total Pembayaran</p>
+                  <p className="text-white font-black text-2xl">{fmtRp(grandTotal)}</p>
+                </div>
+                {submitError && (
+                  <div className="mx-5 mt-4 bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-start gap-2">
+                    <XCircle size={14} className="text-rose-500 shrink-0 mt-0.5" />
+                    <p className="text-rose-700 text-xs font-bold">{submitError}</p>
+                  </div>
+                )}
+                <div className="px-5 py-5">
+                  {!rentalBreakdown.isValid && (
+                    <div className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-amber-700 text-xs font-bold">{rentalBreakdown.error}</p>
+                    </div>
+                  )}
+                  {isKycVerified ? (
+                    <button
+                      onClick={handleCheckout}
+                      disabled={isSubmitting || !rentalBreakdown.isValid}
+                      className="w-full py-4 bg-slate-900 text-white font-black rounded-xl hover:bg-rose-500 transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                    >
+                      {isSubmitting ? (
+                        <><Loader2 size={18} className="animate-spin" /> Memproses...</>
+                      ) : (
+                        <><CheckCircle2 size={18} /> Buat Pesanan &amp; Lanjut Transfer</>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="w-full py-4 bg-slate-200 text-slate-400 font-black rounded-xl cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                    >
+                      <ShieldAlert size={18} /> Verifikasi KYC Dulu
+                    </button>
+                  )}
+                  <p className="text-center text-[10px] font-medium text-slate-400 mt-3">
+                    Dengan melanjutkan, kamu menyetujui Syarat & Ketentuan Brother Trans.
+                  </p>
+                </div>
+              </div>
             </>
             )}
 
@@ -1358,14 +1404,16 @@ const handleRemovePromo = () => {
 
             {isLastStep && (
               <p className="text-center text-[11px] text-slate-500 font-bold">
-                Terakhir, cek ringkasan di kanan lalu klik tombol untuk membuat pesanan dan lanjut transfer.
+                Terakhir, cek ringkasan pembayaran lalu klik tombol untuk membuat pesanan dan lanjut transfer.
               </p>
             )}
 
           </div>
 
           {/* ── RIGHT COLUMN: Order Summary ── */}
-          <div className="w-full lg:w-[360px] shrink-0 sticky top-24">
+          <div className="hidden lg:block w-full lg:w-[360px] shrink-0 sticky top-24">
+            {checkoutStep === 'payment' ? (
+            <>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
 
               <div className="bg-slate-900 px-5 py-4">
@@ -1472,6 +1520,29 @@ const handleRemovePromo = () => {
                 </span>
               ))}
             </div>
+            </>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-900 px-5 py-4">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Ringkasan Pembayaran</p>
+                  <p className="text-white font-black text-lg">{motorName}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Clock size={12} className="text-slate-400" />
+                    <p className="text-slate-400 text-xs font-medium">
+                      {rentalBreakdown.isValid ? rentalBreakdown.packageSummary : 'Lengkapi jadwal untuk lihat ringkasan'}
+                    </p>
+                  </div>
+                </div>
+                <div className="p-5">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <p className="text-slate-700 text-sm font-black">Total & tombol pembayaran ada di langkah terakhir.</p>
+                    <p className="text-slate-500 text-xs font-medium mt-1">
+                      Lanjutkan isi form sampai step <span className="font-black text-slate-900">Pembayaran</span>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
