@@ -13,8 +13,6 @@ export default function PaymentPage() {
     isLoading,
   } = usePayment();
 
-  if (!user) return null;
-
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const [uploadErr, setUploadErr] = useState('');
@@ -74,11 +72,30 @@ export default function PaymentPage() {
   // ==========================================
   // HALAMAN INSTRUKSI TRANSFER (Motor + Loker)
   // ==========================================
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-brand-light flex items-center justify-center p-6">
+        <div className="flex items-center gap-2 text-brand-dark font-black">
+          <Loader2 size={18} className="animate-spin text-brand-primary" /> Memuat...
+        </div>
+      </div>
+    );
+  }
+
+  // usePayment akan redirect ke login jika user kosong, tapi kita tetap render fallback agar hooks tidak conditional
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-brand-light flex items-center justify-center p-6">
+        <div className="text-slate-600 font-bold">Mengalihkan...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="py-12 bg-brand-light min-h-screen animate-fade-in-up">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-[2.5rem] shadow-xl shadow-rose-900/5 border border-gray-100 overflow-hidden">
-          <div className="p-8 sm:p-10">
+          <div className="p-5 sm:p-8 lg:p-10">
             <h1 className="text-2xl sm:text-3xl font-black text-brand-dark mb-2 tracking-tight flex items-center gap-2">
               <CreditCard size={22} className="text-brand-primary" /> Instruksi Transfer Bank
             </h1>
@@ -86,19 +103,13 @@ export default function PaymentPage() {
               Untuk saat ini pembayaran masih via transfer bank dan diverifikasi manual oleh admin.
             </p>
 
-            {isLoading && (
-              <div className="mt-8 flex items-center gap-2 text-gray-500 font-bold">
-                <Loader2 size={16} className="animate-spin text-brand-primary" /> Memuat data pembayaran...
-              </div>
-            )}
-
-            {!isLoading && !orderData && (
+            {!orderData && (
               <div className="mt-8 text-sm font-bold text-rose-600">
                 Data pesanan tidak ditemukan.
               </div>
             )}
 
-            {!isLoading && orderData && (
+            {orderData && (
               <div className="mt-8 space-y-4">
                 <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">
                   <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Order ID</div>
@@ -168,12 +179,14 @@ export default function PaymentPage() {
 
                   <div className="mt-3">
                     <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">File Bukti (JPG/PNG/WebP/PDF)</div>
-                    <input
-                      id="locker-proof-file"
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.webp,.pdf"
-                      className="block w-full text-sm font-bold text-gray-600 file:mr-4 file:rounded-xl file:border-0 file:bg-brand-dark file:px-4 file:py-2 file:text-white hover:file:bg-slate-800"
-                    />
+                    <div className="bg-white border border-gray-200 rounded-xl px-3 py-2">
+                      <input
+                        id="locker-proof-file"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.pdf"
+                        className="block w-full text-sm font-bold text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-dark file:px-3 file:py-2 file:text-white hover:file:bg-slate-800"
+                      />
+                    </div>
                   </div>
 
                   <button
