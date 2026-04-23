@@ -699,6 +699,12 @@ db.serialize(() => {
   addColumnIfNotExists('lockers', 'price_24h',  'INTEGER DEFAULT 50000');
   addColumnIfNotExists('lockers', 'dimensions', 'TEXT');
 
+  // Unit Blocks — additional fields for day-timeline (multi-slot)
+  addColumnIfNotExists('unit_blocks', 'block_type',     'TEXT');
+  addColumnIfNotExists('unit_blocks', 'customer_name',  'TEXT');
+  addColumnIfNotExists('unit_blocks', 'customer_phone', 'TEXT');
+  addColumnIfNotExists('unit_blocks', 'notes',          'TEXT');
+
   // ==========================================
   // 5. INDEXES
   // ==========================================

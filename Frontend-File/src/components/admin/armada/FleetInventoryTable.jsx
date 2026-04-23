@@ -64,10 +64,188 @@ function parseMaybeSqlDateTime(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function fmtHMFromMinute(min) {
+  const m = Math.max(0, Math.min(1439, Number(min) || 0));
+  const hh = String(Math.floor(m / 60)).padStart(2, '0');
+  const mm = String(m % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function minuteFromHM(text) {
+  const v = String(text || '').trim();
+  const m = v.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
 function addDays(dateKey, deltaDays) {
   const d = new Date(`${dateKey}T00:00:00`);
   d.setDate(d.getDate() + deltaDays);
   return fmtDateKey(d);
+}
+
+function ManualRentalModal({ open, unit, dateKey, initial, bufferMinutes, onClose, onSaved }) {
+  const [name, setName] = useState(initial?.customer_name || '');
+  const [phone, setPhone] = useState(initial?.customer_phone || '');
+  const [startHM, setStartHM] = useState(initial?.startHM || '09:00');
+  const [endHM, setEndHM] = useState(initial?.endHM || '12:00');
+  const [notes, setNotes] = useState(initial?.notes || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setName(initial?.customer_name || '');
+    setPhone(initial?.customer_phone || '');
+    setStartHM(initial?.startHM || '09:00');
+    setEndHM(initial?.endHM || '12:00');
+    setNotes(initial?.notes || '');
+    setError('');
+  }, [open, initial]);
+
+  if (!open || !unit) return null;
+
+  const handleSave = async (alsoBuffer = false) => {
+    const trimmedName = String(name || '').trim();
+    const trimmedPhone = String(phone || '').trim();
+    const sMin = minuteFromHM(startHM);
+    const eMin = minuteFromHM(endHM);
+
+    if (!trimmedName) return setError('Nama penyewa wajib diisi.');
+    if (!trimmedPhone) return setError('No HP wajib diisi.');
+    if (sMin === null || eMin === null) return setError('Waktu harus format HH:MM.');
+    if (eMin <= sMin) return setError('Jam selesai harus setelah jam mulai.');
+
+    setIsSaving(true);
+    setError('');
+    try {
+      const payload = {
+        unit_id: unit.id,
+        block_type: 'rental_manual',
+        customer_name: trimmedName,
+        customer_phone: trimmedPhone,
+        notes: String(notes || '').trim() || null,
+        reason: 'Manual rental',
+        start_at: `${dateKey} ${startHM}:00`,
+        end_at: `${dateKey} ${endHM}:00`,
+      };
+
+      if (initial?.id) {
+        await apiFetch(`/api/admin/units/blocks/${initial.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      } else {
+        await apiFetch('/api/admin/units/blocks', { method: 'POST', body: JSON.stringify(payload) });
+      }
+
+      if (alsoBuffer && Number(bufferMinutes) > 0) {
+        const buf = Math.max(0, Math.min(240, Number(bufferMinutes) || 0));
+        const startBufMin = eMin;
+        const endBufMin = Math.min(1440, eMin + buf);
+        if (endBufMin > startBufMin) {
+          await apiFetch('/api/admin/units/blocks', {
+            method: 'POST',
+            body: JSON.stringify({
+              unit_id: unit.id,
+              block_type: 'buffer',
+              reason: `Buffer ${buf} menit`,
+              start_at: `${dateKey} ${fmtHMFromMinute(startBufMin)}:00`,
+              end_at: `${dateKey} ${fmtHMFromMinute(endBufMin)}:00`,
+            }),
+          });
+        }
+      }
+
+      onSaved?.();
+      onClose?.();
+    } catch (e) {
+      setError(e?.message || 'Gagal menyimpan slot.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={onClose}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 520, boxShadow: '0 25px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        <div style={{ background: '#0f172a', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+              {initial?.id ? 'Edit Slot Sewa' : 'Buat Slot Sewa'}
+            </p>
+            <p style={{ color: '#fff', fontWeight: 900, fontSize: 14 }}>{unit.name} · <span style={{ fontFamily: 'monospace' }}>{unit.plat}</span></p>
+            <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, marginTop: 4 }}>{dateKey}</p>
+          </div>
+          <button onClick={onClose} style={{ color: '#64748b', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {error && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 12px', color: '#b91c1c', fontWeight: 800, fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Nama Penyewa</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap"
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>No HP</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="62812xxxxxxx"
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Mulai</label>
+              <input value={startHM} onChange={(e) => setStartHM(e.target.value)} placeholder="09:00"
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc', fontFamily: 'monospace', fontWeight: 800 }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Selesai</label>
+              <input value={endHM} onChange={(e) => setEndHM(e.target.value)} placeholder="12:00"
+                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc', fontFamily: 'monospace', fontWeight: 800 }} />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Catatan (opsional)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contoh: balik cepat jam 12, minta 2 helm"
+              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff', minHeight: 72, resize: 'none' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+            <button
+              onClick={() => handleSave(false)}
+              disabled={isSaving}
+              style={{ flex: 1, padding: '10px 14px', borderRadius: 12, border: 'none', background: '#78081C', color: '#fff', fontWeight: 900, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: isSaving ? 0.7 : 1 }}
+            >
+              {isSaving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={16} />}
+              Simpan Slot
+            </button>
+            <button
+              onClick={() => handleSave(true)}
+              disabled={isSaving || Number(bufferMinutes) <= 0}
+              style={{ padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 900, fontSize: 12, cursor: 'pointer', opacity: (isSaving || Number(bufferMinutes) <= 0) ? 0.6 : 1 }}
+              title={Number(bufferMinutes) > 0 ? `Simpan lalu blokir buffer ${bufferMinutes} menit` : 'Atur buffer > 0 untuk aktifkan'}
+            >
+              Simpan + Buffer
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Mini modal ───────────────────────────────────────────────────────────────
@@ -174,6 +352,7 @@ export default function FleetInventoryTable() {
   const [dayBlocks, setDayBlocks]         = useState([]);
   const [isDayLoading, setIsDayLoading]   = useState(false);
   const [dayError, setDayError]           = useState('');
+  const [rentalModal, setRentalModal]     = useState(null); // { unit, initial }
   const [modalCell, setModalCell]         = useState(null);
   const [filterType, setFilterType]       = useState('Semua');
   const [expandedTypes, setExpandedTypes] = useState({});
@@ -743,33 +922,44 @@ export default function FleetInventoryTable() {
       return { bg: '#22c55e', text: '#fff' };
     };
 
-    const handleCreateBlock = async (unitId) => {
-      const start = window.prompt('Mulai blok (HH:MM)', '12:00');
-      if (!start) return;
-      const end = window.prompt('Selesai blok (HH:MM)', '13:00');
-      if (!end) return;
-      const reason = window.prompt('Alasan blok (opsional)', 'Cleaning / Servis') || '';
+    const openNewRental = (unit, startMin = 9 * 60, endMin = 12 * 60) => {
+      setRentalModal({
+        unit,
+        initial: {
+          startHM: fmtHMFromMinute(startMin),
+          endHM: fmtHMFromMinute(endMin),
+        },
+      });
+    };
 
-      const okTime = (t) => /^\d{2}:\d{2}$/.test(String(t).trim());
-      if (!okTime(start) || !okTime(end)) {
-        alert('Format waktu harus HH:MM (contoh 09:30).');
-        return;
-      }
+    const openEditRental = (unit, block) => {
+      const s = parseMaybeSqlDateTime(block?.start_at);
+      const e = parseMaybeSqlDateTime(block?.end_at);
+      const startMin = s ? Math.max(0, Math.min(1439, Math.round((s.getTime() - dayStart.getTime()) / 60000))) : 9 * 60;
+      const endMin = e ? Math.max(0, Math.min(1440, Math.round((e.getTime() - dayStart.getTime()) / 60000))) : 12 * 60;
+      setRentalModal({
+        unit,
+        initial: {
+          id: block?.id,
+          customer_name: block?.customer_name || '',
+          customer_phone: block?.customer_phone || '',
+          notes: block?.notes || '',
+          startHM: fmtHMFromMinute(startMin),
+          endHM: fmtHMFromMinute(endMin),
+        },
+      });
+    };
 
-      try {
-        await apiFetch('/api/admin/units/blocks', {
-          method: 'POST',
-          body: JSON.stringify({
-            unit_id: unitId,
-            start_at: `${dayDateKey} ${String(start).trim()}:00`,
-            end_at: `${dayDateKey} ${String(end).trim()}:00`,
-            reason: reason.trim() || 'Blocked',
-          }),
-        });
-        fetchDayData(dayDateKey);
-      } catch (e) {
-        alert(e?.message || 'Gagal membuat blokir unit.');
-      }
+    const handleTimelineClick = (unit, e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const ratio = rect.width > 0 ? x / rect.width : 0;
+      const minute = Math.round(ratio * 1440);
+      const snap = 15;
+      const snapped = Math.round(minute / snap) * snap;
+      const start = Math.max(0, Math.min(1410, snapped));
+      const end = Math.min(1440, start + 120);
+      openNewRental(unit, start, end);
     };
 
     const rows = filteredUnits.map((u) => {
@@ -794,14 +984,20 @@ export default function FleetInventoryTable() {
         const ev = makeEvent('block', bl.start_at, bl.end_at, {
           id: bl.id,
           reason: bl.reason,
+          block_type: bl.block_type,
+          customer_name: bl.customer_name,
+          customer_phone: bl.customer_phone,
+          notes: bl.notes,
+          start_at: bl.start_at,
+          end_at: bl.end_at,
         });
         if (ev) events.push(ev);
       }
 
-      // Turnaround buffer after each booking end
+      // Turnaround buffer after each rental end (booking + manual rental)
       if ((Number(bufferMinutes) || 0) > 0) {
         const mins = Math.max(0, Math.min(240, Number(bufferMinutes) || 0));
-        for (const ev of events.filter((e) => e.kind === 'booking')) {
+        for (const ev of events.filter((e) => e.kind === 'booking' || (e.kind === 'block' && e.meta?.block_type === 'rental_manual'))) {
           const bStart = ev.endMin;
           const bEnd = clampMinute(ev.endMin + mins);
           if (bEnd > bStart) {
@@ -890,16 +1086,20 @@ export default function FleetInventoryTable() {
                   </div>
                   <div style={{ marginTop: 8 }}>
                     <button
-                      onClick={() => handleCreateBlock(unit.id)}
+                      onClick={() => openNewRental(unit)}
                       style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 900, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      title="Blokir slot waktu untuk cleaning/servis"
+                      title="Tambah slot sewa manual (tanpa booking)"
                     >
-                      <Plus size={14} /> Block slot
+                      <Plus size={14} /> Tambah slot
                     </button>
                   </div>
                 </div>
 
-                <div style={{ flex: 1, position: 'relative', height: 46, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                <div
+                  style={{ flex: 1, position: 'relative', height: 46, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}
+                  onClick={(e) => handleTimelineClick(unit, e)}
+                  title="Klik timeline untuk buat slot sewa (snap 15 menit)"
+                >
                   {/* Hour grid */}
                   {Array.from({ length: 24 }).map((_, i) => (
                     <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(i / 24) * 100}%`, width: 1, background: i % 6 === 0 ? '#e2e8f0' : '#f1f5f9' }} />
@@ -929,11 +1129,45 @@ export default function FleetInventoryTable() {
                     }
 
                     if (ev.kind === 'block') {
+                      if (ev.meta?.block_type === 'rental_manual') {
+                        const label = ev.meta?.customer_name ? String(ev.meta.customer_name).slice(0, 26) : 'Manual rental';
+                        return (
+                          <div
+                            key={`rent-${idx}`}
+                            title={`${label}${ev.meta?.customer_phone ? ` · ${ev.meta.customer_phone}` : ''}${ev.meta?.notes ? `\n${ev.meta.notes}` : ''}`}
+                            onClick={(e) => { e.stopPropagation(); openEditRental(unit, ev.meta); }}
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              left: `${left}%`,
+                              width: `${Math.max(0.6, width)}%`,
+                              height: 16,
+                              background: '#0d9488',
+                              color: '#fff',
+                              borderRadius: 9,
+                              fontSize: 10,
+                              fontWeight: 900,
+                              padding: '0 8px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              textOverflow: 'ellipsis',
+                              boxShadow: '0 6px 14px rgba(15,23,42,0.10)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {label}
+                          </div>
+                        );
+                      }
+
                       const label = ev.meta?.reason ? String(ev.meta.reason).slice(0, 26) : 'Diblokir';
                       return (
                         <div
                           key={`blk-${idx}`}
                           title={`Blocked · ${label}`}
+                          onClick={(e) => e.stopPropagation()}
                           style={{
                             position: 'absolute',
                             top: 8,
@@ -966,6 +1200,7 @@ export default function FleetInventoryTable() {
                       <div
                         key={`bk-${idx}`}
                         title={`${label}\n${fmtTime(startAt)} - ${fmtTime(endAt)}`}
+                        onClick={(e) => e.stopPropagation()}
                         style={{
                           position: 'absolute',
                           top: 8,
@@ -1151,6 +1386,16 @@ export default function FleetInventoryTable() {
       {modalCell && (
         <BookingModal cell={modalCell} onClose={() => setModalCell(null)} onSave={handleSave} onDelete={handleDelete} />
       )}
+
+      <ManualRentalModal
+        open={!!rentalModal}
+        unit={rentalModal?.unit || null}
+        dateKey={dayDateKey}
+        initial={rentalModal?.initial || null}
+        bufferMinutes={bufferMinutes}
+        onClose={() => setRentalModal(null)}
+        onSaved={() => fetchDayData(dayDateKey)}
+      />
     </div>
   );
 }

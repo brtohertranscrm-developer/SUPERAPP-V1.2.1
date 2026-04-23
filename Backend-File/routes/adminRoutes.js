@@ -727,15 +727,19 @@ router.post('/units/blocks', requirePermission('booking'), async (req, res) => {
     const startAt = normalizeToSqliteDateTime(req.body?.start_at);
     const endAt = normalizeToSqliteDateTime(req.body?.end_at);
     const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+    const blockType = req.body?.block_type ? String(req.body.block_type).trim().slice(0, 40) : null;
+    const customerName = req.body?.customer_name ? String(req.body.customer_name).trim().slice(0, 120) : null;
+    const customerPhone = req.body?.customer_phone ? String(req.body.customer_phone).trim().slice(0, 40) : null;
+    const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 800) : null;
 
     if (!unitId || !startAt || !endAt) {
       return res.status(400).json({ success: false, error: 'unit_id, start_at, end_at wajib diisi.' });
     }
 
     await dbRun(
-      `INSERT INTO unit_blocks (unit_id, start_at, end_at, reason, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-      [unitId, startAt, endAt, reason, req.user?.id || null]
+      `INSERT INTO unit_blocks (unit_id, start_at, end_at, reason, block_type, customer_name, customer_phone, notes, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      [unitId, startAt, endAt, reason, blockType, customerName, customerPhone, notes, req.user?.id || null]
     );
 
     res.status(201).json({ success: true, message: 'Blokir unit berhasil dibuat.' });
@@ -768,7 +772,7 @@ router.get('/units/blocks', requirePermission('booking'), async (req, res) => {
 
     const rows = await dbAll(
       `
-      SELECT id, unit_id, start_at, end_at, reason, created_by, created_at
+      SELECT id, unit_id, start_at, end_at, reason, block_type, customer_name, customer_phone, notes, created_by, created_at
       FROM unit_blocks
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY datetime(start_at) ASC
@@ -780,6 +784,40 @@ router.get('/units/blocks', requirePermission('booking'), async (req, res) => {
   } catch (err) {
     console.error('GET /admin/units/blocks error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil blokir unit.' });
+  }
+});
+
+router.put('/units/blocks/:id', requirePermission('booking'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ success: false, error: 'ID blokir tidak valid.' });
+
+    const startAt = normalizeToSqliteDateTime(req.body?.start_at);
+    const endAt = normalizeToSqliteDateTime(req.body?.end_at);
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+    const blockType = req.body?.block_type ? String(req.body.block_type).trim().slice(0, 40) : null;
+    const customerName = req.body?.customer_name ? String(req.body.customer_name).trim().slice(0, 120) : null;
+    const customerPhone = req.body?.customer_phone ? String(req.body.customer_phone).trim().slice(0, 40) : null;
+    const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 800) : null;
+
+    if (!startAt || !endAt) {
+      return res.status(400).json({ success: false, error: 'start_at dan end_at wajib diisi.' });
+    }
+
+    const existing = await dbGet(`SELECT id FROM unit_blocks WHERE id = ?`, [id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Blokir tidak ditemukan.' });
+
+    await dbRun(
+      `UPDATE unit_blocks
+       SET start_at = ?, end_at = ?, reason = ?, block_type = ?, customer_name = ?, customer_phone = ?, notes = ?
+       WHERE id = ?`,
+      [startAt, endAt, reason, blockType, customerName, customerPhone, notes, id]
+    );
+
+    res.json({ success: true, message: 'Blokir unit berhasil diperbarui.' });
+  } catch (err) {
+    console.error('PUT /admin/units/blocks/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui blokir unit.' });
   }
 });
 
