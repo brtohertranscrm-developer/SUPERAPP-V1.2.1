@@ -273,6 +273,7 @@ export default function CheckoutMotor() {
   const [deliveryTarget, setDeliveryTarget] = useState('station'); // station | address
   const [tripScope, setTripScope] = useState('local'); // local | out_of_town
   const [tripDestination, setTripDestination] = useState('');
+  const [tripDestinationError, setTripDestinationError] = useState('');
   const [stations, setStations] = useState([]);
   const [stationId, setStationId] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -597,10 +598,16 @@ const handleRemovePromo = () => {
     setSelectedAddons((prev) => {
       const next = { ...(prev || {}) };
 
+      const isGearLikeAddon = (a) => {
+        const n = normalizeName(a?.name);
+        return n.includes('helm') || n.includes('jas hujan');
+      };
+
       // Paket: lebih jelas kalau hanya bisa pilih 1 paket di satu booking
-      if (addon.addon_type === 'package' && qty > 0) {
+      // Guard: perlengkapan operasional (helm/jas hujan) jangan ikut eksklusif package walau salah setting.
+      if (addon.addon_type === 'package' && qty > 0 && !isGearLikeAddon(addon)) {
         for (const a of motorAddons || []) {
-          if (a.addon_type === 'package') {
+          if (a.addon_type === 'package' && !isGearLikeAddon(a)) {
             delete next[Number(a.id)];
           }
         }
@@ -751,6 +758,16 @@ const handleRemovePromo = () => {
 
   const goPrevStep = () => setCheckoutStep(stepKeys[Math.max(0, currentStepIdx - 1)]);
   const goNextStep = () => setCheckoutStep(stepKeys[Math.min(stepKeys.length - 1, currentStepIdx + 1)]);
+  const handleNextStep = () => {
+    if (checkoutStep === 'handover') {
+      const dest = String(tripDestination || '').trim();
+      if (!dest) {
+        setTripDestinationError('Tujuan perjalanan wajib diisi.');
+        return;
+      }
+    }
+    goNextStep();
+  };
 
   const CheckoutStepIndicator = () => (
     <div className="mb-6">
@@ -1120,16 +1137,28 @@ const handleRemovePromo = () => {
               </div>
 
               <div className="mt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tujuan (opsional)</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tujuan Perjalanan</p>
                 <input
                   value={tripDestination}
-                  onChange={(e) => setTripDestination(e.target.value)}
-                  className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-slate-900 outline-none"
+                  onChange={(e) => {
+                    setTripDestination(e.target.value);
+                    if (tripDestinationError) setTripDestinationError('');
+                  }}
+                  className={`w-full p-3 bg-white border rounded-xl font-bold focus:ring-2 outline-none ${
+                    tripDestinationError
+                      ? 'border-rose-300 focus:ring-rose-500'
+                      : 'border-slate-200 focus:ring-slate-900'
+                  }`}
                   placeholder="Contoh: Magelang / Klaten / Gunung Kidul"
                 />
                 <p className="text-[11px] text-slate-500 font-medium mt-1">
                   Info ini membantu admin memastikan aturan pemakaian unit.
                 </p>
+                {tripDestinationError && (
+                  <p className="text-rose-600 text-xs font-black mt-2 flex items-center gap-1.5">
+                    <XCircle size={12} /> {tripDestinationError}
+                  </p>
+                )}
               </div>
 
               {tripScope === 'out_of_town' && (
@@ -1457,7 +1486,7 @@ const handleRemovePromo = () => {
               </div>
               <button
                 type="button"
-                onClick={goNextStep}
+                onClick={handleNextStep}
                 disabled={isLastStep}
                 className="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
               >

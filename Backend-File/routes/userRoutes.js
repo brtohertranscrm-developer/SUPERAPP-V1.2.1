@@ -679,10 +679,13 @@ router.post('/bookings', async (req, res) => {
 	    const tripScopeNormalized =
 	      trip_scope === 'out_of_town' ? 'out_of_town'
 	      : trip_scope === 'local' ? 'local'
-	      : null;
+	      : 'local';
 	    const tripDestinationNormalized = trip_destination
 	      ? String(trip_destination).trim().slice(0, 140)
 	      : null;
+	    if (item_type === 'motor' && !tripDestinationNormalized) {
+	      return res.status(400).json({ success: false, error: 'Tujuan perjalanan wajib diisi.' });
+	    }
 
     // Atomic: booking + addon lines
     await dbRun('BEGIN');
