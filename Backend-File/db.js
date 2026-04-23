@@ -435,6 +435,30 @@ db.serialize(() => {
     )
   `);
 
+  // --- PARTNER VOUCHERS (Klaim promo partner oleh user) ---
+  // status:
+  //   - 'claimed'  (sudah diklaim, belum dipakai)
+  //   - 'used'     (sudah ditukarkan)
+  //   - 'expired'  (sudah lewat masa berlaku)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS partner_vouchers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_code TEXT UNIQUE NOT NULL,
+      partner_id INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'claimed',
+      claimed_at TEXT DEFAULT (datetime('now')),
+      used_at TEXT,
+      validated_by TEXT,
+      validation_note TEXT,
+      FOREIGN KEY (partner_id) REFERENCES partners(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (validated_by) REFERENCES users(id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_partner_vouchers_user_status ON partner_vouchers(user_id, status, claimed_at DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_partner_vouchers_partner_status ON partner_vouchers(partner_id, status, claimed_at DESC)`);
+
   // --- ARTICLES ---
   db.run(`
     CREATE TABLE IF NOT EXISTS articles (

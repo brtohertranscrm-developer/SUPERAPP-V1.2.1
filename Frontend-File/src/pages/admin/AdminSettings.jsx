@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import {
-  Shield, Plus, Trash2, X, Check,
+  Shield, Plus, Trash2, X, Check, Pencil, Copy,
   Database, Download, Upload, AlertTriangle,
   RefreshCw, HardDrive, Users, Bike, CalendarCheck,
-  Loader2, Clock
+  Loader2, Clock, Search, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
@@ -25,11 +25,35 @@ const availableMenus = [
   { key: 'settings',  label: 'Pengaturan & Akses' },
 ];
 
+const permissionPresets = [
+  {
+    key: 'partner',
+    label: 'Partner',
+    permissions: ['partners'],
+  },
+  {
+    key: 'staff_ops',
+    label: 'Staff Operasional',
+    permissions: ['logistics', 'manning'],
+  },
+  {
+    key: 'finance',
+    label: 'Finance',
+    permissions: ['finance', 'settings'],
+  },
+  {
+    key: 'konten',
+    label: 'Konten',
+    permissions: ['artikel', 'partners', 'pricing'],
+  },
+];
+
 // ─── Section: Audit Logs ──────────────────────────────────────────────────────
 const AuditLogsSection = ({ token }) => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [limit, setLimit] = useState(50);
+  const [isOpen, setIsOpen] = useState(false);
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -60,76 +84,94 @@ const AuditLogsSection = ({ token }) => {
 
   return (
     <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-bold flex items-center gap-2">
-          <Clock className="text-slate-700" size={18} /> Audit Logs (Aktivitas Admin)
-        </h2>
-        <div className="flex items-center gap-2">
-          <select
-            value={limit}
-            onChange={(e) => setLimit(parseInt(e.target.value, 10))}
-            className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 outline-none"
-          >
-            <option value={25}>25</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-            <option value={200}>200</option>
-          </select>
-          <button
-            onClick={fetchLogs}
-            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-50 transition-colors"
-            title="Refresh logs"
-            disabled={isLoading}
-          >
-            <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
-          </button>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="w-full flex items-center justify-between gap-4 text-left"
+      >
+        <div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Clock className="text-slate-700" size={18} /> Audit Logs (Aktivitas Admin)
+          </h2>
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Logs dicatat otomatis untuk request non-GET ke endpoint admin. Buka hanya saat perlu audit atau troubleshooting.
+          </p>
         </div>
-      </div>
+        <div className="w-10 h-10 rounded-2xl border border-slate-200 flex items-center justify-center text-slate-600">
+          {isOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </div>
+      </button>
 
-      <div className="text-xs text-slate-500 font-medium mb-4">
-        Logs dicatat otomatis untuk request non-GET ke endpoint admin (booking, finance, settings, dll).
-      </div>
+      {isOpen && (
+        <div className="mt-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-xs text-slate-500 font-medium">
+              Menampilkan aktivitas admin terbaru untuk kebutuhan audit.
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={limit}
+                onChange={(e) => setLimit(parseInt(e.target.value, 10))}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 outline-none"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+              <button
+                onClick={fetchLogs}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-50 transition-colors"
+                title="Refresh logs"
+                disabled={isLoading}
+              >
+                <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-gray-500">
-            <tr>
-              <th className="p-4 rounded-l-xl font-bold">Waktu</th>
-              <th className="p-4 font-bold">Admin</th>
-              <th className="p-4 font-bold">Action</th>
-              <th className="p-4 font-bold">Path</th>
-              <th className="p-4 font-bold text-center">Status</th>
-              <th className="p-4 rounded-r-xl font-bold">Context</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length === 0 ? (
-              <tr>
-                <td className="p-5 text-slate-400 font-bold" colSpan={6}>
-                  {isLoading ? 'Memuat audit logs...' : 'Belum ada log atau tidak ada akses.'}
-                </td>
-              </tr>
-            ) : (
-              logs.map((l) => (
-                <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                  <td className="p-4 text-xs font-bold text-slate-700">{fmtDateTime(l.created_at)}</td>
-                  <td className="p-4 text-xs text-slate-500 font-mono">{short(l.admin_id, 16)}</td>
-                  <td className="p-4 text-xs font-black text-slate-800">{short(`${l.method} ${l.action}`, 28)}</td>
-                  <td className="p-4 text-xs text-slate-600 font-mono">{short(l.path, 50)}</td>
-                  <td className="p-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
-                      Number(l.status_code) >= 400 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {l.status_code || '—'}
-                    </span>
-                  </td>
-                  <td className="p-4 text-xs text-slate-500 font-mono">{short(l.context, 70)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="p-4 rounded-l-xl font-bold">Waktu</th>
+                  <th className="p-4 font-bold">Admin</th>
+                  <th className="p-4 font-bold">Action</th>
+                  <th className="p-4 font-bold">Path</th>
+                  <th className="p-4 font-bold text-center">Status</th>
+                  <th className="p-4 rounded-r-xl font-bold">Context</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {logs.length === 0 ? (
+                  <tr>
+                    <td className="p-5 text-slate-400 font-bold" colSpan={6}>
+                      {isLoading ? 'Memuat audit logs...' : 'Belum ada log atau tidak ada akses.'}
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((l) => (
+                    <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
+                      <td className="p-4 text-xs font-bold text-slate-700">{fmtDateTime(l.created_at)}</td>
+                      <td className="p-4 text-xs text-slate-500 font-mono">{short(l.admin_id, 16)}</td>
+                      <td className="p-4 text-xs font-black text-slate-800">{short(`${l.method} ${l.action}`, 28)}</td>
+                      <td className="p-4 text-xs text-slate-600 font-mono">{short(l.path, 50)}</td>
+                      <td className="p-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
+                          Number(l.status_code) >= 400 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {l.status_code || '—'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-xs text-slate-500 font-mono">{short(l.context, 70)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -515,8 +557,11 @@ const AdminSettings = () => {
   const { token, user } = useContext(AuthContext);
   const [admins, setAdmins]           = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState(null);
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [adminSearch, setAdminSearch] = useState('');
   const [formData, setFormData]       = useState({
-    name: '', email: '', password: '', role: 'subadmin', permissions: [],
+    name: '', email: '', phone: '', password: '', role: 'subadmin', permissions: [],
   });
 
   const fetchAdmins = async () => {
@@ -530,6 +575,36 @@ const AdminSettings = () => {
   };
 
   useEffect(() => { fetchAdmins(); }, []);
+
+  const resetAdminForm = () => {
+    setEditingAdmin(null);
+    setFormData({ name: '', email: '', phone: '', password: '', role: 'subadmin', permissions: [] });
+  };
+
+  const openCreateModal = () => {
+    resetAdminForm();
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (adm) => {
+    let perms = [];
+    try {
+      perms = JSON.parse(adm.permissions || '[]');
+    } catch {
+      perms = [];
+    }
+
+    setEditingAdmin(adm);
+    setFormData({
+      name: adm.name || '',
+      email: adm.email || '',
+      phone: adm.phone && adm.phone !== '-' ? adm.phone : '',
+      password: '',
+      role: adm.role || 'subadmin',
+      permissions: Array.isArray(perms) ? perms : [],
+    });
+    setIsModalOpen(true);
+  };
 
   const handleCheckboxChange = (key) => {
     setFormData(prev => {
@@ -546,16 +621,23 @@ const AdminSettings = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res  = await fetch(`${API_URL}/api/admin/admins`, {
-        method:  'POST',
+      const endpoint = editingAdmin ? `${API_URL}/api/admin/admins/${editingAdmin.id}` : `${API_URL}/api/admin/admins`;
+      const method = editingAdmin ? 'PUT' : 'POST';
+      const payload = {
+        ...formData,
+        phone: formData.phone?.trim() || '-',
+      };
+
+      const res  = await fetch(endpoint, {
+        method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body:    JSON.stringify(formData),
+        body:    JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
-        alert('Berhasil membuat akun admin!');
+        alert(editingAdmin ? 'Akun admin berhasil diperbarui!' : 'Berhasil membuat akun admin!');
         setIsModalOpen(false);
-        setFormData({ name: '', email: '', password: '', role: 'subadmin', permissions: [] });
+        resetAdminForm();
         fetchAdmins();
       } else {
         alert(data.error);
@@ -576,6 +658,32 @@ const AdminSettings = () => {
     } catch (err) { console.error(err); }
   };
 
+  const visibleAdmins = admins.filter((adm) => {
+    const matchRole = roleFilter === 'all' ? true : adm.role === roleFilter;
+    const q = adminSearch.trim().toLowerCase();
+    const matchSearch = !q
+      ? true
+      : `${adm.name || ''} ${adm.email || ''}`.toLowerCase().includes(q);
+    return matchRole && matchSearch;
+  });
+
+  const permissionTemplateOptions = admins.filter((adm) => !editingAdmin || adm.id !== editingAdmin.id);
+
+  const applyPermissionTemplate = (adminId) => {
+    const sourceAdmin = admins.find((adm) => adm.id === adminId);
+    if (!sourceAdmin) return;
+    let perms = [];
+    try {
+      perms = JSON.parse(sourceAdmin.permissions || '[]');
+    } catch {
+      perms = [];
+    }
+    setFormData((prev) => ({
+      ...prev,
+      permissions: Array.isArray(perms) ? perms : [],
+    }));
+  };
+
   return (
     <div className="space-y-6">
 
@@ -586,7 +694,7 @@ const AdminSettings = () => {
           <p className="text-gray-500 text-sm mt-1">Kelola hak akses, konfigurasi, dan backup database.</p>
         </div>
         <button
-          onClick={() => setIsModalOpen(true)}
+          onClick={openCreateModal}
           className="bg-brand-primary text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-700 transition"
         >
           <Plus size={20} /> Tambah Admin
@@ -594,19 +702,39 @@ const AdminSettings = () => {
       </div>
 
       {/* Section: Motor Billing */}
-      <MotorBillingSection token={token} />
-
-      {/* Section: Database */}
-      <DatabaseSection token={token} />
-
-      {/* Section: Audit Logs */}
-      <AuditLogsSection token={token} />
-
-      {/* Section: Daftar Admin */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-        <h2 className="text-lg font-bold flex items-center gap-2 mb-4">
-          <Shield className="text-brand-primary" /> Daftar Admin & Sub-Admin
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              <Shield className="text-brand-primary" /> Daftar Admin & Sub-Admin
+            </h2>
+            <p className="text-xs text-slate-500 font-medium mt-1">
+              Edit role dan hak akses langsung dari daftar akun, tanpa perlu hapus akun lama.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
+                placeholder="Cari nama atau email..."
+                className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-bold text-slate-700 outline-none w-56"
+              />
+            </div>
+            <span className="text-xs font-black uppercase tracking-widest text-slate-400">Filter Role</span>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 outline-none"
+            >
+              <option value="all">Semua</option>
+              <option value="superadmin">Superadmin</option>
+              <option value="admin">Admin</option>
+              <option value="subadmin">Subadmin</option>
+            </select>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500">
@@ -619,9 +747,18 @@ const AdminSettings = () => {
               </tr>
             </thead>
             <tbody>
-              {admins.map((adm) => (
+              {visibleAdmins.map((adm) => (
                 <tr key={adm.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
-                  <td className="p-4 font-bold">{adm.name}</td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold">{adm.name}</span>
+                      {user?.id === adm.id && (
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-widest">
+                          Akun Saya
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="p-4 text-gray-500">{adm.email}</td>
                   <td className="p-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -649,26 +786,53 @@ const AdminSettings = () => {
                     )}
                   </td>
                   <td className="p-4 text-center">
-                    {adm.role !== 'superadmin' && adm.role !== 'admin' && user?.id !== adm.id && (
-                      <button onClick={() => handleDelete(adm.id)} className="text-red-400 hover:text-red-600 p-2">
-                        <Trash2 size={18} />
-                      </button>
-                    )}
+                    <div className="flex items-center justify-center gap-1">
+                      {adm.role !== 'superadmin' && (
+                        <button
+                          onClick={() => openEditModal(adm)}
+                          className="text-slate-400 hover:text-brand-primary p-2"
+                          title="Edit role & hak akses"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                      )}
+                      {adm.role !== 'superadmin' && adm.role !== 'admin' && user?.id !== adm.id && (
+                        <button onClick={() => handleDelete(adm.id)} className="text-red-400 hover:text-red-600 p-2" title="Hapus akun">
+                          <Trash2 size={18} />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
+              {visibleAdmins.length === 0 && (
+                <tr>
+                  <td className="p-5 text-slate-400 font-bold" colSpan={5}>
+                    Tidak ada akun admin untuk filter role ini.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Section: Motor Billing */}
+      <MotorBillingSection token={token} />
+
+      {/* Section: Database */}
+      <DatabaseSection token={token} />
+
+      {/* Section: Audit Logs */}
+      <AuditLogsSection token={token} />
 
       {/* Modal Tambah Admin */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white p-6 border-b border-gray-100 flex justify-between items-center z-10">
-              <h3 className="font-black text-xl">Buat Akun Admin Baru</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-red-500"><X size={24} /></button>
+              <h3 className="font-black text-xl">{editingAdmin ? 'Edit Role & Hak Akses Admin' : 'Buat Akun Admin Baru'}</h3>
+              <button onClick={() => { setIsModalOpen(false); resetAdminForm(); }} className="text-gray-400 hover:text-red-500"><X size={24} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-4">
@@ -689,11 +853,82 @@ const AdminSettings = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Password Login</label>
-                <input type="password" required value={formData.password}
+                <label className="block text-sm font-bold text-gray-700 mb-2">Nomor HP</label>
+                <input type="text" value={formData.phone}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
+                  placeholder="Opsional, untuk kontak internal" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  {editingAdmin ? 'Password Baru (opsional)' : 'Password Login'}
+                </label>
+                <input type="password" required={!editingAdmin} value={formData.password}
                   onChange={e => setFormData({ ...formData, password: e.target.value })}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                  placeholder="Minimal 6 karakter" />
+                  placeholder={editingAdmin ? 'Kosongkan jika tidak ingin mengubah password' : 'Minimal 6 karakter'} />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Role Akun</label>
+                <select
+                  value={formData.role}
+                  onChange={e => setFormData({ ...formData, role: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
+                >
+                  <option value="subadmin">Subadmin</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 text-slate-700 font-bold text-sm mb-3">
+                  <Copy size={16} className="text-brand-primary" /> Salin Hak Akses dari Akun Lain
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        applyPermissionTemplate(e.target.value);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-brand-primary"
+                  >
+                    <option value="">Pilih akun untuk salin permission...</option>
+                    {permissionTemplateOptions.map((adm) => (
+                      <option key={adm.id} value={adm.id}>
+                        {adm.name} - {adm.role}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="text-xs text-slate-500 font-medium sm:max-w-[220px]">
+                    Cocok untuk bikin akun baru dengan role serupa tanpa checklist satu per satu.
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 text-slate-700 font-bold text-sm mb-3">
+                  <Shield size={16} className="text-brand-primary" /> Preset Permission Cepat
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {permissionPresets.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, permissions: preset.permissions }))}
+                      className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-brand-primary hover:text-white text-slate-700 text-xs font-black transition-colors"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-3">
+                  Pilih preset lalu sesuaikan checklist jika perlu.
+                </p>
               </div>
 
               <div className="bg-brand-dark rounded-2xl p-6 text-white">
@@ -720,7 +955,7 @@ const AdminSettings = () => {
               </div>
 
               <button type="submit" className="w-full bg-brand-primary text-white py-4 rounded-xl font-bold text-lg hover:bg-rose-700 transition">
-                Simpan & Beri Akses
+                {editingAdmin ? 'Simpan Perubahan Akses' : 'Simpan & Beri Akses'}
               </button>
             </form>
           </div>

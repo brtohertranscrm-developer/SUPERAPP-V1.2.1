@@ -16,9 +16,10 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
       title: 'Operasional',
       items: [
         { name: 'Dashboard',       path: '/admin',            key: 'dashboard', icon: <LayoutDashboard size={20} /> },
+        { name: 'Tugas Hari Ini',  path: '/admin/staff',      key: 'logistics', icon: <ClipboardList size={20} /> },
         { name: 'Data Pesanan',    path: '/admin/booking',    key: 'booking',   icon: <ClipboardList size={20} /> },
-        { name: 'Jadwal Antar/Kembali', path: '/admin/logistics', key: 'logistics', icon: <Truck size={20} /> },
-        { name: 'Manning Tim',     path: '/admin/manning',    key: 'manning',  icon: <Users size={20} /> },
+        { name: 'Kelola Jadwal',   path: '/admin/logistics',  key: 'logistics', icon: <Truck size={20} /> },
+        { name: 'Tim & Libur',     path: '/admin/manning',    key: 'manning',   icon: <Users size={20} /> },
         { name: 'Manajemen Armada',path: '/admin/armada',     key: 'armada',    icon: <Bike size={20} /> },
         { name: 'Fleet Inventory', path: '/admin/fleet',      key: 'armada',    icon: <Calendar size={20} /> },
         { name: 'Manajemen Loker', path: '/admin/loker',      key: 'loker',     icon: <Package size={20} /> },
@@ -66,6 +67,17 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
   }
 
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+  const isPartnerOnly = !isSuperAdmin && userPermissions.includes('partners') && !userPermissions.includes('dashboard');
+
+  const normalizedSections = menuSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => {
+      if (isPartnerOnly && item.path === '/admin/partners') {
+        return { ...item, name: 'Partner Center' };
+      }
+      return item;
+    }),
+  }));
 
   const isMenuAllowed = (menu) => isSuperAdmin || userPermissions.includes(menu.key);
 
@@ -109,7 +121,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-6 px-4 space-y-1 scrollbar-hide">
-        {menuSections.map((section) => {
+        {normalizedSections.map((section) => {
           const allowedItems = section.items.filter(isMenuAllowed);
           if (allowedItems.length === 0) return null;
 

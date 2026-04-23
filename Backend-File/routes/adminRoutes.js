@@ -1751,6 +1751,166 @@ router.delete('/partners/:id', requirePermission('partners'), async (req, res) =
   }
 });
 
+router.get('/partners/vouchers', requirePermission('partners'), async (req, res) => {
+  try {
+    const status = String(req.query.status || 'all').trim().toLowerCase();
+    const q = String(req.query.q || '').trim();
+
+    const where = [];
+    const params = [];
+
+    if (status && status !== 'all') {
+      where.push(`v.status = ?`);
+      params.push(status);
+    }
+
+    if (q) {
+      where.push(`(
+        v.voucher_code LIKE ?
+        OR p.name LIKE ?
+        OR u.name LIKE ?
+        OR u.email LIKE ?
+        OR u.phone LIKE ?
+      )`);
+      const term = `%${q}%`;
+      params.push(term, term, term, term, term);
+    }
+
+    const rows = await dbAll(
+      `
+      SELECT
+        v.id,
+        v.voucher_code,
+        v.status,
+        v.claimed_at,
+        v.used_at,
+        v.validation_note,
+        p.id AS partner_id,
+        p.name AS partner_name,
+        p.category,
+        p.city,
+        p.valid_until,
+        u.id AS user_id,
+        u.name AS user_name,
+        u.email AS user_email,
+        u.phone AS user_phone,
+        validator.name AS validated_by_name
+      FROM partner_vouchers v
+      INNER JOIN partners p ON p.id = v.partner_id
+      INNER JOIN users u ON u.id = v.user_id
+      LEFT JOIN users validator ON validator.id = v.validated_by
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY datetime(v.claimed_at) DESC, v.id DESC
+      LIMIT 100
+      `,
+      params
+    );
+
+    const now = Date.now();
+    const normalized = rows.map((row) => {
+      const validUntilTs = row.valid_until ? new Date(row.valid_until).getTime() : null;
+      const expired = row.status === 'claimed' && validUntilTs && !Number.isNaN(validUntilTs) && validUntilTs < now;
+      return { ...row, status: expired ? 'expired' : row.status };
+    });
+
+    res.json({ success: true, data: normalized });
+  } catch (err) {
+    console.error('GET /admin/partners/vouchers error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data voucher partner.' });
+  }
+});
+
+router.post('/partners/vouchers/validate', requirePermission('partners'), async (req, res) => {
+  try {
+    const voucherCode = String(req.body?.voucher_code || '').trim().toUpperCase();
+    const note = String(req.body?.note || '').trim();
+
+    if (!voucherCode) {
+      return res.status(400).json({ success: false, error: 'Kode voucher wajib diisi.' });
+    }
+
+    const voucher = await dbGet(
+      `
+      SELECT
+        v.*,
+        p.name AS partner_name,
+        p.valid_until,
+        u.name AS user_name,
+        u.email AS user_email,
+        u.phone AS user_phone
+      FROM partner_vouchers v
+      INNER JOIN partners p ON p.id = v.partner_id
+      INNER JOIN users u ON u.id = v.user_id
+      WHERE v.voucher_code = ?
+      LIMIT 1
+      `,
+      [voucherCode]
+    );
+
+    if (!voucher) {
+      return res.status(404).json({ success: false, error: 'Voucher tidak ditemukan.' });
+    }
+
+    if (voucher.status === 'used') {
+      return res.status(409).json({ success: false, error: 'Voucher ini sudah pernah digunakan.' });
+    }
+
+    if (voucher.valid_until) {
+      const validUntilTs = new Date(voucher.valid_until).getTime();
+      if (!Number.isNaN(validUntilTs) && validUntilTs < Date.now()) {
+        await dbRun(
+          `UPDATE partner_vouchers SET status = 'expired', validation_note = COALESCE(validation_note, ?)
+           WHERE id = ?`,
+          ['Voucher expired saat validasi.', voucher.id]
+        );
+        return res.status(400).json({ success: false, error: 'Voucher ini sudah expired.' });
+      }
+    }
+
+    await dbRun(
+      `
+      UPDATE partner_vouchers
+      SET status = 'used',
+          used_at = datetime('now'),
+          validated_by = ?,
+          validation_note = ? 
+      WHERE id = ?
+      `,
+      [req.user.id, note || null, voucher.id]
+    );
+
+    const updated = await dbGet(
+      `
+      SELECT
+        v.id,
+        v.voucher_code,
+        v.status,
+        v.claimed_at,
+        v.used_at,
+        v.validation_note,
+        p.name AS partner_name,
+        u.name AS user_name,
+        u.email AS user_email,
+        u.phone AS user_phone
+      FROM partner_vouchers v
+      INNER JOIN partners p ON p.id = v.partner_id
+      INNER JOIN users u ON u.id = v.user_id
+      WHERE v.id = ?
+      `,
+      [voucher.id]
+    );
+
+    res.json({
+      success: true,
+      message: `Voucher ${voucherCode} berhasil divalidasi.`,
+      data: updated,
+    });
+  } catch (err) {
+    console.error('POST /admin/partners/vouchers/validate error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memvalidasi voucher partner.' });
+  }
+});
+
 // ==========================================
 // ARTIKEL MANAGEMENT (Akses: artikel)
 // ==========================================
@@ -1841,7 +2001,7 @@ router.post('/upload', requirePermission('artikel'), (req, res) => {
       return res.status(400).json({ success: false, error: 'Tidak ada file yang diunggah.' });
     }
 
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    const fileUrl = `/uploads/${req.file.filename}`;
     res.json({ success: true, url: fileUrl });
   });
 });
@@ -1896,6 +2056,68 @@ router.post('/admins', requirePermission('settings'), async (req, res) => {
     }
     console.error('POST /admin/admins error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal menambahkan admin.' });
+  }
+});
+
+router.put('/admins/:id', requirePermission('settings'), async (req, res) => {
+  try {
+    const target = await dbGet(
+      `SELECT id, role, email FROM users WHERE id = ? AND role IN ('admin', 'superadmin', 'subadmin') LIMIT 1`,
+      [req.params.id]
+    );
+
+    if (!target) {
+      return res.status(404).json({ success: false, error: 'Admin tidak ditemukan.' });
+    }
+
+    if (target.role === 'superadmin') {
+      return res.status(403).json({ success: false, error: 'Akun Superadmin tidak dapat diubah dari menu ini.' });
+    }
+
+    const { name, email, password, phone, role, permissions } = req.body || {};
+
+    if (!name || !email) {
+      return res.status(400).json({ success: false, error: 'Nama dan email wajib diisi.' });
+    }
+
+    const validRoles = ['admin', 'subadmin'];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ success: false, error: 'Role tidak valid. Gunakan admin atau subadmin.' });
+    }
+
+    const emailNormalized = String(email).toLowerCase().trim();
+    const emailOwner = await dbGet(`SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1`, [emailNormalized, req.params.id]);
+    if (emailOwner) {
+      return res.status(409).json({ success: false, error: 'Email sudah digunakan akun lain.' });
+    }
+
+    const permsString = JSON.stringify(Array.isArray(permissions) ? permissions : []);
+
+    if (password && String(password).trim()) {
+      if (String(password).length < 6) {
+        return res.status(400).json({ success: false, error: 'Password minimal 6 karakter.' });
+      }
+
+      const hashedPassword = await bcrypt.hash(String(password), 10);
+      await dbRun(
+        `UPDATE users
+         SET name = ?, email = ?, password = ?, phone = ?, role = ?, permissions = ?
+         WHERE id = ?`,
+        [String(name).trim(), emailNormalized, hashedPassword, phone || '-', role, permsString, req.params.id]
+      );
+    } else {
+      await dbRun(
+        `UPDATE users
+         SET name = ?, email = ?, phone = ?, role = ?, permissions = ?
+         WHERE id = ?`,
+        [String(name).trim(), emailNormalized, phone || '-', role, permsString, req.params.id]
+      );
+    }
+
+    res.json({ success: true, message: 'Akun admin berhasil diperbarui.' });
+  } catch (err) {
+    console.error('PUT /admin/admins/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui admin.' });
   }
 });
 

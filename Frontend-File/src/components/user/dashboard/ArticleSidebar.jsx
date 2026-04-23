@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BookOpen, ChevronRight, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '../../../utils/api';
+import { resolveMediaUrl } from '../../../utils/media';
 
 export default function ArticleSidebar({ navigate }) {
   const [articles, setArticles] = useState([]);
@@ -9,7 +11,7 @@ export default function ArticleSidebar({ navigate }) {
   useEffect(() => {
     const fetchArticles = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL?.trim() || '';
+        const apiUrl = API_BASE_URL;
         
         const response = await fetch(`${apiUrl}/api/articles`);
         const result = await response.json();
@@ -67,7 +69,7 @@ export default function ArticleSidebar({ navigate }) {
             >
               <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden relative bg-slate-100">
                 <img 
-                  src={article.image || article.image_url || article.thumbnail || 'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?q=80&w=200&auto=format&fit=crop'} 
+                  src={resolveMediaUrl(article.image || article.image_url || article.thumbnail) || 'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?q=80&w=200&auto=format&fit=crop'} 
                   alt={article.title} 
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                   onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1513407030348-c983a97b98d8?q=80&w=200&auto=format&fit=crop'; }} 

@@ -2,6 +2,7 @@ import { useContext, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { UserCircle, LogOut, Menu, X, ChevronRight } from 'lucide-react';
+import { getAdminLandingPath } from '../utils/adminNavigation';
 
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
@@ -30,28 +31,9 @@ export default function Navbar() {
   // ========================================================
   const getDashboardUrl = (userData) => {
     if (!userData) return '/login';
-    // Admin utama dan superadmin langsung ke halaman utama admin
-    if (userData.role === 'admin' || userData.role === 'superadmin') return '/admin';
-    
-    // Khusus Subadmin, arahkan sesuai izin pertama yang dia miliki
-    if (userData.role === 'subadmin') {
-       let perms = [];
-       try {
-         perms = typeof userData.permissions === 'string' 
-           ? JSON.parse(userData.permissions) 
-           : (userData.permissions || []);
-       } catch(e) {}
-       
-       if (perms.includes('dashboard')) return '/admin';
-       if (perms.includes('artikel')) return '/admin/artikel';
-       if (perms.includes('armada')) return '/admin/armada';
-       if (perms.includes('booking')) return '/admin/booking';
-       if (perms.includes('pricing')) return '/admin/pricing';
-       if (perms.includes('users')) return '/admin/users';
-       return '/admin'; // Fallback
+    if (userData.role === 'admin' || userData.role === 'superadmin' || userData.role === 'subadmin') {
+      return getAdminLandingPath(userData);
     }
-    
-    // User / Pelanggan biasa
     return '/dashboard'; 
   };
 

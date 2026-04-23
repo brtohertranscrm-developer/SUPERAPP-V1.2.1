@@ -344,7 +344,7 @@ export default function AdminLogistics() {
     }
   };
 
-  const title = activeTab === 'delivery' ? 'Jadwal Pengantaran' : 'Jadwal Pengembalian';
+  const title = activeTab === 'delivery' ? 'Kelola Jadwal Pengantaran' : 'Kelola Jadwal Pengembalian';
   const headerDateText = showAllDates ? 'Semua Tanggal' : fmtDate(`${selectedDate}T00:00`);
 
   const summary = useMemo(() => {
@@ -364,7 +364,7 @@ export default function AdminLogistics() {
         <div>
           <h1 className="text-2xl font-black text-brand-dark">{title}</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Super Admin membuat jadwal. Tim pengantar tinggal checklist saat tugas selesai.
+            Halaman ini untuk melihat semua jadwal, membuka detail tugas, membuat jadwal baru, dan mengatur pekerjaan tim.
           </p>
         </div>
 
@@ -440,6 +440,23 @@ export default function AdminLogistics() {
           <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800">Terjadwal: {summary.scheduled}</span>
           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">Selesai: {summary.completed}</span>
           <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-800">Batal: {summary.cancelled}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-3xl border border-indigo-100 bg-indigo-50 p-5">
+          <div className="text-[10px] font-black uppercase tracking-widest text-indigo-700/70">Halaman Ini Untuk</div>
+          <div className="mt-2 text-lg font-black text-indigo-900">Kelola semua jadwal operasional</div>
+          <p className="mt-2 text-sm font-medium text-indigo-900/75">
+            Cocok untuk admin operasional atau supervisor yang perlu buat jadwal, edit detail tugas, dan cek seluruh antrean pekerjaan.
+          </p>
+        </div>
+        <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
+          <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700/70">Untuk Staf Lapangan</div>
+          <div className="mt-2 text-lg font-black text-emerald-900">Lebih mudah mulai dari menu “Tugas Hari Ini”</div>
+          <p className="mt-2 text-sm font-medium text-emerald-900/75">
+            Di sana tugas ditampilkan lebih ringkas dan langsung ada tombol hubungi customer serta checklist selesai.
+          </p>
         </div>
       </div>
 

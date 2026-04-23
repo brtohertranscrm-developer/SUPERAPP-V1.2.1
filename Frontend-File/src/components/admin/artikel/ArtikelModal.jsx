@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import { API_BASE_URL } from '../../../utils/api';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
   const [activeTab, setActiveTab] = useState('konten');
@@ -159,7 +160,7 @@ const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
               
               {formData.image_url && !isUploading && (
                 <div className="mt-3 relative w-full h-40 md:h-56 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-                  <img src={formData.image_url} alt="Preview Banner" className="w-full h-full object-cover" />
+                  <img src={resolveMediaUrl(formData.image_url)} alt="Preview Banner" className="w-full h-full object-cover" />
                   
                   <button 
                     type="button" 

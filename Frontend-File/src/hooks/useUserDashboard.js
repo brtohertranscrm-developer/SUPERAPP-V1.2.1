@@ -1,13 +1,14 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { API_BASE_URL } from '../utils/api';
 
 export const useUserDashboard = () => {
   const navigate = useNavigate();
   const { user, token, updateKycStatus, logout } = useContext(AuthContext) || {};
   const authToken = token || localStorage.getItem('token');
 
-  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+  const API_URL = API_BASE_URL;
 
   const [dashboardData, setDashboardData]     = useState(null);
   const [isLoading, setIsLoading]             = useState(true);
@@ -16,6 +17,7 @@ export const useUserDashboard = () => {
     'https://images.unsplash.com/photo-1533105079780-92b9be482077?q=80&w=1600&auto=format&fit=crop'
   );
   const [topTravellers, setTopTravellers]     = useState([]);
+  const [partnerVouchers, setPartnerVouchers] = useState([]);
   // [FIX] Index untuk navigasi swipe antar booking aktif
   const [currentOrderIndex, setCurrentOrderIndex] = useState(0);
 
@@ -33,9 +35,10 @@ export const useUserDashboard = () => {
     try {
       const timestamp = Date.now();
 
-      const [resMe, resTop] = await Promise.all([
+      const [resMe, resTop, resVouchers] = await Promise.all([
         fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, { headers: getHeaders() }),
         fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/users/partner-vouchers?_t=${timestamp}`, { headers: getHeaders() }),
       ]);
 
       if (resMe.status === 401 || resMe.status === 403) {
@@ -48,6 +51,7 @@ export const useUserDashboard = () => {
 
       const resultMe  = await resMe.json();
       const resultTop = await resTop.json();
+      const resultVouchers = await resVouchers.json();
 
       if (resultMe.success) {
         setDashboardData(resultMe.data);
@@ -64,6 +68,10 @@ export const useUserDashboard = () => {
 
       if (resultTop.success) {
         setTopTravellers(resultTop.data);
+      }
+
+      if (resultVouchers.success) {
+        setPartnerVouchers(Array.isArray(resultVouchers.data) ? resultVouchers.data : []);
       }
     } catch (error) {
       console.error('Gagal mengambil data dashboard:', error);
@@ -197,6 +205,7 @@ export const useUserDashboard = () => {
     bannerUrl,
     setBannerUrl,
     topTravellers,
+    partnerVouchers,
     user:               dashboardData?.user || user,
     // [FIX] activeOrders = semua booking aktif, activeOrder = booking yang sedang ditampilkan
     activeOrders,

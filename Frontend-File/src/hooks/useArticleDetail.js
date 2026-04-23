@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 export const useArticleDetail = (id) => {
   const [article, setArticle] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Gunakan API URL dari environment jika ada
-  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+  const API_URL = API_BASE_URL;
 
   useEffect(() => {
     const fetchArticleDetail = async () => {

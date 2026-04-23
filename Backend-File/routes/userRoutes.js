@@ -22,6 +22,12 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); });
 });
 
+const buildPartnerVoucherCode = (partnerId) => {
+  const prefix = `PRT${String(partnerId).padStart(3, '0')}`;
+  const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `${prefix}-${Date.now().toString().slice(-6)}-${rand}`;
+};
+
 // ==========================================
 // Upload Bukti Transfer (User)
 // ==========================================
@@ -157,6 +163,133 @@ router.get('/dashboard/top-travellers', async (req, res) => {
   } catch (err) {
     console.error('GET /top-travellers error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data top travellers.' });
+  }
+});
+
+// ==========================================
+// 3c. PARTNER VOUCHERS (User)
+// ==========================================
+router.get('/users/partner-vouchers', async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `
+      SELECT
+        v.id,
+        v.voucher_code,
+        v.status,
+        v.claimed_at,
+        v.used_at,
+        v.validation_note,
+        p.id AS partner_id,
+        p.name AS partner_name,
+        p.category,
+        p.city,
+        p.address,
+        p.headline,
+        p.promo_text,
+        p.terms,
+        p.image_url,
+        p.maps_url,
+        p.phone_wa,
+        p.valid_until
+      FROM partner_vouchers v
+      INNER JOIN partners p ON p.id = v.partner_id
+      WHERE v.user_id = ?
+      ORDER BY datetime(v.claimed_at) DESC, v.id DESC
+      `,
+      [req.user.id]
+    );
+
+    const now = Date.now();
+    const normalized = rows.map((row) => {
+      const validUntilTs = row.valid_until ? new Date(row.valid_until).getTime() : null;
+      const status = row.status === 'claimed' && validUntilTs && !Number.isNaN(validUntilTs) && validUntilTs < now
+        ? 'expired'
+        : row.status;
+      return { ...row, status };
+    });
+
+    res.json({ success: true, data: normalized });
+  } catch (err) {
+    console.error('GET /users/partner-vouchers error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil voucher partner.' });
+  }
+});
+
+router.post('/partners/:id/claim', async (req, res) => {
+  try {
+    const partnerId = Number(req.params.id);
+    if (!partnerId) {
+      return res.status(400).json({ success: false, error: 'Partner tidak valid.' });
+    }
+
+    const partner = await dbGet(
+      `SELECT id, name, valid_until, is_active FROM partners WHERE id = ? LIMIT 1`,
+      [partnerId]
+    );
+    if (!partner || !partner.is_active) {
+      return res.status(404).json({ success: false, error: 'Promo partner tidak ditemukan.' });
+    }
+
+    if (partner.valid_until) {
+      const validUntil = new Date(partner.valid_until).getTime();
+      if (!Number.isNaN(validUntil) && validUntil < Date.now()) {
+        return res.status(400).json({ success: false, error: 'Promo partner ini sudah berakhir.' });
+      }
+    }
+
+    const existing = await dbGet(
+      `
+      SELECT id, voucher_code, status
+      FROM partner_vouchers
+      WHERE user_id = ? AND partner_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [req.user.id, partnerId]
+    );
+
+    if (existing && existing.status !== 'expired') {
+      return res.status(409).json({
+        success: false,
+        error: 'Promo ini sudah pernah Anda klaim.',
+        data: existing,
+      });
+    }
+
+    const voucherCode = buildPartnerVoucherCode(partnerId);
+    const result = await dbRun(
+      `
+      INSERT INTO partner_vouchers (voucher_code, partner_id, user_id, status)
+      VALUES (?, ?, ?, 'claimed')
+      `,
+      [voucherCode, partnerId, req.user.id]
+    );
+
+    const created = await dbGet(
+      `
+      SELECT
+        v.id,
+        v.voucher_code,
+        v.status,
+        v.claimed_at,
+        p.name AS partner_name,
+        p.valid_until
+      FROM partner_vouchers v
+      INNER JOIN partners p ON p.id = v.partner_id
+      WHERE v.id = ?
+      `,
+      [result.lastID]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: `Promo ${partner.name} berhasil diklaim.`,
+      data: created,
+    });
+  } catch (err) {
+    console.error('POST /partners/:id/claim error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengklaim promo partner.' });
   }
 });
 

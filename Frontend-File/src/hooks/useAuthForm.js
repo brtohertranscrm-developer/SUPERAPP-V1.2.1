@@ -1,11 +1,13 @@
 import { useState, useContext, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { API_BASE_URL } from '../utils/api';
+import { getAdminLandingPath } from '../utils/adminNavigation';
 
 // --- Konstanta keamanan -------------------------------------------------------
 const MAX_ATTEMPTS   = 5;
 const LOCKOUT_MS     = 30_000; // 30 detik
-const API_URL        = import.meta.env.VITE_API_URL?.trim() || '';
+const API_URL        = API_BASE_URL;
 
 // --- Helper: sanitize input ---------------------------------------------------
 export const sanitize = (str = '') =>
@@ -135,16 +137,9 @@ export const useAuthForm = () => {
         // Redirect berdasarkan role
         const role = result.user.role;
         if (role === 'superadmin' || role === 'admin') {
-          navigate('/admin');
+          navigate(getAdminLandingPath(result.user));
         } else if (role === 'subadmin') {
-          let perms = [];
-          try { perms = typeof result.user.permissions === 'string' ? JSON.parse(result.user.permissions) : (result.user.permissions || []); } catch {}
-          if      (perms.includes('dashboard')) navigate('/admin');
-          else if (perms.includes('artikel'))   navigate('/admin/artikel');
-          else if (perms.includes('armada'))    navigate('/admin/armada');
-          else if (perms.includes('booking'))   navigate('/admin/booking');
-          else if (perms.includes('pricing'))   navigate('/admin/pricing');
-          else navigate('/admin');
+          navigate(getAdminLandingPath(result.user));
         } else {
           // Cek pending checkout
           const pending = sessionStorage.getItem('pending_checkout');

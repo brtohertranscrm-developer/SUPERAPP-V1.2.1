@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, ChevronRight } from 'lucide-react';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const ArticleCard = ({ article }) => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ const ArticleCard = ({ article }) => {
     >
       <div className="h-56 overflow-hidden relative shrink-0">
         {article.image_url ? (
-          <img src={article.image_url} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+          <img src={resolveMediaUrl(article.image_url)} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
           <div className="w-full h-full bg-slate-100 flex items-center justify-center">
             <span className="text-slate-300 font-bold text-sm">No Image</span>

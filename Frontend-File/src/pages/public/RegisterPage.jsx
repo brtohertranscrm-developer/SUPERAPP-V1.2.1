@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import { useAuthForm } from '../../hooks/useAuthForm';
 import RegisterForm from '../../components/public/auth/RegisterForm';
+import { getAdminLandingPath } from '../../utils/adminNavigation';
 
 export default function RegisterPage() {
   const { user }    = useContext(AuthContext) || {};
@@ -14,7 +15,7 @@ export default function RegisterPage() {
     if (!user) return;
     const role = user.role;
     if (role === 'admin' || role === 'superadmin' || role === 'subadmin') {
-      navigate('/admin', { replace: true });
+      navigate(getAdminLandingPath(user), { replace: true });
     } else {
       navigate('/dashboard', { replace: true });
     }

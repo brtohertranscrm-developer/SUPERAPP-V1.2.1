@@ -49,6 +49,24 @@ import AdminAddons from '../pages/admin/AdminAddons';
 import AdminLogistics from '../pages/admin/AdminLogistics';
 import AdminPartners from '../pages/admin/AdminPartners';
 import AdminManning from '../pages/admin/AdminManning';
+import AdminStaffDashboard from '../pages/admin/AdminStaffDashboard';
+import { useContext, useMemo } from 'react';
+import { AuthContext } from '../context/AuthContext';
+import { getAdminLandingPath, parsePerms } from '../utils/adminNavigation';
+
+const AdminIndexRedirect = () => {
+  const { user } = useContext(AuthContext) || {};
+  const perms = useMemo(() => parsePerms(user), [user]);
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+  const canDashboard = isSuperAdmin || perms.includes('dashboard');
+  const canLogistics = isSuperAdmin || perms.includes('logistics');
+  const canBooking = isSuperAdmin || perms.includes('booking');
+
+  if (!user) return <Navigate to="/login" replace />;
+  if (canDashboard && canBooking) return <Navigate to="/admin/dashboard" replace />;
+  if (canLogistics && !canBooking) return <Navigate to="/admin/staff" replace />;
+  return <Navigate to={getAdminLandingPath(user)} replace />;
+};
 
 const AppRoutes = () => {
   return (
@@ -83,7 +101,8 @@ const AppRoutes = () => {
 
         {/* RUTE ADMIN */}
         <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
-          <Route index element={<AdminDashboard />} />
+          <Route index element={<AdminIndexRedirect />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="booking" element={<AdminBooking />} />
           <Route path="armada" element={<AdminArmada />} />
           <Route path="loker" element={<AdminLoker />} />
@@ -101,6 +120,7 @@ const AppRoutes = () => {
           <Route path="referral" element={<AdminReferral />} />
           <Route path="fleet" element={<AdminFleet />} />
           <Route path="logistics" element={<AdminLogistics />} />
+          <Route path="staff" element={<AdminStaffDashboard />} />
           <Route path="manning" element={<AdminManning />} />
           
         </Route>

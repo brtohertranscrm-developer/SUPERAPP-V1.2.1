@@ -5,6 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { useAuthForm } from '../../hooks/useAuthForm';
 import LoginForm from '../../components/public/auth/LoginForm';
 import ForgotPasswordForm from '../../components/public/auth/ForgotPasswordForm';
+import { getAdminLandingPath } from '../../utils/adminNavigation';
 
 export default function LoginPage() {
   // 🔥 PERBAIKAN 1: Ambil token dan fungsi logout dari AuthContext
@@ -38,7 +39,7 @@ export default function LoginPage() {
     // Jika keduanya valid, baru boleh masuk ke dashboard
     const role = user.role;
     if (role === 'admin' || role === 'superadmin' || role === 'subadmin') {
-      navigate('/admin', { replace: true });
+      navigate(getAdminLandingPath(user), { replace: true });
     } else {
       navigate('/dashboard', { replace: true });
     }

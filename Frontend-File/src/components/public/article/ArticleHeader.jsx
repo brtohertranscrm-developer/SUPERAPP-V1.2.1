@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock, Share2 } from 'lucide-react';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const ArticleHeader = ({ article }) => {
   const navigate = useNavigate();
@@ -15,7 +16,7 @@ const ArticleHeader = ({ article }) => {
       {/* HEADER IMAGE SECTION */}
       <div className="relative h-[50vh] md:h-[65vh] w-full overflow-hidden">
         <img 
-          src={article.image_url || 'https://images.unsplash.com/photo-1519451241324-20b4ea2c4220?q=80&w=1200'} 
+          src={resolveMediaUrl(article.image_url) || 'https://images.unsplash.com/photo-1519451241324-20b4ea2c4220?q=80&w=1200'} 
           alt={article.title} 
           className="absolute inset-0 w-full h-full object-cover"
         />

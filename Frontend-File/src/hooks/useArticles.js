@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../utils/api';
 
 export const useArticles = () => {
   const [articles, setArticles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+
+  const API_URL = API_BASE_URL;
 
   useEffect(() => {
     fetch(`${API_URL}/api/articles`)
