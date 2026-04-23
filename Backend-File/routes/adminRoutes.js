@@ -1171,7 +1171,27 @@ router.delete('/units/:unitId', requirePermission('armada'), async (req, res) =>
 // ==========================================
 router.get('/bookings', requirePermission('booking'), async (req, res) => {
   try {
-    const rows = await dbAll(`
+    const itemType = req.query.item_type ? String(req.query.item_type).trim().toLowerCase() : null;
+    const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
+    const end = normalizeToSqliteDateTime(req.query.end || req.query.end_at || '');
+
+    const where = [];
+    const params = [];
+
+    if (itemType && ['motor', 'locker'].includes(itemType)) {
+      where.push(`lower(COALESCE(b.item_type, '')) = ?`);
+      params.push(itemType);
+    }
+
+    // Optional range filter (overlap)
+    if (start && end) {
+      where.push(`${dtExpr('b.start_date')} < datetime(?)`);
+      where.push(`${dtExpr('b.end_date')}   > datetime(?)`);
+      params.push(end, start);
+    }
+
+    const rows = await dbAll(
+      `
       SELECT b.*, 
              IFNULL(b.base_price, 0) as base_price,
              IFNULL(b.discount_amount, 0) as discount_amount,
@@ -1182,8 +1202,11 @@ router.get('/bookings', requirePermission('booking'), async (req, res) => {
              IFNULL(b.paid_amount, 0) as paid_amount,
              u.name as user_name, u.phone as user_phone 
       FROM bookings b LEFT JOIN users u ON b.user_id = u.id 
-      ORDER BY b.start_date DESC
-    `);
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY ${dtExpr('b.start_date')} DESC
+      `,
+      params
+    );
     
     const formattedData = rows.map(b => {
       const calc_total = 
