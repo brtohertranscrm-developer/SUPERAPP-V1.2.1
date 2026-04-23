@@ -48,6 +48,7 @@ import AdminReferral from '../pages/admin/AdminReferral';
 import AdminAddons from '../pages/admin/AdminAddons';
 import AdminLogistics from '../pages/admin/AdminLogistics';
 import AdminPartners from '../pages/admin/AdminPartners';
+import AdminManning from '../pages/admin/AdminManning';
 
 const AppRoutes = () => {
   return (
@@ -100,6 +101,7 @@ const AppRoutes = () => {
           <Route path="referral" element={<AdminReferral />} />
           <Route path="fleet" element={<AdminFleet />} />
           <Route path="logistics" element={<AdminLogistics />} />
+          <Route path="manning" element={<AdminManning />} />
           
         </Route>
 

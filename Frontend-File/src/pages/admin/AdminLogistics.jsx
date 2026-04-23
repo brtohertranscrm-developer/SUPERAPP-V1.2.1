@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, RefreshCw, CheckCircle2, X, MapPin, Clock, User, Phone, ClipboardCheck, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, CheckCircle2, X, MapPin, Clock, User, Phone, ClipboardCheck, Pencil, Trash2, Users } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -72,6 +72,31 @@ const shiftYmd = (ymd, deltaDays) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+const TEAM_LOCATIONS = ['Semua', 'Yogyakarta', 'Solo', 'Semarang', 'Nasional'];
+
+const TeamStatusBadge = ({ status }) => {
+  const s = String(status || 'on').toLowerCase();
+  const cls =
+    s === 'on'
+      ? 'bg-emerald-100 text-emerald-700'
+      : s === 'off'
+        ? 'bg-slate-100 text-slate-700'
+        : s === 'leave'
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-rose-100 text-rose-700';
+  const label =
+    s === 'on' ? 'ON'
+      : s === 'off' ? 'LIBUR'
+        : s === 'leave' ? 'CUTI'
+          : 'SAKIT';
+
+  return (
+    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest ${cls}`}>
+      {label}
+    </span>
+  );
+};
+
 export default function AdminLogistics() {
   const { user } = useContext(AuthContext) || {};
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
@@ -89,6 +114,12 @@ export default function AdminLogistics() {
   const [tasks, setTasks] = useState([]);
   const [selectedDate, setSelectedDate] = useState(todayYmd());
   const [showAllDates, setShowAllDates] = useState(false);
+
+  // Team Today (Manning)
+  const [teamLoc, setTeamLoc] = useState('Semua');
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamData, setTeamData] = useState([]);
+  const [teamCounts, setTeamCounts] = useState(null);
 
   const [selected, setSelected] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -126,10 +157,33 @@ export default function AdminLogistics() {
     }
   };
 
+  const fetchTeam = async () => {
+    setTeamLoading(true);
+    try {
+      const qs = new URLSearchParams({
+        date: selectedDate,
+        ...(teamLoc !== 'Semua' ? { location: teamLoc } : {}),
+      }).toString();
+      const data = await apiFetch(`/api/admin/manning/today?${qs}`);
+      setTeamData(Array.isArray(data?.data) ? data.data : []);
+      setTeamCounts(data?.counts || null);
+    } catch {
+      setTeamData([]);
+      setTeamCounts(null);
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedDate, showAllDates]);
+
+  useEffect(() => {
+    fetchTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, teamLoc]);
 
   const openDetail = async (task) => {
     setIsDetailOpen(true);
@@ -386,6 +440,74 @@ export default function AdminLogistics() {
           <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-800">Terjadwal: {summary.scheduled}</span>
           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800">Selesai: {summary.completed}</span>
           <span className="px-3 py-1 rounded-full bg-rose-100 text-rose-800">Batal: {summary.cancelled}</span>
+        </div>
+      </div>
+
+      {/* Team Today (Manning) */}
+      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-gray-700" />
+            <div>
+              <div className="font-black text-gray-900">Tim Hari Ini</div>
+              <div className="text-[11px] text-gray-500 font-bold">
+                {selectedDate}
+                {teamCounts ? ` • Total ${teamCounts.total} (ON ${teamCounts.on}, OFF ${teamCounts.off}, CUTI ${teamCounts.leave}, SAKIT ${teamCounts.sick})` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+            <select
+              value={teamLoc}
+              onChange={(e) => setTeamLoc(e.target.value)}
+              className="bg-white border border-gray-200 rounded-2xl px-4 py-2 font-black text-sm text-gray-800 outline-none"
+              title="Filter lokasi"
+            >
+              {TEAM_LOCATIONS.map((l) => (
+                <option key={l} value={l}>{l}</option>
+              ))}
+            </select>
+            <button
+              onClick={fetchTeam}
+              className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-50"
+              title="Refresh tim"
+              disabled={teamLoading}
+            >
+              <RefreshCw size={18} className={teamLoading ? 'animate-spin' : ''} /> Refresh Tim
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          {teamLoading ? (
+            <div className="flex items-center gap-2 text-gray-400 font-bold">
+              <Loader2 className="animate-spin" size={16} /> Memuat tim...
+            </div>
+          ) : teamData.length === 0 ? (
+            <div className="text-sm text-gray-500 font-medium">
+              Belum ada data tim (atau akun ini belum punya akses manning).
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {teamData.map((m) => (
+                <div key={m.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-black text-gray-900 truncate" title={m.name}>{m.name}</div>
+                    <div className="text-xs text-gray-500 font-bold mt-1 truncate" title={`${m.base_location || ''} • ${m.role_tag || ''}`}>
+                      {m.base_location || '—'} • {m.role_tag || 'delivery'}
+                    </div>
+                    {m.note ? (
+                      <div className="text-xs text-gray-500 font-medium mt-2 line-clamp-2">
+                        Catatan: {m.note}
+                      </div>
+                    ) : null}
+                  </div>
+                  <TeamStatusBadge status={m.status} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

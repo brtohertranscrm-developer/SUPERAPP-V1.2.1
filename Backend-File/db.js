@@ -290,6 +290,43 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_logistics_tasks_type_status_time ON logistics_tasks(task_type, status, scheduled_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_logistics_tasks_order_id ON logistics_tasks(order_id)`);
 
+  // --- EMPLOYEES (Manning: Karyawan Tim Pengantar/Operasional) ---
+  // Dipakai untuk menampilkan "siapa on-duty/off" di akun tim pengantar.
+  // Catatan: ini bukan tabel user login. Karyawan di sini adalah data operasional.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      base_location TEXT DEFAULT 'Yogyakarta',
+      role_tag TEXT DEFAULT 'delivery',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_employees_active_location ON employees(is_active, base_location)`);
+
+  // --- EMPLOYEE AVAILABILITY (Per tanggal) ---
+  // status:
+  //   - 'on'    (on duty)
+  //   - 'off'   (libur)
+  //   - 'leave' (cuti)
+  //   - 'sick'  (sakit)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS employee_availability (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      status TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(employee_id, date),
+      FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_employee_availability_date ON employee_availability(date)`);
+
   // --- ADMIN AUDIT LOGS ---
   // Audit trail untuk aksi admin (booking, finance, kyc, armada, dll).
   db.run(`

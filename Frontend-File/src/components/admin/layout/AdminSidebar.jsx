@@ -18,6 +18,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Dashboard',       path: '/admin',            key: 'dashboard', icon: <LayoutDashboard size={20} /> },
         { name: 'Data Pesanan',    path: '/admin/booking',    key: 'booking',   icon: <ClipboardList size={20} /> },
         { name: 'Jadwal Antar/Kembali', path: '/admin/logistics', key: 'logistics', icon: <Truck size={20} /> },
+        { name: 'Manning Tim',     path: '/admin/manning',    key: 'manning',  icon: <Users size={20} /> },
         { name: 'Manajemen Armada',path: '/admin/armada',     key: 'armada',    icon: <Bike size={20} /> },
         { name: 'Fleet Inventory', path: '/admin/fleet',      key: 'armada',    icon: <Calendar size={20} /> },
         { name: 'Manajemen Loker', path: '/admin/loker',      key: 'loker',     icon: <Package size={20} /> },

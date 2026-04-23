@@ -14,6 +14,7 @@ const availableMenus = [
   { key: 'booking',   label: 'Data Pesanan (Booking)' },
   { key: 'logistics', label: 'Jadwal Antar/Kembali (View)' },
   { key: 'logistics_manage', label: 'Jadwal Antar/Kembali (Manage)' },
+  { key: 'manning',   label: 'Manning Tim (Karyawan & Libur)' },
   { key: 'finance',   label: 'Finance & Laporan Keuangan' },
   { key: 'armada',    label: 'Manajemen Armada & Unit' },
   { key: 'loker',     label: 'Manajemen Loker' },
