@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const fs     = require('fs');
 const os     = require('os');
 const express = require('express');
+const ImageKit = require('imagekit');
 const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
 const router = express.Router();
@@ -24,6 +25,16 @@ const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
 const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); });
 });
+
+const imagekit = (
+  process.env.IMAGEKIT_PUBLIC_KEY &&
+  process.env.IMAGEKIT_PRIVATE_KEY &&
+  process.env.IMAGEKIT_URL_ENDPOINT
+) ? new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+}) : null;
 
 // ==========================================
 // FILE UPLOAD — [FIX 6] Sanitasi ketat ekstensi & MIME type
@@ -74,6 +85,53 @@ const upload = multer({
     }
   }
 });
+
+// Memory upload (no temp file on disk) for generic images (motors, banners, etc.)
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    const mimeOk = ALLOWED_IMAGE_TYPES.includes(file.mimetype);
+    const extOk = getSafeExtension(file.originalname) !== null;
+    if (mimeOk && extOk) return cb(null, true);
+    return cb(new Error('Tipe file tidak diizinkan. Gunakan JPG, PNG, WebP, atau GIF.'));
+  },
+});
+
+const ensureUploadsDir = () => {
+  try {
+    if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
+  } catch (e) {
+    // Will be handled by caller as a failed upload.
+  }
+};
+
+const saveBufferToLocalUploads = ({ buffer, filename }) => {
+  ensureUploadsDir();
+  const fullPath = path.join('uploads', filename);
+  fs.writeFileSync(fullPath, buffer);
+  return `/uploads/${filename}`;
+};
+
+const uploadBufferToStorage = async ({ buffer, filename, folder }) => {
+  if (imagekit) {
+    const uploaded = await imagekit.upload({
+      file: Buffer.from(buffer).toString('base64'),
+      fileName: filename,
+      folder,
+      useUniqueFileName: true,
+    });
+    return {
+      provider: 'imagekit',
+      url: uploaded.url,
+      fileId: uploaded.fileId,
+      filePath: uploaded.filePath,
+    };
+  }
+
+  const url = saveBufferToLocalUploads({ buffer, filename });
+  return { provider: 'local', url, fileId: null, filePath: url };
+};
 
 // Semua route admin butuh verifikasi admin
 router.use(verifyAdmin);
@@ -1989,7 +2047,7 @@ router.delete('/articles/:id', requirePermission('artikel'), async (req, res) =>
 
 // [FIX 6] UPLOAD GAMBAR — validasi MIME type + ekstensi ganda
 router.post('/upload', requirePermission('artikel'), (req, res) => {
-  upload.single('image')(req, res, (err) => {
+  upload.single('image')(req, res, async (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maksimal 5MB.' });
@@ -2001,8 +2059,99 @@ router.post('/upload', requirePermission('artikel'), (req, res) => {
       return res.status(400).json({ success: false, error: 'Tidak ada file yang diunggah.' });
     }
 
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ success: true, url: fileUrl });
+    try {
+      if (imagekit) {
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const uploaded = await imagekit.upload({
+          file: fileBuffer.toString('base64'),
+          fileName: req.file.filename,
+          folder: '/articles',
+          useUniqueFileName: true,
+        });
+
+        if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+        return res.json({
+          success: true,
+          url: uploaded.url,
+          filePath: uploaded.filePath,
+          provider: 'imagekit',
+        });
+      }
+
+      const fileUrl = `/uploads/${req.file.filename}`;
+      return res.json({ success: true, url: fileUrl, provider: 'local' });
+    } catch (uploadErr) {
+      console.error('POST /admin/upload error:', uploadErr.message);
+      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(500).json({ success: false, error: 'Gagal mengunggah gambar ke media storage.' });
+    }
+  });
+});
+
+// Upload gambar untuk katalog motor (akses: armada) → default folder ImageKit: /motors
+router.post('/upload/motors', requirePermission('armada'), (req, res) => {
+  memoryUpload.single('image')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maksimal 5MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Tidak ada file yang diunggah.' });
+    }
+
+    try {
+      const ext = getSafeExtension(req.file.originalname);
+      if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+      const randomName = crypto.randomBytes(16).toString('hex');
+      const filename = `motor-${randomName}${ext}`;
+
+      const result = await uploadBufferToStorage({
+        buffer: req.file.buffer,
+        filename,
+        folder: '/motors',
+      });
+
+      return res.json({ success: true, ...result });
+    } catch (uploadErr) {
+      console.error('POST /admin/upload/motors error:', uploadErr.message);
+      return res.status(500).json({ success: false, error: 'Gagal mengunggah gambar motor.' });
+    }
+  });
+});
+
+// Upload gambar banner promo (akses: pricing) → folder ImageKit: /banner (sesuai Media Library)
+router.post('/upload/banner', requirePermission('pricing'), (req, res) => {
+  memoryUpload.single('image')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maksimal 5MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Tidak ada file yang diunggah.' });
+    }
+
+    try {
+      const ext = getSafeExtension(req.file.originalname);
+      if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+      const randomName = crypto.randomBytes(16).toString('hex');
+      const filename = `banner-${randomName}${ext}`;
+
+      const result = await uploadBufferToStorage({
+        buffer: req.file.buffer,
+        filename,
+        folder: '/banner',
+      });
+
+      return res.json({ success: true, ...result });
+    } catch (uploadErr) {
+      console.error('POST /admin/upload/banner error:', uploadErr.message);
+      return res.status(500).json({ success: false, error: 'Gagal mengunggah gambar banner.' });
+    }
   });
 });
 

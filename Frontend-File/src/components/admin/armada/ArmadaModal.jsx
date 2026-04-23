@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../../../utils/api';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
   const normalizeCategory = (value) => {
@@ -26,6 +28,8 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
     allow_dynamic_pricing: 1,
   });
 
+  const [isUploading, setIsUploading] = useState(false);
+
   useEffect(() => {
     if (initialData) {
       const normalizedCategory = normalizeCategory(initialData.category);
@@ -41,6 +45,40 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
       });
     }
   }, [initialData]);
+
+  const handleThumbUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const uploadData = new FormData();
+    uploadData.append('image', file);
+
+    try {
+      let token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+      if (token === 'undefined' || token === 'null') token = null;
+
+      const response = await fetch(`${API_BASE_URL}/api/admin/upload/motors`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: uploadData,
+      });
+
+      const result = await response.json();
+      if (result.success && result.url) {
+        setFormData((prev) => ({ ...prev, image_url: result.url }));
+      } else {
+        alert('Gagal mengunggah gambar: ' + (result.error || result.message || 'Error server'));
+      }
+    } catch (error) {
+      console.error('Upload motor thumbnail error:', error);
+      alert('Terjadi kesalahan jaringan saat mengunggah gambar');
+    } finally {
+      setIsUploading(false);
+      // allow re-uploading same file if needed
+      e.target.value = '';
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -166,10 +204,48 @@ const ArmadaModal = ({ onClose, onSubmit, initialData }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">URL Gambar Thumbnail</label>
-            <input type="text" name="image_url" value={formData.image_url} onChange={handleChange}
-              className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="https://..." />
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Gambar Thumbnail</label>
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleThumbUpload}
+                  disabled={isUploading}
+                  className="block w-full text-sm file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-black file:bg-slate-900 file:text-white hover:file:bg-rose-600 disabled:opacity-60"
+                />
+              </div>
+
+              {formData.image_url ? (
+                <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                  <img
+                    src={resolveMediaUrl(formData.image_url)}
+                    alt="Preview Thumbnail"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-full h-24 rounded-2xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-xs font-bold text-slate-400">
+                  Belum ada gambar (opsional)
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Atau isi URL manual (opsional)</label>
+                <input
+                  type="text"
+                  name="image_url"
+                  value={formData.image_url}
+                  onChange={handleChange}
+                  className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="https://..."
+                />
+                {isUploading && (
+                  <p className="mt-1.5 text-[11px] text-slate-500 font-bold">Sedang upload ke ImageKit...</p>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="mt-2 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between shadow-sm">

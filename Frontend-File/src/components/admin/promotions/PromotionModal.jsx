@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Ticket, X, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '../../../utils/api';
+import { resolveMediaUrl } from '../../../utils/media';
 
 const PromotionModal = ({ onClose, onSubmit, initialData }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     code: '',
@@ -37,6 +40,39 @@ const PromotionModal = ({ onClose, onSubmit, initialData }) => {
       });
     }
   }, [initialData]);
+
+  const handleBannerUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const uploadData = new FormData();
+    uploadData.append('image', file);
+
+    try {
+      let token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+      if (token === 'undefined' || token === 'null') token = null;
+
+      const response = await fetch(`${API_BASE_URL}/api/admin/upload/banner`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: uploadData,
+      });
+
+      const result = await response.json();
+      if (result.success && result.url) {
+        setFormData((prev) => ({ ...prev, image: result.url }));
+      } else {
+        alert('Gagal mengunggah banner: ' + (result.error || result.message || 'Error server'));
+      }
+    } catch (error) {
+      console.error('Upload banner promo error:', error);
+      alert('Terjadi kesalahan jaringan saat mengunggah banner');
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -127,9 +163,45 @@ const PromotionModal = ({ onClose, onSubmit, initialData }) => {
             </div>
 
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">URL Gambar Banner</label>
-              <input required value={formData.image} onChange={e => setFormData({...formData, image: e.target.value})}
-                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="https://..." />
+              <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Gambar Banner Promo</label>
+
+              <div className="flex flex-col gap-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleBannerUpload}
+                  disabled={isUploading}
+                  className="block w-full text-sm file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-black file:bg-slate-900 file:text-white hover:file:bg-emerald-500 disabled:opacity-60"
+                />
+
+                {formData.image ? (
+                  <div className="w-full h-40 rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <img
+                      src={resolveMediaUrl(formData.image)}
+                      alt="Preview Banner"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-24 rounded-2xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-xs font-bold text-slate-400">
+                    Belum ada gambar banner
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase mb-1 block">Atau isi URL manual</label>
+                  <input
+                    required
+                    value={formData.image}
+                    onChange={e => setFormData({ ...formData, image: e.target.value })}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="https://..."
+                  />
+                  {isUploading && (
+                    <p className="mt-1 text-[11px] font-bold text-slate-500">Sedang upload ke ImageKit...</p>
+                  )}
+                </div>
+              </div>
             </div>
             
             <div>
