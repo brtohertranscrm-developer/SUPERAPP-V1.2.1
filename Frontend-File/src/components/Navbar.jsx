@@ -22,8 +22,14 @@ export default function Navbar() {
     if (isMobileMenuOpen) {
       document.body.style.overflow = 'hidden';
     } else {
-      document.body.style.overflow = 'unset';
+      // Reset ke default browser agar tidak nyangkut di iOS/bfcache restore
+      document.body.style.overflow = '';
     }
+
+    return () => {
+      // Safety: pastikan scroll tidak terkunci saat komponen unmount / route swap.
+      document.body.style.overflow = '';
+    };
   }, [isMobileMenuOpen]);
 
   // ========================================================

@@ -50,6 +50,7 @@ import AdminLogistics from '../pages/admin/AdminLogistics';
 import AdminPartners from '../pages/admin/AdminPartners';
 import AdminManning from '../pages/admin/AdminManning';
 import AdminStaffDashboard from '../pages/admin/AdminStaffDashboard';
+import BodyScrollReset from '../components/common/BodyScrollReset';
 import { useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { getAdminLandingPath, parsePerms } from '../utils/adminNavigation';
@@ -71,6 +72,7 @@ const AdminIndexRedirect = () => {
 const AppRoutes = () => {
   return (
     <Router>
+      <BodyScrollReset />
       <Routes>
         {/* RUTE PUBLIC & USER */}
         <Route element={<MainLayout />}>
