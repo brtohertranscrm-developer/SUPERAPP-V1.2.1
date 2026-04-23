@@ -5,6 +5,8 @@ const { verifyAdmin, requirePermission } = require('../middlewares/authMiddlewar
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const ImageKit = require('imagekit');
 const router = express.Router();
 
 // ==========================================
@@ -28,21 +30,47 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
 const ALLOWED_FINANCE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_FINANCE_FILE = 5 * 1024 * 1024; // 5MB
 
-const financeStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = 'uploads/finance/';
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const prefix = req.originalUrl.includes('reconcil') ? 'recon' : 'expense';
-    cb(null, `${prefix}-${Date.now()}${ext}`);
+const imagekit = (
+  process.env.IMAGEKIT_PUBLIC_KEY &&
+  process.env.IMAGEKIT_PRIVATE_KEY &&
+  process.env.IMAGEKIT_URL_ENDPOINT
+) ? new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+}) : null;
+
+const mimeToExt = (mimetype) => {
+  if (mimetype === 'image/jpeg') return '.jpg';
+  if (mimetype === 'image/png')  return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  if (mimetype === 'application/pdf') return '.pdf';
+  return null;
+};
+
+const ensureDir = (dir) => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+};
+
+const uploadBufferToStorage = async ({ buffer, filename, folder, localDir }) => {
+  if (imagekit) {
+    const uploaded = await imagekit.upload({
+      file: Buffer.from(buffer).toString('base64'),
+      fileName: filename,
+      folder,
+      useUniqueFileName: true,
+    });
+    return { provider: 'imagekit', url: uploaded.url, fileId: uploaded.fileId, filePath: uploaded.filePath };
   }
-});
+
+  ensureDir(localDir);
+  fs.writeFileSync(path.join(localDir, filename), buffer);
+  const rel = `/${localDir.replace(/\\/g, '/').replace(/^\/+/, '')}/${filename}`;
+  return { provider: 'local', url: rel, fileId: null, filePath: rel };
+};
 
 const uploadFinance = multer({
-  storage: financeStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FINANCE_FILE },
   fileFilter: (req, file, cb) => {
     if (ALLOWED_FINANCE_TYPES.includes(file.mimetype)) {
@@ -112,9 +140,20 @@ router.post('/reconciliations', requirePermission('finance'), (req, res) => {
         return res.status(404).json({ success: false, error: 'Order ID tidak ditemukan di sistem.' });
       }
 
-      const proofUrl = req.file
-        ? `${req.protocol}://${req.get('host')}/uploads/finance/${req.file.filename}`
-        : null;
+      let proofUrl = null;
+      if (req.file) {
+        const ext = mimeToExt(req.file.mimetype);
+        if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+        const rand = crypto.randomBytes(10).toString('hex');
+        const filename = `recon-${Date.now()}-${rand}${ext}`;
+        const uploaded = await uploadBufferToStorage({
+          buffer: req.file.buffer,
+          filename,
+          folder: '/reconciliations',
+          localDir: 'uploads/finance',
+        });
+        proofUrl = uploaded.url;
+      }
 
       const result = await dbRun(
         `INSERT INTO payment_reconciliations (order_id, bank_name, transfer_amount, transfer_date, proof_url, notes)
@@ -288,9 +327,20 @@ router.post('/expenses', requirePermission('finance'), (req, res) => {
       }
       // --------------------------------------------
 
-      const receiptUrl = req.file
-        ? `${req.protocol}://${req.get('host')}/uploads/finance/${req.file.filename}`
-        : null;
+      let receiptUrl = null;
+      if (req.file) {
+        const ext = mimeToExt(req.file.mimetype);
+        if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+        const rand = crypto.randomBytes(10).toString('hex');
+        const filename = `expense-${Date.now()}-${rand}${ext}`;
+        const uploaded = await uploadBufferToStorage({
+          buffer: req.file.buffer,
+          filename,
+          folder: '/finance/expenses',
+          localDir: 'uploads/finance',
+        });
+        receiptUrl = uploaded.url;
+      }
 
       const result = await dbRun(
         `INSERT INTO expenses (category, motor_unit_id, amount, description, receipt_url, expense_date, created_by)
@@ -569,9 +619,20 @@ router.put('/vendor-payouts/:id/pay', requirePermission('finance'), (req, res) =
         return res.status(400).json({ success: false, error: 'Payout harus di-approve dulu sebelum bisa ditandai paid.' });
       }
 
-      const proofUrl = req.file
-        ? `${req.protocol}://${req.get('host')}/uploads/finance/${req.file.filename}`
-        : null;
+      let proofUrl = null;
+      if (req.file) {
+        const ext = mimeToExt(req.file.mimetype);
+        if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+        const rand = crypto.randomBytes(10).toString('hex');
+        const filename = `vendor-payout-${Date.now()}-${rand}${ext}`;
+        const uploaded = await uploadBufferToStorage({
+          buffer: req.file.buffer,
+          filename,
+          folder: '/finance/vendor-payouts',
+          localDir: 'uploads/finance',
+        });
+        proofUrl = uploaded.url;
+      }
 
       await dbRun(
         `UPDATE vendor_payouts SET status = 'paid', transfer_proof = ? WHERE id = ?`,

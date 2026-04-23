@@ -6,6 +6,7 @@ const path   = require('path');
 const crypto = require('crypto');
 const fs     = require('fs');
 const express = require('express');
+const ImageKit = require('imagekit');
 const db = require('../db');
 const { verifyUser } = require('../middlewares/authMiddleware');
 const router = express.Router();
@@ -34,21 +35,48 @@ const buildPartnerVoucherCode = (partnerId) => {
 const ALLOWED_PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_PROOF_FILE = 5 * 1024 * 1024; // 5MB
 
-const reconStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = 'uploads/reconciliations/';
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const rand = crypto.randomBytes(8).toString('hex');
-    cb(null, `user-recon-${Date.now()}-${rand}${ext}`);
-  },
-});
+const imagekit = (
+  process.env.IMAGEKIT_PUBLIC_KEY &&
+  process.env.IMAGEKIT_PRIVATE_KEY &&
+  process.env.IMAGEKIT_URL_ENDPOINT
+) ? new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+}) : null;
+
+const mimeToExt = (mimetype) => {
+  if (mimetype === 'image/jpeg') return '.jpg';
+  if (mimetype === 'image/png')  return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  if (mimetype === 'application/pdf') return '.pdf';
+  return null;
+};
+
+const ensureDir = (dir) => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+};
+
+const uploadBufferToStorage = async ({ buffer, filename, folder, localDir }) => {
+  if (imagekit) {
+    const uploaded = await imagekit.upload({
+      file: Buffer.from(buffer).toString('base64'),
+      fileName: filename,
+      folder,
+      useUniqueFileName: true,
+    });
+    return { provider: 'imagekit', url: uploaded.url, fileId: uploaded.fileId, filePath: uploaded.filePath };
+  }
+
+  // Fallback: store in local uploads folder (relative URL to avoid mixed-content issues behind HTTPS)
+  ensureDir(localDir);
+  fs.writeFileSync(path.join(localDir, filename), buffer);
+  const rel = `/${localDir.replace(/\\/g, '/').replace(/^\/+/, '')}/${filename}`;
+  return { provider: 'local', url: rel, fileId: null, filePath: rel };
+};
 
 const uploadUserRecon = multer({
-  storage: reconStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PROOF_FILE },
   fileFilter: (req, file, cb) => {
     if (ALLOWED_PROOF_TYPES.includes(file.mimetype)) cb(null, true);
@@ -309,7 +337,6 @@ router.post('/users/payments/reconciliations', (req, res) => {
     try {
       const { order_id, bank_name, transfer_amount, transfer_date, notes } = req.body || {};
       if (!order_id || !bank_name || !transfer_amount || !transfer_date) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({ success: false, error: 'Order ID, bank, nominal, dan tanggal transfer wajib diisi.' });
       }
 
@@ -320,15 +347,12 @@ router.post('/users/payments/reconciliations', (req, res) => {
         [orderId]
       );
       if (!booking) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(404).json({ success: false, error: 'Order ID tidak ditemukan.' });
       }
       if (booking.user_id !== req.user.id) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(403).json({ success: false, error: 'Akses ditolak.' });
       }
       if (booking.payment_status === 'paid') {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({ success: false, error: 'Pesanan ini sudah lunas.' });
       }
 
@@ -339,20 +363,33 @@ router.post('/users/payments/reconciliations', (req, res) => {
         [orderId]
       );
       if (existingPending) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(409).json({
           success: false,
           error: 'Bukti transfer untuk pesanan ini sudah pernah diunggah dan sedang ditinjau.',
         });
       }
 
-      const proofUrl = req.file
-        ? `${req.protocol}://${req.get('host')}/uploads/reconciliations/${path.basename(req.file.filename)}`
-        : null;
+      let proofUrl = null;
+      if (req.file) {
+        const ext = mimeToExt(req.file.mimetype);
+        if (!ext) {
+          return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+        }
+        const rand = crypto.randomBytes(10).toString('hex');
+        const filename = `user-recon-${Date.now()}-${rand}${ext}`;
+
+        const uploaded = await uploadBufferToStorage({
+          buffer: req.file.buffer,
+          filename,
+          folder: '/reconciliations',
+          localDir: 'uploads/reconciliations',
+        });
+
+        proofUrl = uploaded.url;
+      }
 
       const amount = parseInt(transfer_amount, 10);
       if (!Number.isFinite(amount) || amount <= 0) {
-        if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         return res.status(400).json({ success: false, error: 'Nominal transfer tidak valid.' });
       }
 
@@ -373,7 +410,6 @@ router.post('/users/payments/reconciliations', (req, res) => {
       });
     } catch (e) {
       console.error('POST /users/payments/reconciliations error:', e.message);
-      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
       res.status(500).json({ success: false, error: 'Gagal mengunggah bukti transfer.' });
     }
   });
