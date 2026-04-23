@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import { API_BASE_URL } from '../../../utils/api';
 
 const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
   const [activeTab, setActiveTab] = useState('konten');
@@ -43,13 +44,14 @@ const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
     setIsUploading(true);
     const uploadData = new FormData();
     uploadData.append('image', file);
-    const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${API_URL}/api/admin/upload`, { // Ubah disini
+      let token = localStorage.getItem('admin_token') || localStorage.getItem('token');
+      if (token === 'undefined' || token === 'null') token = null;
+
+      const response = await fetch(`${API_BASE_URL}/api/admin/upload`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: uploadData
       });
       
@@ -58,7 +60,7 @@ const ArtikelModal = ({ onClose, onSubmit, initialData }) => {
         // Simpan URL yang dikembalikan server ke dalam state
         setFormData(prev => ({ ...prev, image_url: result.url }));
       } else {
-        alert('Gagal mengunggah gambar: ' + (result.message || 'Error server'));
+        alert('Gagal mengunggah gambar: ' + (result.error || result.message || 'Error server'));
       }
     } catch (error) {
       console.error("Upload error:", error);

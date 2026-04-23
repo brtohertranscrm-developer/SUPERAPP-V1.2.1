@@ -5,6 +5,7 @@ import { usePayment } from '../../hooks/usePayment';
 
 export default function PaymentPage() {
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
   const {
     user,
     orderData,
@@ -54,7 +55,7 @@ export default function PaymentPage() {
 
     setIsUploading(true);
     try {
-      const res = await fetch(`/api/users/payments/reconciliations`, {
+      const res = await fetch(`${API_URL}/api/users/payments/reconciliations`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
@@ -71,7 +72,7 @@ export default function PaymentPage() {
   };
 
   // ==========================================
-  // HALAMAN INSTRUKSI TRANSFER (LOKER)
+  // HALAMAN INSTRUKSI TRANSFER (Motor + Loker)
   // ==========================================
   return (
     <div className="py-12 bg-brand-light min-h-screen animate-fade-in-up">
@@ -134,7 +135,7 @@ export default function PaymentPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bank</div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bank Pengirim</div>
                       <select
                         className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
                         value={transferBank}

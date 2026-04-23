@@ -11,6 +11,10 @@ const API_URL = RESOLVED_API_URL_RAW.endsWith('/')
   ? RESOLVED_API_URL_RAW.slice(0, -1)
   : RESOLVED_API_URL_RAW;
 
+// Dipakai oleh komponen yang butuh `fetch` manual (FormData upload, dll)
+// agar tetap konsisten dengan resolver base URL di `apiFetch`.
+export const API_BASE_URL = API_URL;
+
 export const apiFetch = async (endpoint, options = {}) => {
   // Ambil token dari localStorage
   let token = localStorage.getItem('token');

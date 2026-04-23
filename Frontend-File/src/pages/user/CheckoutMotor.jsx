@@ -16,11 +16,35 @@ import { formatLatLng, parseLatLngFromText } from '../../utils/geo';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 const SERVICE_FEE = 2500;
+const CHECKOUT_STEPS = [
+  { key: 'detail', label: 'Detail' },
+  { key: 'handover', label: 'Serah Terima' },
+  { key: 'addons', label: 'Add-on' },
+  { key: 'payment', label: 'Pembayaran' },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 const normalizeName = (s) => String(s || '').trim().toLowerCase();
+
+const fmtDateTimeId = (dateStr, timeStr) => {
+  try {
+    if (!dateStr) return '-';
+    const iso = `${dateStr}T${timeStr || '00:00'}:00`;
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return `${dateStr} ${timeStr || ''}`.trim();
+    return dt.toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return `${dateStr || ''} ${timeStr || ''}`.trim() || '-';
+  }
+};
 
 const generateOrderId = () => {
   const now = new Date();
@@ -237,6 +261,7 @@ export default function CheckoutMotor() {
 
   const bookingData = location.state;
 
+  const [checkoutStep, setCheckoutStep] = useState('detail');
   const [paymentMethod, setPaymentMethod]   = useState('bca');
   const [appliedPromo, setAppliedPromo]     = useState(null);
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -400,6 +425,11 @@ export default function CheckoutMotor() {
     handoverMethod === 'delivery'
       ? (Number(deliveryQuote?.fee) || 0)
       : 0;
+
+  const selectedStation = useMemo(() => {
+    const id = String(stationId || '');
+    return (stations || []).find((s) => String(s.id) === id) || null;
+  }, [stations, stationId]);
 
   const addonItems = useMemo(() => {
     const items = [];
@@ -689,13 +719,15 @@ const handleRemovePromo = () => {
         }).catch(() => {});
       }
 
-      navigate('/transfer-confirmation', {
+      navigate(`/payment/${orderId}`, {
         state: {
-          order_id: orderId,
-          item_type: 'motor',
-          item_name: motorName,
-          total_price: grandTotal,
-          payment_method: paymentMethod,
+          orderData: {
+            order_id: orderId,
+            item_type: 'motor',
+            item_name: motorName,
+            total_price: grandTotal,
+            payment_method: paymentMethod,
+          },
         },
         replace: true,
       });
@@ -708,6 +740,43 @@ const handleRemovePromo = () => {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   if (!bookingData || !user) return null;
+
+  const stepKeys = CHECKOUT_STEPS.map((s) => s.key);
+  const currentStepIdx = Math.max(0, stepKeys.indexOf(checkoutStep));
+  const isFirstStep = currentStepIdx === 0;
+  const isLastStep = currentStepIdx === stepKeys.length - 1;
+
+  const goPrevStep = () => setCheckoutStep(stepKeys[Math.max(0, currentStepIdx - 1)]);
+  const goNextStep = () => setCheckoutStep(stepKeys[Math.min(stepKeys.length - 1, currentStepIdx + 1)]);
+
+  const CheckoutStepIndicator = () => (
+    <div className="flex items-center justify-center gap-2 mb-6">
+      {CHECKOUT_STEPS.map((s, i) => {
+        const isDone = i < currentStepIdx;
+        const isCurrent = i === currentStepIdx;
+        return (
+          <React.Fragment key={s.key}>
+            {i > 0 && <div className={`h-px w-8 ${isDone ? 'bg-slate-900' : 'bg-slate-200'}`} />}
+            <button
+              type="button"
+              disabled={!isKycVerified}
+              onClick={() => setCheckoutStep(s.key)}
+              className={`flex items-center gap-1.5 text-xs font-bold transition-all disabled:cursor-not-allowed ${
+                isCurrent ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
+              }`}
+            >
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                isDone ? 'bg-emerald-600 text-white' : isCurrent ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'
+              }`}>
+                {isDone ? '✓' : i + 1}
+              </div>
+              <span className="hidden sm:inline">{s.label}</span>
+            </button>
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
 
   return (
     <div className="bg-slate-50 min-h-screen pt-20 pb-24 font-sans text-slate-900 animate-fade-in-up">
@@ -730,11 +799,15 @@ const handleRemovePromo = () => {
           <KycBanner status={user?.kyc_status} onNavigate={() => navigate('/dashboard')} />
         )}
 
+        <CheckoutStepIndicator />
+
         <div className="flex flex-col lg:flex-row gap-6 items-start">
 
           {/* ── LEFT COLUMN ── */}
           <div className={`flex-1 space-y-5 min-w-0 ${!isKycVerified ? 'opacity-40 pointer-events-none select-none' : ''}`}>
 
+            {checkoutStep === 'detail' && (
+            <>
             {/* Booking Summary Card */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="bg-slate-900 px-5 py-4 flex items-center gap-3">
@@ -761,7 +834,7 @@ const handleRemovePromo = () => {
                       Jadwal Booking
                     </p>
                     <p className="font-bold text-slate-800 text-sm">
-                      {startDate} {startTime} <span className="text-slate-400 mx-1 font-normal">→</span> {endDate} {endTime}
+                      {fmtDateTimeId(startDate, startTime)} <span className="text-slate-400 mx-1 font-normal">→</span> {fmtDateTimeId(endDate, endTime)}
                     </p>
                     {rentalBreakdown.isValid && (
                       <p className="text-xs text-rose-500 font-black mt-1">{rentalBreakdown.packageSummary}</p>
@@ -804,8 +877,10 @@ const handleRemovePromo = () => {
                 ))}
               </div>
             </div>
+            </>
+            )}
 
-            {/* Delivery / Handover */}
+            {checkoutStep === 'handover' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
                 <MapPin size={16} className="text-slate-500" /> Serah Terima Unit
@@ -853,8 +928,8 @@ const handleRemovePromo = () => {
                           : 'border-slate-200 hover:border-slate-300 bg-white'
                       }`}
                     >
-                      <p className="text-xs font-black text-slate-900">Stasiun (Gratis)</p>
-                      <p className="text-[11px] font-medium text-slate-500 mt-1">Solo: Balapan, Jogja: Lempuyangan</p>
+                      <p className="text-xs font-black text-slate-900">Stasiun</p>
+                      <p className="text-[11px] font-medium text-slate-500 mt-1">Beberapa stasiun gratis, akan ditandai di daftar</p>
                     </button>
 
                     <button
@@ -884,13 +959,15 @@ const handleRemovePromo = () => {
                         ) : (
                           stations.map((s) => (
                             <option key={s.id} value={s.id}>
-                              {s.name} ({s.city})
+                              {s.name} ({s.city}){s.is_free ? ' \u2022 Gratis' : ''}
                             </option>
                           ))
                         )}
                       </select>
                       <p className="text-xs text-emerald-700 font-black mt-2">
-                        {isDeliveryLoading ? 'Menghitung...' : `Biaya: ${fmtRp(deliveryFee)} (Gratis)`}
+                        {isDeliveryLoading
+                          ? 'Menghitung...'
+                          : (deliveryFee === 0 || selectedStation?.is_free ? 'Biaya: Gratis' : `Biaya: ${fmtRp(deliveryFee)}`)}
                       </p>
                     </div>
                   )}
@@ -999,8 +1076,9 @@ const handleRemovePromo = () => {
                 </div>
               )}
             </div>
+            )}
 
-            {/* Renter Info */}
+            {checkoutStep === 'detail' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
                 <Users size={16} className="text-slate-500" /> Data Penyewa
@@ -1036,8 +1114,10 @@ const handleRemovePromo = () => {
                 </p>
               </div>
             </div>
+            )}
 
             {/* Add-ons & Paket */}
+            {checkoutStep === 'addons' && (
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
                 <Tag size={16} className="text-slate-500" /> Add-ons & Paket
@@ -1219,35 +1299,68 @@ const handleRemovePromo = () => {
                 </div>
               )}
             </div>
+            )}
 
-            {/* Promo Code */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
-                <Percent size={16} className="text-slate-500" /> Kode Promo
-              </h3>
-              <PromoInput
-                onApply={handleApplyPromo}
-                appliedPromo={appliedPromo}
-                onRemove={handleRemovePromo}
-                discountAmount={safeDiscount}
-                isChecking={isCheckingPromo}
-              />
+            {checkoutStep === 'payment' && (
+            <>
+              {/* Promo Code */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                  <Percent size={16} className="text-slate-500" /> Kode Promo
+                </h3>
+                <PromoInput
+                  onApply={handleApplyPromo}
+                  appliedPromo={appliedPromo}
+                  onRemove={handleRemovePromo}
+                  discountAmount={safeDiscount}
+                  isChecking={isCheckingPromo}
+                />
+              </div>
+
+              {/* [FIX 4] Payment Method — paymentInfo dari API, bukan hardcoded */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
+                  <CreditCard size={16} className="text-slate-500" /> Metode Pembayaran
+                </h3>
+                <PaymentMethodPicker
+                  value={paymentMethod}
+                  onChange={setPaymentMethod}
+                  paymentInfo={paymentInfo}
+                />
+                <p className="text-xs text-slate-400 font-medium mt-3 flex items-center justify-center gap-1.5">
+                  <Info size={11} /> Transfer tepat sesuai nominal hingga 3 digit terakhir untuk verifikasi otomatis.
+                </p>
+              </div>
+            </>
+            )}
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={goPrevStep}
+                disabled={isFirstStep}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-black text-sm hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Kembali
+              </button>
+              <div className="text-[11px] text-slate-500 font-bold">
+                Langkah {currentStepIdx + 1} dari {CHECKOUT_STEPS.length}
+              </div>
+              <button
+                type="button"
+                onClick={goNextStep}
+                disabled={isLastStep}
+                className="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Lanjut
+              </button>
             </div>
 
-            {/* [FIX 4] Payment Method — paymentInfo dari API, bukan hardcoded */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2 text-sm uppercase tracking-widest">
-                <CreditCard size={16} className="text-slate-500" /> Metode Pembayaran
-              </h3>
-              <PaymentMethodPicker
-                value={paymentMethod}
-                onChange={setPaymentMethod}
-                paymentInfo={paymentInfo}
-              />
-              <p className="text-xs text-slate-400 font-medium mt-3 flex items-center justify-center gap-1.5">
-                <Info size={11} /> Transfer tepat sesuai nominal hingga 3 digit terakhir untuk verifikasi otomatis.
+            {isLastStep && (
+              <p className="text-center text-[11px] text-slate-500 font-bold">
+                Terakhir, cek ringkasan di kanan lalu klik tombol untuk membuat pesanan dan lanjut transfer.
               </p>
-            </div>
+            )}
 
           </div>
 
@@ -1335,7 +1448,7 @@ const handleRemovePromo = () => {
                     {isSubmitting ? (
                       <><Loader2 size={18} className="animate-spin" /> Memproses...</>
                     ) : (
-                      <><CheckCircle2 size={18} /> Bayar Sekarang</>
+                      <><CheckCircle2 size={18} /> Buat Pesanan &amp; Lanjut Transfer</>
                     )}
                   </button>
                 ) : (
