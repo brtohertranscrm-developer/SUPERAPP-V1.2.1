@@ -174,6 +174,7 @@ const lokerPublicRoutes = require('./routes/lokerPublicRoutes');
 const adminReferralRoutes = require('./routes/adminReferralRoutes');
 const logisticsRoutes   = require('./routes/logisticsRoutes');
 const manningRoutes     = require('./routes/manningRoutes');
+const customOrderRoutes = require('./routes/customOrderRoutes');
 
 // Urutan penting: spesifik dulu, wildcard belakang
 app.use('/api/admin/loker',   lokerAdminRoutes);
@@ -187,6 +188,7 @@ app.use('/api',               referralRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/admin/finance', financeRoutes);
 app.use('/api/admin/referral', adminReferralRoutes);
+app.use('/api/custom-orders', customOrderRoutes);
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 9. 404 HANDLER

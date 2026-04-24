@@ -15,7 +15,7 @@ import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 import {
   Trophy, Gift, Navigation, MapPin, ChevronRight,
-  Headset, MessageCircle, LifeBuoy, X, User, Edit3, Copy, Ticket, CheckCircle2, Clock3, Phone
+  Headset, MessageCircle, LifeBuoy, X, User, Edit3, Copy, Ticket, CheckCircle2, Clock3, Phone, Truck
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL?.trim() || '';

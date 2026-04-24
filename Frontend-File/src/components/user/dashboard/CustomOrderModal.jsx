@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { X, Loader2, Truck, MapPin, Calendar, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { WA_CONTACTS, buildWaLink } from '../../../config/contacts';
+import { WA_CONTACTS } from '../../../config/contacts';
 
-const CITIES = ['Yogyakarta', 'Solo', 'Semarang', 'Magelang', 'Klaten', 'Kota lainnya'];
+const CITY_OTHER = 'Kota lainnya';
+const BASE_CITIES = ['Yogyakarta', 'Solo', 'Semarang', 'Magelang', 'Klaten'];
 
 const todayYmd = () => {
   const d = new Date();
@@ -32,10 +33,21 @@ const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 export default function CustomOrderModal({ user, onClose }) {
   const [step, setStep] = useState('form'); // 'form' | 'success'
   const [saving, setSaving] = useState(false);
+  const [backendNotice, setBackendNotice] = useState(null); // string | null
+
+  const cityOptions = Array.from(new Set([...BASE_CITIES, CITY_OTHER]));
+  const resolveCity = (selected, other) => {
+    if (selected === CITY_OTHER) return String(other || '').trim();
+    return String(selected || '').trim();
+  };
+
+  const initialToCityInList = user?.location && BASE_CITIES.includes(user.location);
   const [form, setForm] = useState({
     unit_type: '',
     from_city: '',
-    to_city: user?.location || '',
+    from_city_other: '',
+    to_city: initialToCityInList ? user.location : (user?.location ? CITY_OTHER : ''),
+    to_city_other: initialToCityInList ? '' : (user?.location || ''),
     start_date: tomorrowYmd(),
     end_date: '',
     notes: '',
@@ -46,11 +58,15 @@ export default function CustomOrderModal({ user, onClose }) {
 
   const validate = () => {
     const e = {};
+    const fromCity = resolveCity(form.from_city, form.from_city_other);
+    const toCity = resolveCity(form.to_city, form.to_city_other);
+
     if (!form.unit_type.trim()) e.unit_type = 'Wajib diisi.';
     if (!form.from_city) e.from_city = 'Pilih kota asal unit.';
+    if (form.from_city === CITY_OTHER && !fromCity) e.from_city_other = 'Tulis nama kota asal.';
     if (!form.to_city) e.to_city = 'Pilih kota tujuan.';
-    if (form.from_city && form.to_city && form.from_city === form.to_city)
-      e.to_city = 'Kota tujuan harus berbeda dari kota asal.';
+    if (form.to_city === CITY_OTHER && !toCity) e.to_city_other = 'Tulis nama kota tujuan.';
+    if (fromCity && toCity && fromCity === toCity) e.to_city = 'Kota tujuan harus berbeda dari kota asal.';
     if (!form.start_date) e.start_date = 'Wajib diisi.';
     if (form.start_date <= todayYmd()) e.start_date = 'Booking minimal H-1 (mulai besok).';
     if (!form.end_date) e.end_date = 'Wajib diisi.';
@@ -64,26 +80,41 @@ export default function CustomOrderModal({ user, onClose }) {
     if (Object.keys(e_).length > 0) { setErrors(e_); return; }
     setErrors({});
     setSaving(true);
+    setBackendNotice(null);
+
+    const fromCity = resolveCity(form.from_city, form.from_city_other);
+    const toCity = resolveCity(form.to_city, form.to_city_other);
 
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_URL}/api/custom-orders`, {
+      const resp = await fetch(`${API_URL}/api/custom-orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
+          user_name: user?.name || null,
+          user_phone: user?.phone || null,
           unit_type: form.unit_type.trim(),
-          from_city: form.from_city,
-          to_city: form.to_city,
+          from_city: fromCity,
+          to_city: toCity,
           start_date: form.start_date,
           end_date: form.end_date,
           notes: form.notes.trim() || null,
         }),
       });
+      if (!resp.ok) {
+        let msg = 'Permintaan berhasil dikirim ke admin via WA, tapi gagal tersimpan otomatis di sistem.';
+        try {
+          const data = await resp.json();
+          if (data?.error) msg = `${msg} (${data.error})`;
+        } catch {}
+        setBackendNotice(msg);
+      }
     } catch {
       // tetap lanjut ke WA meski backend gagal
+      setBackendNotice('Permintaan berhasil dikirim ke admin via WA, tapi server sedang tidak bisa dihubungi (gagal tersimpan otomatis).');
     }
 
     // Notif admin via WA
@@ -92,8 +123,8 @@ export default function CustomOrderModal({ user, onClose }) {
       `Nama: ${user?.name || 'Pelanggan'}\n` +
       `Kontak: ${user?.phone || '-'}\n\n` +
       `Unit: ${form.unit_type}\n` +
-      `Dari kota: ${form.from_city}\n` +
-      `Tujuan: ${form.to_city}\n` +
+      `Dari kota: ${fromCity}\n` +
+      `Tujuan: ${toCity}\n` +
       `Mulai: ${fmtDate(form.start_date)}\n` +
       `Selesai: ${fmtDate(form.end_date)} (${duration} hari)\n` +
       (form.notes ? `\nCatatan: ${form.notes}` : '') +
@@ -125,6 +156,11 @@ export default function CustomOrderModal({ user, onClose }) {
           <p className="text-xs text-slate-400 font-medium mb-6">
             Pastikan WA kamu aktif untuk menerima konfirmasi dari admin Brother Trans.
           </p>
+          {backendNotice && (
+            <div className="mb-6 text-left rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-bold text-amber-800 leading-relaxed">{backendNotice}</p>
+            </div>
+          )}
           <button
             onClick={onClose}
             className="w-full py-4 bg-slate-900 hover:bg-rose-500 text-white font-black rounded-2xl text-sm transition-colors"
@@ -194,9 +230,20 @@ export default function CustomOrderModal({ user, onClose }) {
                 className={`w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none bg-white focus:ring-2 focus:ring-slate-900 ${errors.from_city ? 'border-red-300' : 'border-slate-200'}`}
               >
                 <option value="">Pilih kota</option>
-                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               {errors.from_city && <p className="mt-1 text-xs text-red-500 font-bold">{errors.from_city}</p>}
+              {form.from_city === CITY_OTHER && (
+                <>
+                  <input
+                    value={form.from_city_other}
+                    onChange={(e) => set('from_city_other', e.target.value)}
+                    placeholder="Tulis nama kota asal"
+                    className={`mt-2 w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 ${errors.from_city_other ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
+                  />
+                  {errors.from_city_other && <p className="mt-1 text-xs text-red-500 font-bold">{errors.from_city_other}</p>}
+                </>
+              )}
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
@@ -208,9 +255,20 @@ export default function CustomOrderModal({ user, onClose }) {
                 className={`w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none bg-white focus:ring-2 focus:ring-slate-900 ${errors.to_city ? 'border-red-300' : 'border-slate-200'}`}
               >
                 <option value="">Pilih kota</option>
-                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               {errors.to_city && <p className="mt-1 text-xs text-red-500 font-bold">{errors.to_city}</p>}
+              {form.to_city === CITY_OTHER && (
+                <>
+                  <input
+                    value={form.to_city_other}
+                    onChange={(e) => set('to_city_other', e.target.value)}
+                    placeholder="Tulis nama kota tujuan"
+                    className={`mt-2 w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 ${errors.to_city_other ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
+                  />
+                  {errors.to_city_other && <p className="mt-1 text-xs text-red-500 font-bold">{errors.to_city_other}</p>}
+                </>
+              )}
             </div>
           </div>
 

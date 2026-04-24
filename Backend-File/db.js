@@ -355,6 +355,29 @@ db.serialize(() => {
   // Migration: add user_id column for existing databases
   db.run(`ALTER TABLE employees ADD COLUMN user_id TEXT`, () => {});
 
+  // --- CUSTOM ORDER REQUESTS (Permintaan unit antar kota) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS custom_order_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      user_name TEXT,
+      user_phone TEXT,
+      unit_type TEXT NOT NULL,
+      from_city TEXT NOT NULL,
+      to_city TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      duration_days INTEGER,
+      notes TEXT,
+      status TEXT DEFAULT 'pending',
+      admin_notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_custom_orders_status ON custom_order_requests(status, created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_custom_orders_user ON custom_order_requests(user_id)`);
+
   // --- EMPLOYEE AVAILABILITY (Per tanggal) ---
   // status:
   //   - 'on'    (on duty)
