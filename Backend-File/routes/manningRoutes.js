@@ -156,6 +156,13 @@ router.put('/employees/:id', requirePermission('manning'), async (req, res) => {
 
     let userId = current.user_id || null;
 
+    // If employee.user_id points to a missing user record (stale link),
+    // treat it as "no login" so we can create a new login cleanly.
+    if (userId) {
+      const linked = await dbGet(`SELECT id FROM users WHERE id = ?`, [userId]);
+      if (!linked) userId = null;
+    }
+
     // Create new login if requested and employee doesn't have one yet
     if (loginData?.email && loginData?.password && !userId) {
       const loginEmail = normLower(loginData.email);
@@ -388,4 +395,3 @@ router.get('/today', requirePermission('logistics'), async (req, res) => {
 });
 
 module.exports = router;
-
