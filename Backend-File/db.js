@@ -132,6 +132,36 @@ db.serialize(() => {
     )
   `);
 
+  // --- CARS (Katalog Mobil) ---
+  // Mobil punya konsep "model" (cars) dan "unit fisik" (car_units)
+  // Karena mobil bisa dipindah lintas kota, lokasi disimpan di car_units.current_location (dinamis).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS cars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      display_name TEXT,
+      category TEXT DEFAULT 'car',
+      seats INTEGER DEFAULT 4,
+      transmission TEXT DEFAULT 'AT',
+      base_price INTEGER NOT NULL DEFAULT 0,
+      image_url TEXT,
+      description TEXT
+    )
+  `);
+
+  // --- CAR UNITS (Plat Nomor per Mobil) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS car_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      car_id INTEGER NOT NULL,
+      plate_number TEXT UNIQUE NOT NULL,
+      status TEXT DEFAULT 'RDY',
+      current_location TEXT DEFAULT 'Yogyakarta',
+      condition_notes TEXT,
+      FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+    )
+  `);
+
   // --- MOTOR ADDONS / PAKET (Upsell saat checkout motor) ---
   // addon_type:
   //   - 'addon'   (contoh: helm tambahan, holder HP)
@@ -257,6 +287,21 @@ db.serialize(() => {
     )
   `);
 
+  // --- CAR UNIT BLOCKS (Manual block jadwal mobil) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS car_unit_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      car_unit_id INTEGER NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      reason TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (car_unit_id) REFERENCES car_units(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+
   // --- LOGISTICS TASKS (Jadwal Pengantaran/Pengembalian Unit) ---
   // task_type:
   //   - 'delivery' (pengantaran unit)
@@ -302,10 +347,13 @@ db.serialize(() => {
       base_location TEXT DEFAULT 'Yogyakarta',
       role_tag TEXT DEFAULT 'delivery',
       is_active INTEGER DEFAULT 1,
+      user_id TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_employees_active_location ON employees(is_active, base_location)`);
+  // Migration: add user_id column for existing databases
+  db.run(`ALTER TABLE employees ADD COLUMN user_id TEXT`, () => {});
 
   // --- EMPLOYEE AVAILABILITY (Per tanggal) ---
   // status:
@@ -753,6 +801,10 @@ db.serialize(() => {
 
   // Unit blocks + audit logs indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_unit_blocks_unit_id ON unit_blocks(unit_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_car_units_car_id ON car_units(car_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_car_units_status ON car_units(status)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_car_unit_blocks_car_unit_id ON car_unit_blocks(car_unit_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_car_unit_blocks_time ON car_unit_blocks(start_at, end_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_unit_blocks_range ON unit_blocks(start_at, end_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_id ON admin_audit_logs(admin_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_created_at ON admin_audit_logs(created_at)`);

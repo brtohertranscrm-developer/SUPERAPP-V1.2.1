@@ -189,6 +189,116 @@ router.get('/motors', async (req, res) => {
 });
 
 // ==========================================
+// CARS - Daftar Mobil (Public Catalog)
+// Note: Saat ini availability dihitung dari unit RDY - car_unit_blocks (manual block).
+// Booking overlap untuk mobil akan kita tambahkan di step berikutnya ketika alur booking mobil sudah dibuat.
+// ==========================================
+router.get('/cars', async (req, res) => {
+  try {
+    const startDate = normalizeToSqliteDateTime(req.query.start_date || req.query.start || '');
+    const endDate = normalizeToSqliteDateTime(req.query.end_date || req.query.end || '');
+    const hasRange = !!startDate && !!endDate;
+
+    const cars = hasRange
+      ? await dbAll(
+        `
+        SELECT c.*,
+               (
+                 SELECT COUNT(*)
+                 FROM car_units cu
+                 WHERE cu.car_id = c.id
+                   AND cu.status = 'RDY'
+               ) as total_rdy_units,
+               (
+                 SELECT COUNT(DISTINCT cub.car_unit_id)
+                 FROM car_unit_blocks cub
+                 JOIN car_units cu_blocked ON cu_blocked.id = cub.car_unit_id
+                 WHERE cu_blocked.car_id = c.id
+                   AND cu_blocked.status = 'RDY'
+                   AND datetime(cub.start_at) < datetime(?)
+                   AND datetime(cub.end_at)   > datetime(?)
+               ) as reserved_unit_count
+        FROM cars c
+        ORDER BY c.base_price ASC
+        `,
+        [endDate, startDate]
+      )
+      : await dbAll(
+        `
+        SELECT c.*,
+               (
+                 SELECT COUNT(*)
+                 FROM car_units cu
+                 WHERE cu.car_id = c.id
+                   AND cu.status = 'RDY'
+               ) as total_rdy_units
+        FROM cars c
+        ORDER BY c.base_price ASC
+        `
+      );
+
+    const getCountsByLocation = async (carId) => {
+      if (!carId) return [];
+      if (!hasRange) {
+        return dbAll(
+          `
+          SELECT lower(COALESCE(current_location, '')) as location, COUNT(*) as count
+          FROM car_units
+          WHERE car_id = ?
+            AND status = 'RDY'
+          GROUP BY lower(COALESCE(current_location, ''))
+          `,
+          [carId]
+        );
+      }
+      return dbAll(
+        `
+        SELECT lower(COALESCE(cu.current_location, '')) as location, COUNT(*) as count
+        FROM car_units cu
+        WHERE cu.car_id = ?
+          AND cu.status = 'RDY'
+          AND cu.id NOT IN (
+            SELECT cub.car_unit_id
+            FROM car_unit_blocks cub
+            WHERE datetime(cub.start_at) < datetime(?)
+              AND datetime(cub.end_at)   > datetime(?)
+          )
+        GROUP BY lower(COALESCE(cu.current_location, ''))
+        `,
+        [carId, endDate, startDate]
+      );
+    };
+
+    const formatted = [];
+    for (const c of cars) {
+      const totalRdy = Number(c.total_rdy_units) || 0;
+      const reserved = Number(c.reserved_unit_count) || 0;
+      const stock = hasRange ? Math.max(0, totalRdy - reserved) : totalRdy;
+
+      const rows = await getCountsByLocation(c.id);
+      const byLocation = {};
+      for (const r of rows || []) {
+        const key = String(r.location || '').trim() || 'unknown';
+        byLocation[key] = Number(r.count) || 0;
+      }
+
+      formatted.push({
+        ...c,
+        stock,
+        total_rdy_units: totalRdy,
+        reserved_unit_count: reserved,
+        availability_by_location: byLocation,
+      });
+    }
+
+    res.json({ success: true, data: formatted });
+  } catch (err) {
+    console.error('GET /cars error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data mobil.' });
+  }
+});
+
+// ==========================================
 // MOTOR ADD-ONS & PAKET (Public)
 // ==========================================
 router.get('/motor-addons', async (req, res) => {

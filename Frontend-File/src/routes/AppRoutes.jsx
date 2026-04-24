@@ -11,6 +11,7 @@ import SearchPage from '../pages/public/SearchPage';
 import SearchResults from '../pages/public/SearchResults';
 import MotorCatalog from '../pages/public/MotorCatalog';
 import LockerCatalog from '../pages/public/LockerCatalog';
+import CarCatalog from '../pages/public/CarCatalog';
 import ArticleList from '../pages/public/ArticleList';
 import ArticleDetail from '../pages/public/ArticleDetail';
 import LoginPage from '../pages/public/LoginPage';
@@ -80,6 +81,7 @@ const AppRoutes = () => {
           <Route path="/search-page" element={<SearchPage />} />
           <Route path="/search" element={<SearchResults />} />
           <Route path="/motor" element={<MotorCatalog />} />
+          <Route path="/mobil" element={<CarCatalog />} />
           <Route path="/loker" element={<LockerCatalog />} />
           <Route path="/artikel" element={<ArticleList />} />
           <Route path="/artikel/:id" element={<ArticleDetail />} />
