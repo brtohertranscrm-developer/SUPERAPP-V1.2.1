@@ -323,20 +323,22 @@ export default function AdminManning() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, location, canManage]);
 
-  const saveAvailability = async ({ employee_id, status, note }) => {
+  const saveAvailability = async ({ employee_id, status, note, date }) => {
     setSavingMap((m) => ({ ...m, [employee_id]: true }));
     try {
       await apiFetch('/api/admin/manning/availability', {
         method: 'POST',
         body: JSON.stringify({
           employee_id,
-          date: selectedDate,
+          date: date || selectedDate,
           status,
           note: note || null,
         }),
       });
+      return true;
     } catch (err) {
       alert(err?.message || 'Gagal menyimpan status.');
+      throw err;
     } finally {
       setSavingMap((m) => ({ ...m, [employee_id]: false }));
     }
@@ -489,8 +491,13 @@ export default function AdminManning() {
                           value={r.status || 'on'}
                           onChange={(e) => {
                             const v = e.target.value;
+                            const prevStatus = r.status || 'on';
                             setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: v } : x)));
-                            saveAvailability({ employee_id: r.id, status: v, note: r.note });
+                            saveAvailability({ employee_id: r.id, status: v, note: r.note, date: r.date || selectedDate })
+                              .catch(() => {
+                                // Revert UI if save fails
+                                setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: prevStatus } : x)));
+                              });
                           }}
                           className="border rounded-2xl px-3 py-2 font-black text-xs bg-white outline-none"
                           disabled={!!savingMap[r.id]}
@@ -510,7 +517,14 @@ export default function AdminManning() {
                           const v = e.target.value;
                           setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, note: v } : x)));
                         }}
-                        onBlur={() => saveAvailability({ employee_id: r.id, status: r.status || 'on', note: r.note })}
+                        onBlur={() => {
+                          const prevNote = r.note || '';
+                          saveAvailability({ employee_id: r.id, status: r.status || 'on', note: r.note, date: r.date || selectedDate })
+                            .catch(() => {
+                              // Revert note if save fails
+                              setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, note: prevNote } : x)));
+                            });
+                        }}
                         className="w-full border rounded-2xl px-3 py-2 text-xs font-bold outline-none"
                         placeholder="Opsional: alasan/catatan"
                         disabled={!!savingMap[r.id]}
@@ -552,4 +566,3 @@ export default function AdminManning() {
     </div>
   );
 }
-
