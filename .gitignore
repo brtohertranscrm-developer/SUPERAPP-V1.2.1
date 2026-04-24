@@ -3,3 +3,4 @@ Frontend-File/node_modules/
 Frontend-File/dist/
 .env
 Backend-File/.env
+.claude/

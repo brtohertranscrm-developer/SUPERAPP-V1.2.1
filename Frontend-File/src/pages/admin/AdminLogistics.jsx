@@ -1,101 +1,20 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, RefreshCw, CheckCircle2, X, MapPin, Clock, User, Phone, ClipboardCheck, Pencil, Trash2, Users } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, MapPin, Clock, User, ClipboardCheck, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
 import { AuthContext } from '../../context/AuthContext';
-
-const parsePerms = (user) => {
-  try {
-    if (typeof user?.permissions === 'string') {
-      const parsed = JSON.parse(user.permissions);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-    if (Array.isArray(user?.permissions)) return user.permissions;
-    return [];
-  } catch {
-    return [];
-  }
-};
-
-const StatusBadge = ({ status }) => {
-  const s = String(status || '').toLowerCase();
-  const cls =
-    s === 'completed'
-      ? 'bg-emerald-100 text-emerald-700'
-      : s === 'cancelled'
-        ? 'bg-rose-100 text-rose-700'
-        : 'bg-amber-100 text-amber-700';
-  const label =
-    s === 'completed' ? 'SELESAI'
-      : s === 'cancelled' ? 'BATAL'
-        : 'TERJADWAL';
-
-  return (
-    <span className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest ${cls}`}>
-      {label}
-    </span>
-  );
-};
-
-const fmtDateTime = (value) => {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-};
-
-const formatRupiah = (value) => {
-  const n = Number(value) || 0;
-  try {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n);
-  } catch {
-    return `Rp ${n.toLocaleString('id-ID')}`;
-  }
-};
-
-const fmtDate = (value) => {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-const todayYmd = () => {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-};
-
-const shiftYmd = (ymd, deltaDays) => {
-  const d = new Date(`${ymd}T00:00`);
-  d.setDate(d.getDate() + deltaDays);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
-const TEAM_LOCATIONS = ['Semua', 'Yogyakarta', 'Solo', 'Semarang', 'Nasional'];
-
-const TeamStatusBadge = ({ status }) => {
-  const s = String(status || 'on').toLowerCase();
-  const cls =
-    s === 'on'
-      ? 'bg-emerald-100 text-emerald-700'
-      : s === 'off'
-        ? 'bg-slate-100 text-slate-700'
-        : s === 'leave'
-          ? 'bg-amber-100 text-amber-700'
-          : 'bg-rose-100 text-rose-700';
-  const label =
-    s === 'on' ? 'ON'
-      : s === 'off' ? 'LIBUR'
-        : s === 'leave' ? 'CUTI'
-          : 'SAKIT';
-
-  return (
-    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest ${cls}`}>
-      {label}
-    </span>
-  );
-};
+import StatusBadge from '../../components/admin/logistics/StatusBadge';
+import TeamTodaySection from '../../components/admin/logistics/TeamTodaySection';
+import PendingBookingsSection from '../../components/admin/logistics/PendingBookingsSection';
+import TaskDetailModal from '../../components/admin/logistics/TaskDetailModal';
+import TaskCreateModal from '../../components/admin/logistics/TaskCreateModal';
+import {
+  fmtDate,
+  fmtDateTime,
+  parsePerms,
+  shiftYmd,
+  todayYmd,
+  formatRupiah,
+} from '../../components/admin/logistics/logisticsUtils';
 
 export default function AdminLogistics() {
   const { user } = useContext(AuthContext) || {};
@@ -509,73 +428,15 @@ export default function AdminLogistics() {
         </div>
       </div>
 
-      {/* Team Today (Manning) */}
-      <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Users size={18} className="text-gray-700" />
-            <div>
-              <div className="font-black text-gray-900">Tim Hari Ini</div>
-              <div className="text-[11px] text-gray-500 font-bold">
-                {selectedDate}
-                {teamCounts ? ` • Total ${teamCounts.total} (ON ${teamCounts.on}, OFF ${teamCounts.off}, CUTI ${teamCounts.leave}, SAKIT ${teamCounts.sick})` : ''}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-            <select
-              value={teamLoc}
-              onChange={(e) => setTeamLoc(e.target.value)}
-              className="bg-white border border-gray-200 rounded-2xl px-4 py-2 font-black text-sm text-gray-800 outline-none"
-              title="Filter lokasi"
-            >
-              {TEAM_LOCATIONS.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
-            <button
-              onClick={fetchTeam}
-              className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-gray-50"
-              title="Refresh tim"
-              disabled={teamLoading}
-            >
-              <RefreshCw size={18} className={teamLoading ? 'animate-spin' : ''} /> Refresh Tim
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          {teamLoading ? (
-            <div className="flex items-center gap-2 text-gray-400 font-bold">
-              <Loader2 className="animate-spin" size={16} /> Memuat tim...
-            </div>
-          ) : teamData.length === 0 ? (
-            <div className="text-sm text-gray-500 font-medium">
-              Belum ada data tim (atau akun ini belum punya akses manning).
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {teamData.map((m) => (
-                <div key={m.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4 flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-black text-gray-900 truncate" title={m.name}>{m.name}</div>
-                    <div className="text-xs text-gray-500 font-bold mt-1 truncate" title={`${m.base_location || ''} • ${m.role_tag || ''}`}>
-                      {m.base_location || '—'} • {m.role_tag || 'delivery'}
-                    </div>
-                    {m.note ? (
-                      <div className="text-xs text-gray-500 font-medium mt-2 line-clamp-2">
-                        Catatan: {m.note}
-                      </div>
-                    ) : null}
-                  </div>
-                  <TeamStatusBadge status={m.status} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <TeamTodaySection
+        selectedDate={selectedDate}
+        teamCounts={teamCounts}
+        teamLoc={teamLoc}
+        onTeamLocChange={setTeamLoc}
+        onRefresh={fetchTeam}
+        isLoading={teamLoading}
+        teamData={teamData}
+      />
 
       {/* Tabs */}
       <div className="bg-white rounded-3xl p-2 shadow-sm border border-gray-100 flex gap-2">
@@ -592,98 +453,15 @@ export default function AdminLogistics() {
         ))}
       </div>
 
-      {/* Booking Cards (auto-create task) */}
-      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sumber Booking</div>
-            <div className="mt-1 font-black text-gray-900">
-              Booking yang siap dibuat jadwal ({pendingBookings.length})
-            </div>
-            <div className="text-xs text-gray-500 font-bold mt-1">
-              Klik kartu untuk otomatis isi <span className="font-black">Order ID</span> dan waktu. Kamu tinggal pilih PIC.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={fetchPendingBookings}
-            className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl font-black flex items-center gap-2 hover:bg-gray-50"
-            disabled={pendingLoading}
-            title="Refresh booking"
-          >
-            <RefreshCw size={18} className={pendingLoading ? 'animate-spin' : ''} /> Refresh Booking
-          </button>
-        </div>
-
-        <div className="mt-4">
-          {pendingLoading ? (
-            <div className="flex items-center gap-2 text-gray-400 font-bold">
-              <Loader2 className="animate-spin" size={16} /> Memuat booking...
-            </div>
-          ) : pendingError ? (
-            <div className="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold text-sm">{pendingError}</div>
-          ) : pendingBookings.length === 0 ? (
-            <div className="text-sm text-gray-500 font-medium">
-              Tidak ada booking untuk tanggal ini yang butuh dibuat jadwal.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {pendingBookings.map((b) => (
-                <button
-                  key={b.order_id}
-                  type="button"
-                  onClick={() => openCreateFromBooking(b)}
-                  disabled={!canManage}
-                  className={`text-left rounded-3xl p-4 border transition shadow-sm ${
-                    canManage
-                      ? 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200'
-                      : 'bg-gray-50 border-gray-100 opacity-70 cursor-not-allowed'
-                  }`}
-                  title={canManage ? 'Klik untuk buat jadwal dari booking' : 'Butuh permission logistics_manage untuk membuat jadwal'}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Order</div>
-                      <div className="font-black text-gray-900 truncate">{b.order_id}</div>
-                      <div className="text-xs text-gray-500 font-bold mt-1 truncate">
-                        {b.user_name || 'Pelanggan'}{b.user_phone ? ` • ${b.user_phone}` : ''}
-                      </div>
-                    </div>
-                    <div className="shrink-0">
-                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-[10px] font-black tracking-widest">
-                        {activeTab === 'delivery' ? 'ANTAR' : 'KEMBALI'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold text-gray-700">
-                    <div className="flex items-center gap-2">
-                      <Clock size={14} className="text-brand-primary" />
-                      <span className="truncate" title={b.suggested_at || ''}>{fmtDateTime(b.suggested_at)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Bike size={14} className="text-brand-primary" />
-                      <span className="truncate" title={b.item_name || ''}>{b.item_name || 'Motor'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 sm:col-span-2">
-                      <MapPin size={14} className="text-brand-primary" />
-                      <span className="truncate" title={b.delivery_address || b.location || ''}>{b.delivery_address || b.location || '—'}</span>
-                    </div>
-                    {(b.plate_number || b.unit_id) ? (
-                      <div className="flex items-center gap-2 sm:col-span-2">
-                        <ClipboardCheck size={14} className="text-brand-primary" />
-                        <span className="truncate">
-                          Unit: {b.plate_number || `#${b.unit_id}`}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <PendingBookingsSection
+        activeTab={activeTab}
+        pendingBookings={pendingBookings}
+        isLoading={pendingLoading}
+        error={pendingError}
+        canManage={canManage}
+        onRefresh={fetchPendingBookings}
+        onSelectBooking={openCreateFromBooking}
+      />
 
       {/* List */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
@@ -761,305 +539,32 @@ export default function AdminLogistics() {
         )}
       </div>
 
-      {/* Detail Modal */}
-      {isDetailOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white p-6 border-b border-gray-100 flex justify-between items-center z-10">
-              <div>
-                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Detail Tugas</div>
-                <div className="font-black text-xl">#{selected?.id || '—'} <span className="text-gray-400">•</span> {title}</div>
-              </div>
-              <button onClick={() => setIsDetailOpen(false)} className="text-gray-400 hover:text-red-500">
-                <X size={24} />
-              </button>
-            </div>
+      <TaskDetailModal
+        isOpen={isDetailOpen}
+        onClose={() => setIsDetailOpen(false)}
+        title={title}
+        selected={selected}
+        detailLoading={detailLoading}
+        canManage={canManage}
+        onEdit={() => openEdit(selected, { preferDetail: true })}
+        onDelete={() => { if (selected?.id) handleDelete(selected.id); }}
+        onComplete={() => { if (selected?.id) handleComplete(selected.id); }}
+        fmtDateTime={fmtDateTime}
+        formatRupiah={formatRupiah}
+      />
 
-            {detailLoading ? (
-              <div className="flex h-56 flex-col items-center justify-center text-rose-500">
-                <Loader2 className="animate-spin mb-3" size={42} />
-                <div className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Memuat detail...</div>
-              </div>
-            ) : (
-              <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <StatusBadge status={selected?.status} />
-                  <div className="text-[11px] text-gray-400 font-bold">
-                    Dibuat: {fmtDateTime(selected?.created_at)} {selected?.created_by_name ? `oleh ${selected.created_by_name}` : ''}
-                  </div>
-                </div>
-
-                {canManage && (
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(selected, { preferDetail: true })}
-                      className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-2xl font-black hover:bg-gray-50 flex items-center justify-center gap-2"
-                    >
-                      <Pencil size={18} /> Edit Jadwal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(selected.id)}
-                      className="flex-1 bg-rose-600 text-white py-3 rounded-2xl font-black hover:bg-rose-700 flex items-center justify-center gap-2"
-                    >
-                      <Trash2 size={18} /> Hapus Jadwal
-                    </button>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Jenis Motor</div>
-                    <div className="font-black text-gray-900">{selected?.booking?.item_name || selected?.motor_type || '—'}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Order ID</div>
-                    <div className="font-black text-gray-900">{selected?.booking?.order_id || selected?.order_id || '—'}</div>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pelanggan</div>
-                    <div className="font-black text-gray-900">{selected?.booking?.user_name || selected?.customer_name || '—'}</div>
-                    <div className="mt-2 flex items-center gap-2 text-gray-700 text-sm font-bold">
-                      <Phone size={16} className="text-brand-primary" />
-                      {selected?.booking?.user_phone || selected?.customer_phone || '—'}
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Jadwal</div>
-                    <div className="font-black text-gray-900">{fmtDateTime(selected?.scheduled_at)}</div>
-                    <div className="mt-2 flex items-center gap-2 text-gray-700 text-sm font-bold">
-                      <MapPin size={16} className="text-brand-primary" />
-                      <span className="truncate" title={selected?.booking?.delivery_address || selected?.location_text || ''}>
-                        {selected?.booking?.delivery_address || selected?.location_text || '—'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {(selected?.gear_summary || selected?.addons?.length) && (
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Perlengkapan</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Helm</div>
-                        <div className="mt-1 text-xl font-black text-gray-900">{selected?.gear_summary?.helm ?? '—'}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Jas Hujan</div>
-                        <div className="mt-1 text-xl font-black text-gray-900">{selected?.gear_summary?.jas_hujan ?? '—'}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Helm Anak</div>
-                        <div className="mt-1 text-xl font-black text-gray-900">{selected?.gear_summary?.helm_anak ?? '—'}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {selected?.booking && (
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Tagihan</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total</div>
-                        <div className="mt-1 text-lg font-black text-gray-900">{formatRupiah(selected.booking.total_price)}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">DP / Sudah Bayar</div>
-                        <div className="mt-1 text-lg font-black text-gray-900">{formatRupiah(selected.booking.paid_amount)}</div>
-                      </div>
-                      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Kekurangan</div>
-                        <div className="mt-1 text-lg font-black text-rose-600">{formatRupiah(selected.booking.outstanding_amount)}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">PIC Pengantar</div>
-                  <div className="font-black text-gray-900">{selected?.assigned_to_name || '—'}</div>
-                </div>
-
-                {(selected?.notes || selected?.booking?.price_notes) && (
-                  <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Catatan</div>
-                    <div className="text-gray-800 font-semibold whitespace-pre-wrap">
-                      {selected?.notes || selected?.booking?.price_notes}
-                    </div>
-                  </div>
-                )}
-
-                {selected?.status === 'completed' && (
-                  <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
-                    <div className="flex items-center gap-2 font-black text-emerald-800">
-                      <CheckCircle2 size={18} /> Sudah selesai
-                    </div>
-                    <div className="text-sm text-emerald-700 font-bold mt-2">
-                      Waktu: {fmtDateTime(selected?.completed_at)}{selected?.completed_by_name ? ` • Oleh: ${selected.completed_by_name}` : ''}
-                    </div>
-                  </div>
-                )}
-
-                {selected?.status !== 'completed' && selected?.status !== 'cancelled' && (
-                  <button
-                    onClick={() => handleComplete(selected.id)}
-                    className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-lg hover:bg-emerald-700 transition flex items-center justify-center gap-2"
-                  >
-                    <ClipboardCheck size={20} /> Checklist: Tugas Selesai
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Create Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white p-6 border-b border-gray-100 flex justify-between items-center z-10">
-              <div>
-                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Buat Jadwal</div>
-                <div className="font-black text-xl">{editId ? 'Edit Jadwal' : title}</div>
-              </div>
-              <button onClick={() => { setIsCreateOpen(false); setEditId(null); }} className="text-gray-400 hover:text-red-500">
-                <X size={24} />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreate} className="p-6 space-y-5">
-	              <div className="bg-brand-dark rounded-2xl p-4 text-white text-sm font-semibold">
-	                Tips: Isi <span className="font-black">Order ID</span> untuk auto-isi (jika data booking ada). Kalau manual, isi field lainnya.
-	              </div>
-
-	              {prefillBooking?.order_id && (
-	                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
-	                  <div className="text-[10px] font-black uppercase tracking-widest text-emerald-800/70">Dari Booking</div>
-	                  <div className="mt-1 font-black text-emerald-900">
-	                    {prefillBooking.order_id} • {prefillBooking.item_name || 'Motor'}
-	                  </div>
-	                  <div className="mt-1 text-xs text-emerald-900/80 font-bold">
-	                    {prefillBooking.user_name || 'Pelanggan'}{prefillBooking.user_phone ? ` • ${prefillBooking.user_phone}` : ''}
-	                  </div>
-	                  <div className="mt-2 text-xs text-emerald-900/80 font-bold">
-	                    Lokasi: {prefillBooking.delivery_address || prefillBooking.location || '—'}
-	                  </div>
-	                  <div className="mt-2 text-xs text-emerald-900/80 font-bold">
-	                    Kamu cukup pilih <span className="font-black">PIC</span> dan atur jam, lalu simpan.
-	                  </div>
-	                </div>
-	              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Order ID (opsional)</label>
-                  <input
-                    value={form.order_id}
-                    onChange={(e) => setForm((p) => ({ ...p, order_id: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                    placeholder="Cth: ORD-2026-0001"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Tanggal & Jam</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={form.scheduled_at}
-                    onChange={(e) => setForm((p) => ({ ...p, scheduled_at: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Jenis Motor</label>
-                  <input
-                    value={form.motor_type}
-                    onChange={(e) => setForm((p) => ({ ...p, motor_type: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                    placeholder="Cth: Scoopy / Vario 160"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Nama Pelanggan</label>
-                  <input
-                    value={form.customer_name}
-                    onChange={(e) => setForm((p) => ({ ...p, customer_name: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                    placeholder="Nama pelanggan"
-                  />
-                </div>
-              </div>
-
-	              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-	                <div>
-	                  <label className="block text-sm font-bold text-gray-700 mb-2">No. HP Pelanggan</label>
-	                  <input
-	                    value={form.customer_phone}
-	                    onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))}
-	                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-	                    placeholder="08xxxxxxxxxx"
-	                  />
-	                </div>
-	                <div>
-	                  <label className="block text-sm font-bold text-gray-700 mb-2">PIC Pengantar</label>
-	                  <input
-	                    list="team_on_suggest"
-	                    value={form.assigned_to_name}
-	                    onChange={(e) => setForm((p) => ({ ...p, assigned_to_name: e.target.value }))}
-	                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-	                    placeholder="Nama tim/driver"
-	                  />
-	                  <datalist id="team_on_suggest">
-	                    {teamOn.map((m) => (
-	                      <option
-	                        key={m.id}
-	                        value={m.name}
-	                      >
-	                        {m.base_location || ''} {m.role_tag ? `• ${m.role_tag}` : ''}
-	                      </option>
-	                    ))}
-	                  </datalist>
-	                </div>
-	              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Lokasi Antar / Ambil</label>
-                <input
-                  value={form.location_text}
-                  onChange={(e) => setForm((p) => ({ ...p, location_text: e.target.value }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                  placeholder="Alamat lengkap / patokan"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Catatan (opsional)</label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary min-h-[96px]"
-                  placeholder="Catatan tambahan untuk tim pengantar"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={createLoading}
-                className="w-full bg-brand-primary text-white py-4 rounded-2xl font-black text-lg hover:bg-rose-700 transition flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {createLoading ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
-                {editId ? 'Simpan Perubahan' : 'Simpan Jadwal'}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <TaskCreateModal
+        isOpen={isCreateOpen}
+        onClose={() => { setIsCreateOpen(false); setEditId(null); }}
+        title={title}
+        editId={editId}
+        handleCreate={handleCreate}
+        form={form}
+        setForm={setForm}
+        teamOn={teamOn}
+        prefillBooking={prefillBooking}
+        createLoading={createLoading}
+      />
     </div>
   );
 }
