@@ -42,6 +42,9 @@ const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate }) =>
   const isPending = b.status === 'pending';
   const isActive = b.status === 'active';
 
+  // Initial avatar dari nama user
+  const initials = (b.user_name || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
   const openWa = () => {
     const phone = String(b.user_phone || '').replace(/\D/g, '');
     const target = phone.startsWith('0') ? `62${phone.slice(1)}` : phone;
@@ -57,172 +60,168 @@ const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate }) =>
   };
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border overflow-hidden flex flex-col transition-shadow duration-200 hover:shadow-md ${
+    <div className={`bg-white rounded-2xl border overflow-hidden flex flex-col transition-shadow duration-150 hover:shadow-md ${
       hasOutstanding ? 'border-red-200' : 'border-slate-200'
     }`}>
 
-      {/* HEADER */}
+      {/* HEADER — compact, selalu tampil */}
       <div
         onClick={onToggle}
-        className="p-4 cursor-pointer hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors"
+        className="px-3 py-2.5 cursor-pointer hover:bg-slate-50 flex items-center gap-2.5 transition-colors"
       >
-        <div className="overflow-hidden flex-1">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-0.5">Order ID</p>
-          <span className="font-mono text-sm font-black text-slate-800 block truncate">{b.order_id}</span>
-          {hasOutstanding && (
-            <span className="inline-block mt-1 text-[10px] font-black text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md uppercase">
-              Outstanding {fmtRp(outstanding)}
-            </span>
-          )}
+        {/* Avatar */}
+        <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[11px] font-black text-white ${
+          b.status === 'active' ? 'bg-blue-500' :
+          b.status === 'completed' ? 'bg-emerald-500' :
+          b.status === 'cancelled' ? 'bg-red-400' : 'bg-amber-400'
+        }`}>
+          {initials}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black tracking-wider uppercase ${statusCfg.cls}`}>
+
+        {/* Info utama */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="font-black text-sm text-slate-900 truncate">{b.user_name || '—'}</span>
+            {hasOutstanding && (
+              <span className="shrink-0 text-[9px] font-black text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md uppercase">
+                Kurang {fmtRp(outstanding)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[11px] text-slate-500 font-medium truncate">{b.item_name}</span>
+            <span className="text-slate-300 shrink-0">·</span>
+            <span className="text-[11px] text-slate-400 font-medium shrink-0">{fmtDate(b.start_date)}</span>
+          </div>
+          <span className="font-mono text-[10px] text-slate-400">{b.order_id}</span>
+        </div>
+
+        {/* Status + chevron */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black tracking-wide uppercase ${statusCfg.cls}`}>
             {statusCfg.label}
           </span>
-          {isExpanded ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+          {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
         </div>
       </div>
 
       {/* BODY ACCORDION */}
       {isExpanded && (
         <div className="border-t border-slate-100 animate-in slide-in-from-top-2 fade-in duration-200 flex flex-col">
-          <div className="p-4 space-y-3">
+          <div className="px-3 py-3 space-y-2">
 
-            {/* Pelanggan & Item */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Pelanggan</p>
-                <p className="font-bold text-sm text-slate-800 truncate">{b.user_name}</p>
-                <p className="text-xs text-slate-500">{b.user_phone}</p>
+            {/* Pelanggan & Item — satu baris */}
+            <div className="flex items-start justify-between gap-2 text-xs">
+              <div>
+                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Pelanggan</p>
+                <p className="font-bold text-slate-800">{b.user_name}</p>
+                <p className="text-slate-500">{b.user_phone}</p>
               </div>
-              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Item</p>
-                <p className="font-bold text-sm text-slate-800 truncate">{b.item_name}</p>
-                <span className="inline-block px-1.5 py-0.5 bg-slate-200 text-slate-600 text-[10px] rounded font-bold uppercase">
-                  {b.item_type}
-                </span>
+              <div className="text-right">
+                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Item</p>
+                <p className="font-bold text-slate-800">{b.item_name}</p>
+                <span className="inline-block px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] rounded font-bold uppercase">{b.item_type}</span>
               </div>
             </div>
 
-            {/* Tanggal */}
-            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-              <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1.5">Durasi Sewa</p>
-              <p className="text-xs font-medium text-slate-700 text-center">
-                {fmtDate(b.start_date)}
-                <span className="mx-2 text-slate-300">→</span>
-                {fmtDate(b.end_date)}
-              </p>
+            {/* Durasi */}
+            <div className="flex items-center justify-between text-xs bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+              <span className="text-slate-500 font-medium">{fmtDate(b.start_date)}</span>
+              <span className="text-slate-300 font-black">→</span>
+              <span className="text-slate-500 font-medium">{fmtDate(b.end_date)}</span>
             </div>
 
             {/* Harga */}
-            <div className={`rounded-xl p-3 border ${hasOutstanding ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
-              <div className="flex justify-between items-center mb-1.5">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Pembayaran</p>
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${
+            <div className={`rounded-xl px-3 py-2.5 border ${hasOutstanding ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-100'}`}>
+              <div className="flex justify-between items-center mb-1">
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${
                   b.payment_status === 'paid'     ? 'bg-emerald-100 text-emerald-700' :
                   b.payment_status === 'refunded' ? 'bg-purple-100 text-purple-700' :
                   'bg-red-100 text-red-700'
                 }`}>
                   {b.payment_status === 'paid' ? 'Lunas' : b.payment_status === 'refunded' ? 'Refund' : 'Belum Bayar'}
                 </span>
-              </div>
-              <div className="flex justify-between text-sm mt-1">
-                <span className="text-slate-500">Total tagihan</span>
-                <span className="font-black text-slate-800">{fmtRp(total)}</span>
+                <span className="font-black text-sm text-slate-800">{fmtRp(total)}</span>
               </div>
               {paid > 0 && (
-                <div className="flex justify-between text-xs mt-0.5">
+                <div className="flex justify-between text-[11px]">
                   <span className="text-slate-400">Dibayar</span>
                   <span className="font-bold text-emerald-600">{fmtRp(paid)}</span>
                 </div>
               )}
               {hasOutstanding && (
-                <div className="flex justify-between text-xs mt-0.5">
-                  <span className="text-red-500 font-bold">Outstanding</span>
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-red-500 font-bold">Kurang bayar</span>
                   <span className="font-black text-red-600">{fmtRp(outstanding)}</span>
                 </div>
               )}
-
-              {/* Komponen harga breakdown */}
               {(b.base_price > 0 || b.service_fee > 0 || b.extend_fee > 0 || b.addon_fee > 0 || b.delivery_fee > 0 || b.discount_amount > 0) && (
-                <div className="mt-2 pt-2 border-t border-slate-200 space-y-0.5">
-                  {b.base_price     > 0 && <div className="flex justify-between text-[11px] text-slate-500"><span>Sewa dasar</span><span>{fmtRp(b.base_price)}</span></div>}
-                  {b.service_fee    > 0 && <div className="flex justify-between text-[11px] text-slate-500"><span>Biaya layanan</span><span>{fmtRp(b.service_fee)}</span></div>}
-                  {b.extend_fee     > 0 && <div className="flex justify-between text-[11px] text-slate-500"><span>Perpanjangan</span><span>{fmtRp(b.extend_fee)}</span></div>}
-                  {b.addon_fee      > 0 && <div className="flex justify-between text-[11px] text-slate-500"><span>Addon</span><span>{fmtRp(b.addon_fee)}</span></div>}
-                  {b.delivery_fee   > 0 && <div className="flex justify-between text-[11px] text-slate-500"><span>Antar/jemput</span><span>{fmtRp(b.delivery_fee)}</span></div>}
-                  {b.discount_amount > 0 && (
-                    <div className="flex justify-between text-[11px] text-emerald-600">
-                      <span>Diskon {b.promo_code ? `(${b.promo_code})` : ''}</span>
-                      <span>− {fmtRp(b.discount_amount)}</span>
-                    </div>
-                  )}
+                <div className="mt-1.5 pt-1.5 border-t border-slate-200 space-y-0.5">
+                  {b.base_price      > 0 && <div className="flex justify-between text-[10px] text-slate-400"><span>Sewa dasar</span><span>{fmtRp(b.base_price)}</span></div>}
+                  {b.service_fee     > 0 && <div className="flex justify-between text-[10px] text-slate-400"><span>Layanan</span><span>{fmtRp(b.service_fee)}</span></div>}
+                  {b.extend_fee      > 0 && <div className="flex justify-between text-[10px] text-slate-400"><span>Perpanjangan</span><span>{fmtRp(b.extend_fee)}</span></div>}
+                  {b.addon_fee       > 0 && <div className="flex justify-between text-[10px] text-slate-400"><span>Addon</span><span>{fmtRp(b.addon_fee)}</span></div>}
+                  {b.delivery_fee    > 0 && <div className="flex justify-between text-[10px] text-slate-400"><span>Antar/jemput</span><span>{fmtRp(b.delivery_fee)}</span></div>}
+                  {b.discount_amount > 0 && <div className="flex justify-between text-[10px] text-emerald-600"><span>Diskon{b.promo_code ? ` (${b.promo_code})` : ''}</span><span>−{fmtRp(b.discount_amount)}</span></div>}
                 </div>
               )}
             </div>
 
             {/* Catatan admin */}
             {b.price_notes && (
-              <div className="bg-amber-50 rounded-xl p-3 border border-amber-100">
-                <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest mb-1">Catatan Admin</p>
+              <div className="bg-amber-50 rounded-xl px-3 py-2 border border-amber-100">
+                <p className="text-[9px] text-amber-600 font-black uppercase tracking-widest mb-0.5">Catatan</p>
                 <p className="text-xs text-amber-800">{b.price_notes}</p>
               </div>
             )}
-
           </div>
 
-          {/* Tombol */}
-          <div className="p-3 bg-slate-50/50 border-t border-slate-100">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => onEdit(b)}
-                className="col-span-2 bg-blue-600 text-white font-black py-2.5 rounded-xl text-sm hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                Detail &amp; Update
-              </button>
-
-              <button
-                type="button"
-                onClick={() => openWa()}
-                className="bg-slate-900 text-white font-black py-2.5 rounded-xl text-xs hover:bg-emerald-600 transition-colors shadow-sm flex items-center justify-center gap-2"
-              >
-                <MessageCircle size={16} /> WA
-              </button>
-
-              <button
-                type="button"
-                disabled={isPaid}
-                onClick={() => onQuickUpdate?.(b.order_id, { status: b.status, payment_status: 'paid' })}
-                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
-                  isPaid ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                }`}
-              >
-                <CheckCircle2 size={16} /> Lunaskan
-              </button>
-
-              <button
-                type="button"
-                disabled={!isPending}
-                onClick={() => onQuickUpdate?.(b.order_id, { status: 'active', payment_status: b.payment_status })}
-                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
-                  !isPending ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-                }`}
-              >
-                <PlayCircle size={16} /> Aktifkan
-              </button>
-
-              <button
-                type="button"
-                disabled={!isActive}
-                onClick={() => onQuickUpdate?.(b.order_id, { status: 'completed', payment_status: b.payment_status })}
-                className={`font-black py-2.5 rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 ${
-                  !isActive ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'
-                }`}
-              >
-                <Flag size={16} /> Selesaikan
-              </button>
-            </div>
+          {/* Tombol aksi */}
+          <div className="px-3 pb-3 grid grid-cols-4 gap-1.5">
+            <button
+              type="button"
+              onClick={() => onEdit(b)}
+              className="col-span-4 bg-blue-600 text-white font-black py-2 rounded-xl text-xs hover:bg-blue-700 transition-colors"
+            >
+              Detail &amp; Update
+            </button>
+            <button
+              type="button"
+              onClick={openWa}
+              className="col-span-1 bg-slate-900 text-white font-black py-2 rounded-xl text-xs hover:bg-emerald-600 transition-colors flex items-center justify-center"
+            >
+              <MessageCircle size={14} />
+            </button>
+            <button
+              type="button"
+              disabled={isPaid}
+              onClick={() => onQuickUpdate?.(b.order_id, { status: b.status, payment_status: 'paid' })}
+              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                isPaid ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              <CheckCircle2 size={14} />
+            </button>
+            <button
+              type="button"
+              disabled={!isPending}
+              onClick={() => onQuickUpdate?.(b.order_id, { status: 'active', payment_status: b.payment_status })}
+              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                !isPending ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+              }`}
+            >
+              <PlayCircle size={14} />
+            </button>
+            <button
+              type="button"
+              disabled={!isActive}
+              onClick={() => onQuickUpdate?.(b.order_id, { status: 'completed', payment_status: b.payment_status })}
+              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                !isActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'
+              }`}
+            >
+              <Flag size={14} />
+            </button>
           </div>
         </div>
       )}

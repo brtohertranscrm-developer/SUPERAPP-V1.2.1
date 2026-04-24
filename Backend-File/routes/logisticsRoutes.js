@@ -33,9 +33,19 @@ const VALID_STATUSES = ['scheduled', 'completed', 'cancelled'];
 const normalizeTaskType = (v) => String(v || '').trim().toLowerCase();
 const normalizeStatus = (v) => String(v || '').trim().toLowerCase();
 
-// SQLite compatibility: bookings kadang simpan tanggal saja (YYYY-MM-DD) tanpa jam.
-// Helper ini menyamakan jadi "YYYY-MM-DD HH:MM:SS" untuk dipakai di datetime().
-const dtExpr = (col) => `CASE WHEN instr(${col}, ' ') > 0 THEN ${col} ELSE ${col} || ' 00:00:00' END`;
+// SQLite compatibility: bookings bisa simpan tanggal dalam tiga format:
+//   1. "YYYY-MM-DD"                    → tambah " 00:00:00"
+//   2. "YYYY-MM-DD HH:MM:SS"           → pakai apa adanya
+//   3. "YYYY-MM-DDTHH:MM:SS.sssZ"      → ISO 8601; ambil 10 char tanggal + 8 char jam setelah T
+// Format (3) muncul ketika booking dibuat dari frontend yang kirim new Date().toISOString().
+const dtExpr = (col) =>
+  `CASE
+     WHEN instr(${col}, 'T') > 0
+       THEN substr(${col}, 1, 10) || ' ' || substr(${col}, 12, 8)
+     WHEN instr(${col}, ' ') > 0
+       THEN ${col}
+     ELSE ${col} || ' 00:00:00'
+   END`;
 
 const computeBookingTotals = (row) => {
   if (!row) return null;
@@ -542,6 +552,66 @@ router.delete('/tasks/:id', requirePermission('logistics_manage'), async (req, r
   } catch (err) {
     console.error('DELETE /admin/logistics/tasks/:id error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal menghapus tugas.' });
+  }
+});
+
+// ==========================================
+// GET /api/admin/logistics/crew-stats
+// Permission: logistics
+// Agregasi produktivitas per crew untuk tanggal/range tertentu.
+// Query: ?date=YYYY-MM-DD   (satu hari, default hari ini)
+//        ?from=...&to=...   (range bebas, menggantikan date jika keduanya ada)
+//        ?name=...          (filter satu crew saja — untuk personal stats)
+// ==========================================
+router.get('/crew-stats', requirePermission('logistics'), async (req, res) => {
+  try {
+    const todayStr = (() => {
+      const n = new Date();
+      const p = (x) => String(x).padStart(2, '0');
+      return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+    })();
+
+    const date = String(req.query.date || todayStr).trim();
+    const fromRaw = String(req.query.from || '').trim();
+    const toRaw = String(req.query.to || '').trim();
+
+    const from = fromRaw || `${date}T00:00`;
+    const to = toRaw || `${date}T23:59`;
+
+    const nameFilter = String(req.query.name || '').trim();
+
+    const where = [`assigned_to_name IS NOT NULL`, `assigned_to_name <> ''`, `scheduled_at >= ?`, `scheduled_at <= ?`];
+    const params = [from, to];
+
+    if (nameFilter) {
+      where.push(`assigned_to_name = ?`);
+      params.push(nameFilter);
+    }
+
+    const rows = await dbAll(
+      `
+      SELECT
+        assigned_to_name                                                          AS name,
+        COUNT(*)                                                                  AS total,
+        SUM(CASE WHEN task_type = 'delivery' THEN 1 ELSE 0 END)                  AS antar,
+        SUM(CASE WHEN task_type = 'return'   THEN 1 ELSE 0 END)                  AS ambil,
+        SUM(CASE WHEN status = 'completed'   THEN 1 ELSE 0 END)                  AS selesai,
+        SUM(CASE WHEN status = 'scheduled'   THEN 1 ELSE 0 END)                  AS terjadwal,
+        SUM(CASE WHEN status = 'cancelled'   THEN 1 ELSE 0 END)                  AS batal,
+        SUM(CASE WHEN task_type = 'delivery' AND status = 'completed' THEN 1 ELSE 0 END) AS antar_selesai,
+        SUM(CASE WHEN task_type = 'return'   AND status = 'completed' THEN 1 ELSE 0 END) AS ambil_selesai
+      FROM logistics_tasks
+      WHERE ${where.join(' AND ')}
+      GROUP BY assigned_to_name
+      ORDER BY total DESC, antar DESC, name ASC
+      `,
+      params
+    );
+
+    res.json({ success: true, data: rows, meta: { from, to } });
+  } catch (err) {
+    console.error('GET /admin/logistics/crew-stats error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil statistik crew.' });
   }
 });
 

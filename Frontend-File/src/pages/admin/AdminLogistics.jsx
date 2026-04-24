@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus, RefreshCw, MapPin, Clock, User, ClipboardCheck, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, MapPin, Clock, User, Phone, Bike, Plus, RefreshCw, Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
 import { AuthContext } from '../../context/AuthContext';
 import StatusBadge from '../../components/admin/logistics/StatusBadge';
@@ -7,6 +7,7 @@ import TeamTodaySection from '../../components/admin/logistics/TeamTodaySection'
 import PendingBookingsSection from '../../components/admin/logistics/PendingBookingsSection';
 import TaskDetailModal from '../../components/admin/logistics/TaskDetailModal';
 import TaskCreateModal from '../../components/admin/logistics/TaskCreateModal';
+import QuickAssignDropdown from '../../components/admin/logistics/QuickAssignDropdown';
 import {
   fmtDate,
   fmtDateTime,
@@ -46,6 +47,9 @@ export default function AdminLogistics() {
   const [teamData, setTeamData] = useState([]);
   const [teamCounts, setTeamCounts] = useState(null);
 
+  // All tasks for selected date (both tabs) used for admin workload counter
+  const [allTasksForCounts, setAllTasksForCounts] = useState([]);
+
   const [selected, setSelected] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -81,6 +85,36 @@ export default function AdminLogistics() {
       setIsLoading(false);
     }
   };
+
+  const fetchTasksForCounts = async () => {
+    if (showAllDates) { setAllTasksForCounts([]); return; }
+    try {
+      const qs = `&from=${encodeURIComponent(`${selectedDate}T00:00`)}&to=${encodeURIComponent(`${selectedDate}T23:59`)}`;
+      const [d, r] = await Promise.all([
+        apiFetch(`/api/admin/logistics/tasks?task_type=delivery${qs}`),
+        apiFetch(`/api/admin/logistics/tasks?task_type=return${qs}`),
+      ]);
+      setAllTasksForCounts([
+        ...(Array.isArray(d?.data) ? d.data.map((t) => ({ ...t, task_type: 'delivery' })) : []),
+        ...(Array.isArray(r?.data) ? r.data.map((t) => ({ ...t, task_type: 'return' })) : []),
+      ]);
+    } catch {
+      setAllTasksForCounts([]);
+    }
+  };
+
+  // Berapa kali tiap admin antar/ambil pada hari yang dipilih
+  const adminTaskCounts = useMemo(() => {
+    const counts = {};
+    for (const t of allTasksForCounts) {
+      const name = t.assigned_to_name;
+      if (!name) continue;
+      if (!counts[name]) counts[name] = { antar: 0, ambil: 0 };
+      if (t.task_type === 'delivery') counts[name].antar += 1;
+      else counts[name].ambil += 1;
+    }
+    return counts;
+  }, [allTasksForCounts]);
 
   const fetchPendingBookings = async () => {
     setPendingLoading(true);
@@ -120,7 +154,6 @@ export default function AdminLogistics() {
   }, [activeTab, selectedDate, showAllDates]);
 
   useEffect(() => {
-    // Booking cards selalu pakai filter tanggal aktif (lebih mudah untuk operasional).
     fetchPendingBookings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedDate]);
@@ -129,6 +162,11 @@ export default function AdminLogistics() {
     fetchTeam();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, teamLoc]);
+
+  useEffect(() => {
+    fetchTasksForCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, showAllDates]);
 
   const openDetail = async (task) => {
     setIsDetailOpen(true);
@@ -148,7 +186,7 @@ export default function AdminLogistics() {
     if (!window.confirm('Tandai tugas ini sebagai SELESAI?')) return;
     try {
       await apiFetch(`/api/admin/logistics/tasks/${taskId}/complete`, { method: 'PATCH' });
-      await fetchTasks();
+      await Promise.all([fetchTasks(), fetchTasksForCounts()]);
       if (selected?.id === taskId) {
         const detail = await apiFetch(`/api/admin/logistics/tasks/${taskId}`);
         setSelected(detail?.data || null);
@@ -156,6 +194,19 @@ export default function AdminLogistics() {
     } catch (err) {
       alert(err?.message || 'Gagal checklist.');
     }
+  };
+
+  // Ganti PIC langsung dari card tanpa buka modal edit
+  const handleQuickAssign = async (taskId, assignedName) => {
+    await apiFetch(`/api/admin/logistics/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assigned_to_name: assignedName || null }),
+    });
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, assigned_to_name: assignedName || null } : t))
+    );
+    // Update workload counter setelah re-assign
+    await fetchTasksForCounts();
   };
 
   const resetForm = () => setForm({
@@ -238,7 +289,7 @@ export default function AdminLogistics() {
     try {
       await apiFetch(`/api/admin/logistics/tasks/${taskId}`, { method: 'DELETE' });
       if (selected?.id === taskId) setIsDetailOpen(false);
-      await fetchTasks();
+      await Promise.all([fetchTasks(), fetchTasksForCounts()]);
     } catch (err) {
       alert(err?.message || 'Gagal menghapus.');
     }
@@ -272,8 +323,6 @@ export default function AdminLogistics() {
         });
       }
 
-      // Kalau user membuat jadwal di tanggal berbeda dari filter aktif,
-      // otomatis pindahkan filter ke tanggal jadwal agar item langsung terlihat.
       const ymd = form.scheduled_at ? String(form.scheduled_at).slice(0, 10) : '';
       if (ymd && /^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
         setShowAllDates(false);
@@ -284,8 +333,7 @@ export default function AdminLogistics() {
       setEditId(null);
       setPrefillBooking(null);
       resetForm();
-      await fetchTasks();
-      await fetchPendingBookings();
+      await Promise.all([fetchTasks(), fetchPendingBookings(), fetchTasksForCounts()]);
     } catch (err) {
       alert(err?.message || 'Gagal membuat jadwal.');
     } finally {
@@ -303,6 +351,10 @@ export default function AdminLogistics() {
       ...p,
       order_id: b?.order_id || '',
       scheduled_at: toDatetimeLocal(b?.suggested_at || ''),
+      motor_type: b?.item_name || '',
+      customer_name: b?.user_name || '',
+      customer_phone: b?.user_phone || '',
+      location_text: b?.delivery_address || '',
       assigned_to_name: '',
       notes: '',
     }));
@@ -421,7 +473,7 @@ export default function AdminLogistics() {
         </div>
         <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
           <div className="text-[10px] font-black uppercase tracking-widest text-emerald-700/70">Untuk Staf Lapangan</div>
-          <div className="mt-2 text-lg font-black text-emerald-900">Lebih mudah mulai dari menu “Tugas Hari Ini”</div>
+          <div className="mt-2 text-lg font-black text-emerald-900">Lebih mudah mulai dari menu "Tugas Hari Ini"</div>
           <p className="mt-2 text-sm font-medium text-emerald-900/75">
             Di sana tugas ditampilkan lebih ringkas dan langsung ada tombol hubungi customer serta checklist selesai.
           </p>
@@ -436,6 +488,7 @@ export default function AdminLogistics() {
         onRefresh={fetchTeam}
         isLoading={teamLoading}
         teamData={teamData}
+        adminTaskCounts={adminTaskCounts}
       />
 
       {/* Tabs */}
@@ -463,7 +516,7 @@ export default function AdminLogistics() {
         onSelectBooking={openCreateFromBooking}
       />
 
-      {/* List */}
+      {/* Daftar Jadwal */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
         {isLoading ? (
           <div className="flex h-56 flex-col items-center justify-center text-rose-500">
@@ -477,63 +530,17 @@ export default function AdminLogistics() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {tasks.map((t) => (
-              <div
+              <TaskCard
                 key={t.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openDetail(t)}
-                onKeyDown={(e) => { if (e.key === 'Enter') openDetail(t); }}
-                className="text-left bg-gray-50 border border-gray-100 rounded-3xl p-5 hover:bg-white hover:border-gray-200 transition shadow-sm cursor-pointer"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm text-gray-500 font-extrabold uppercase tracking-widest">Jenis Motor</div>
-                    <div className="text-lg font-black text-gray-900">{t.motor_type || '—'}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusBadge status={t.status} />
-                    {canManage && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openEdit(t, { preferDetail: false }); }}
-                          className="p-2 rounded-xl bg-white border border-gray-200 text-gray-600 hover:text-brand-primary hover:border-brand-primary"
-                          title="Edit"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                          className="p-2 rounded-xl bg-white border border-gray-200 text-gray-600 hover:text-rose-600 hover:border-rose-300"
-                          title="Hapus"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <User size={16} className="text-brand-primary" />
-                    <span className="font-bold">{t.customer_name || '—'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <MapPin size={16} className="text-brand-primary" />
-                    <span className="font-bold truncate" title={t.location_text || ''}>{t.location_text || '—'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <Clock size={16} className="text-brand-primary" />
-                    <span className="font-bold">{fmtDateTime(t.scheduled_at)}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-700">
-                    <ClipboardCheck size={16} className="text-brand-primary" />
-                    <span className="font-bold">{t.assigned_to_name || '—'}</span>
-                  </div>
-                </div>
-              </div>
+                task={t}
+                canManage={canManage}
+                teamOn={teamOn}
+                adminTaskCounts={adminTaskCounts}
+                onOpen={() => openDetail(t)}
+                onEdit={() => openEdit(t, { preferDetail: false })}
+                onDelete={() => handleDelete(t.id)}
+                onQuickAssign={handleQuickAssign}
+              />
             ))}
           </div>
         )}
@@ -565,6 +572,104 @@ export default function AdminLogistics() {
         prefillBooking={prefillBooking}
         createLoading={createLoading}
       />
+    </div>
+  );
+}
+
+// Card jadwal individual dengan info booking dan quick-assign PIC
+function TaskCard({ task: t, canManage, teamOn, adminTaskCounts, onOpen, onEdit, onDelete, onQuickAssign }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
+      className="text-left bg-gray-50 border border-gray-100 rounded-3xl p-5 hover:bg-white hover:border-gray-200 transition shadow-sm cursor-pointer"
+    >
+      {/* Header: motor + status + aksi */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Bike size={14} className="text-brand-primary shrink-0" />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Motor</span>
+          </div>
+          <div className="text-lg font-black text-gray-900 mt-0.5 truncate">{t.motor_type || '—'}</div>
+          {t.order_id && (
+            <div className="text-xs text-gray-400 font-bold mt-0.5 truncate">{t.order_id}</div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusBadge status={t.status} />
+          {canManage && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-600 hover:text-brand-primary hover:border-brand-primary"
+                title="Edit jadwal"
+              >
+                <Pencil size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="p-2 rounded-xl bg-white border border-gray-200 text-gray-600 hover:text-rose-600 hover:border-rose-300"
+                title="Hapus jadwal"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Info grid */}
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-sm">
+        <div className="flex items-center gap-2 text-gray-700">
+          <User size={14} className="text-brand-primary shrink-0" />
+          <span className="font-bold truncate" title={t.customer_name || ''}>{t.customer_name || '—'}</span>
+        </div>
+        {t.customer_phone ? (
+          <div
+            className="flex items-center gap-2 text-gray-700"
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <Phone size={14} className="text-brand-primary shrink-0" />
+            <a
+              href={`tel:${t.customer_phone}`}
+              className="font-bold truncate hover:text-brand-primary"
+              title={t.customer_phone}
+            >
+              {t.customer_phone}
+            </a>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2 text-gray-700">
+          <Clock size={14} className="text-brand-primary shrink-0" />
+          <span className="font-bold">{fmtDateTime(t.scheduled_at)}</span>
+        </div>
+        <div className="flex items-center gap-2 text-gray-700 sm:col-span-2">
+          <MapPin size={14} className="text-brand-primary shrink-0" />
+          <span className="font-bold truncate" title={t.location_text || ''}>{t.location_text || '—'}</span>
+        </div>
+      </div>
+
+      {/* PIC quick-assign — klik dropdown tidak buka detail modal */}
+      <div className="mt-4 pt-4 border-t border-gray-100">
+        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">PIC Pengantar</div>
+        {canManage ? (
+          <QuickAssignDropdown
+            taskId={t.id}
+            currentAssignee={t.assigned_to_name}
+            teamOn={teamOn}
+            adminTaskCounts={adminTaskCounts}
+            onAssign={onQuickAssign}
+          />
+        ) : (
+          <div className="text-sm font-bold text-gray-700">{t.assigned_to_name || '—'}</div>
+        )}
+      </div>
     </div>
   );
 }

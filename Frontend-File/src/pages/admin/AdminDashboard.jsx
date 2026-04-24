@@ -5,6 +5,7 @@ import StatsPanel from '../../components/admin/dashboard/StatsPanel';
 import TodayOpsPanel from '../../components/admin/dashboard/TodayOpsPanel';
 import QuickMenu from '../../components/admin/dashboard/QuickMenu';
 import RecentBookings from '../../components/admin/dashboard/RecentBookings';
+import CrewProductivityPanel from '../../components/admin/dashboard/CrewProductivityPanel';
 
 export default function AdminDashboard() {
   const [period, setPeriod] = useState('7d');
@@ -69,6 +70,7 @@ export default function AdminDashboard() {
 
       <StatsPanel stats={stats} formatRupiah={formatRupiah} />
       <TodayOpsPanel bookings={bookings} onRefresh={refetch} />
+      <CrewProductivityPanel />
       <QuickMenu />
       <RecentBookings bookings={recentBookings} />
     </div>

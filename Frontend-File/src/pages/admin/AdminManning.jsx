@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw, Loader2, Pencil, Trash2, Users, Calendar, MapPin } from 'lucide-react';
+import { Plus, RefreshCw, Loader2, Pencil, Trash2, Users, Calendar, MapPin, KeyRound, UserCheck, UserX } from 'lucide-react';
 import { apiFetch } from '../../utils/api';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -42,7 +42,10 @@ const StatusPill = ({ value }) => {
 
 const EmployeeModal = ({ initial, onClose, onSaved }) => {
   const isEdit = !!initial?.id;
+  const hasLogin = !!initial?.has_login;
   const [saving, setSaving] = useState(false);
+  const [removingLogin, setRemovingLogin] = useState(false);
+  const [createLogin, setCreateLogin] = useState(false);
   const [form, setForm] = useState({
     name: initial?.name || '',
     phone: initial?.phone || '',
@@ -50,6 +53,8 @@ const EmployeeModal = ({ initial, onClose, onSaved }) => {
     base_location: initial?.base_location || 'Yogyakarta',
     role_tag: initial?.role_tag || 'delivery',
     is_active: initial?.is_active === 0 ? 0 : 1,
+    login_email: '',
+    login_password: '',
   });
 
   const save = async (e) => {
@@ -66,6 +71,12 @@ const EmployeeModal = ({ initial, onClose, onSaved }) => {
       };
 
       if (!payload.name) throw new Error('Nama wajib diisi.');
+
+      if (createLogin && !hasLogin) {
+        if (!form.login_email?.trim()) throw new Error('Email login wajib diisi.');
+        if (form.login_password.length < 6) throw new Error('Password minimal 6 karakter.');
+        payload.login = { email: form.login_email.trim(), password: form.login_password };
+      }
 
       if (isEdit) {
         await apiFetch(`/api/admin/manning/employees/${initial.id}`, {
@@ -88,15 +99,29 @@ const EmployeeModal = ({ initial, onClose, onSaved }) => {
     }
   };
 
+  const handleRemoveLogin = async () => {
+    if (!window.confirm(`Hapus akun login ${initial?.name}? Staff tidak bisa login lagi.`)) return;
+    setRemovingLogin(true);
+    try {
+      await apiFetch(`/api/admin/manning/employees/${initial.id}/login`, { method: 'DELETE' });
+      onSaved?.();
+      onClose?.();
+    } catch (err) {
+      alert(err?.message || 'Gagal menghapus akun login.');
+    } finally {
+      setRemovingLogin(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-6">
-      <div className="bg-white w-full md:max-w-xl rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden">
-        <div className="p-5 border-b flex items-center justify-between">
+      <div className="bg-white w-full md:max-w-xl rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="p-5 border-b flex items-center justify-between shrink-0">
           <div className="font-black text-lg">{isEdit ? 'Edit Karyawan' : 'Tambah Karyawan'}</div>
           <button onClick={onClose} className="text-slate-500 hover:text-rose-600 font-black text-xl">×</button>
         </div>
 
-        <form onSubmit={save} className="p-5 space-y-4">
+        <form onSubmit={save} className="p-5 space-y-4 overflow-y-auto">
           <div>
             <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Nama</label>
             <input
@@ -164,6 +189,73 @@ const EmployeeModal = ({ initial, onClose, onSaved }) => {
             />
             Aktif
           </label>
+
+          {/* Login Section */}
+          <div className="border-t pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <KeyRound size={16} className="text-slate-500" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Akun Login Staff</span>
+            </div>
+
+            {hasLogin ? (
+              <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-emerald-700">
+                  <UserCheck size={18} />
+                  <div>
+                    <div className="font-black text-sm">Akun aktif</div>
+                    <div className="text-[11px] font-medium text-emerald-600">{initial?.login_email || '—'}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRemoveLogin}
+                  disabled={removingLogin}
+                  className="text-[11px] font-black text-rose-600 hover:underline inline-flex items-center gap-1"
+                >
+                  {removingLogin ? <Loader2 className="animate-spin" size={12} /> : <UserX size={12} />}
+                  Hapus Login
+                </button>
+              </div>
+            ) : (
+              <div>
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={createLogin}
+                    onChange={(e) => setCreateLogin(e.target.checked)}
+                  />
+                  Buat akun login untuk staff ini
+                </label>
+                {createLogin && (
+                  <div className="space-y-3 rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      Role: subadmin · Permission: logistics
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Email Login</label>
+                      <input
+                        type="email"
+                        value={form.login_email}
+                        onChange={(e) => setForm((f) => ({ ...f, login_email: e.target.value }))}
+                        className="w-full border rounded-2xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-brand-primary bg-white"
+                        placeholder="staff@brothertrans.id"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={form.login_password}
+                        onChange={(e) => setForm((f) => ({ ...f, login_password: e.target.value }))}
+                        className="w-full border rounded-2xl px-4 py-3 font-bold outline-none focus:ring-2 focus:ring-brand-primary bg-white"
+                        placeholder="Min. 6 karakter"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="pt-2 flex items-center justify-end gap-2">
             <button
@@ -369,7 +461,18 @@ export default function AdminManning() {
                   <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
                     <td className="p-4">
                       <div className="font-black text-slate-900">{r.name}</div>
-                      <div className="text-[11px] text-slate-500 font-bold">{r.role_tag || 'delivery'}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-slate-500 font-bold">{r.role_tag || 'delivery'}</div>
+                        {r.has_login ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            <UserCheck size={9} /> Login
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-50 text-slate-400 border border-slate-100">
+                            No Login
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4">
                       <span className="px-3 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-700">

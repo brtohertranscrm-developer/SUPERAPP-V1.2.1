@@ -11,6 +11,7 @@ export default function TeamTodaySection({
   onRefresh,
   isLoading,
   teamData,
+  adminTaskCounts,
 }) {
   return (
     <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
@@ -60,26 +61,45 @@ export default function TeamTodaySection({
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {(teamData || []).map((m) => (
-              <div key={m.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-black text-gray-900 truncate" title={m.name}>{m.name}</div>
-                  <div className="text-xs text-gray-500 font-bold mt-1 truncate" title={`${m.base_location || ''} • ${m.role_tag || ''}`}>
-                    {m.base_location || '—'} • {m.role_tag || 'delivery'}
-                  </div>
-                  {m.note ? (
-                    <div className="text-xs text-gray-500 font-medium mt-2 line-clamp-2">
-                      Catatan: {m.note}
+            {(teamData || []).map((m) => {
+              const counts = adminTaskCounts?.[m.name];
+              const hasWork = counts && (counts.antar > 0 || counts.ambil > 0);
+              return (
+                <div key={m.id} className="bg-gray-50 border border-gray-100 rounded-3xl p-4 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-black text-gray-900 truncate" title={m.name}>{m.name}</div>
+                    <div className="text-xs text-gray-500 font-bold mt-1 truncate" title={`${m.base_location || ''} • ${m.role_tag || ''}`}>
+                      {m.base_location || '—'} • {m.role_tag || 'delivery'}
                     </div>
-                  ) : null}
+                    {hasWork ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {counts.antar > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-black tracking-wide">
+                            {counts.antar}× antar
+                          </span>
+                        )}
+                        {counts.ambil > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-black tracking-wide">
+                            {counts.ambil}× ambil
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-[10px] font-bold text-gray-400">Belum ada tugas</div>
+                    )}
+                    {m.note ? (
+                      <div className="text-xs text-gray-500 font-medium mt-1.5 line-clamp-2">
+                        Catatan: {m.note}
+                      </div>
+                    ) : null}
+                  </div>
+                  <TeamStatusBadge status={m.status} />
                 </div>
-                <TeamStatusBadge status={m.status} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
     </div>
   );
 }
-
