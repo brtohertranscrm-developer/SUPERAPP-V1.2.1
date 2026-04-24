@@ -171,12 +171,6 @@ router.get('/pending-bookings', requirePermission('logistics'), async (req, res)
 
     const whenCol = taskType === 'delivery' ? 'b.start_date' : 'b.end_date';
 
-    // Delivery only jika delivery_type != self (butuh pengantaran)
-    // Return ditampilkan untuk semua motor booking yang paid (operasional pengembalian).
-    const deliveryFilter = taskType === 'delivery'
-      ? `AND COALESCE(b.delivery_type, '') <> '' AND lower(b.delivery_type) <> 'self'`
-      : '';
-
     const rows = await dbAll(
       `
       SELECT
@@ -202,7 +196,6 @@ router.get('/pending-bookings', requirePermission('logistics'), async (req, res)
       WHERE lower(COALESCE(b.item_type, '')) = 'motor'
         AND lower(COALESCE(b.payment_status, '')) = 'paid'
         AND lower(COALESCE(b.status, '')) <> 'cancelled'
-        ${deliveryFilter}
         AND datetime(${dtExpr(whenCol)}) >= datetime(?)
         AND datetime(${dtExpr(whenCol)}) <= datetime(?)
         AND t.id IS NULL
