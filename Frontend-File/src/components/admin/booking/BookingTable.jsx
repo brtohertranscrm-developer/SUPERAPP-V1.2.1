@@ -1,6 +1,7 @@
 import React, { useState, useMemo, memo, useCallback } from 'react';
-import { Search, Calendar, ChevronDown, ChevronUp, AlertCircle, MessageCircle, CheckCircle2, PlayCircle, Flag } from 'lucide-react';
+import { Search, Calendar, ChevronDown, ChevronUp, AlertCircle, MessageCircle, CheckCircle2, PlayCircle, Flag, CornerDownLeft, X } from 'lucide-react';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
+import { apiFetch } from '../../../utils/api';
 
 const fmtRp   = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d) => d
@@ -32,9 +33,113 @@ const getFinancials = (b) => {
 };
 
 // ==========================================
+// MODAL EARLY RETURN
+// ==========================================
+const EarlyReturnModal = ({ booking, onClose, onSuccess }) => {
+  const now = new Date();
+  const localNow = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  const [returnAt, setReturnAt]   = useState(localNow);
+  const [bufferMin, setBufMin]    = useState(60);
+  const [notes, setNotes]         = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await apiFetch(`/api/admin/bookings/${booking.order_id}/early-return`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          actual_return_at: new Date(returnAt).toISOString(),
+          buffer_minutes: bufferMin,
+          notes,
+        }),
+      });
+      if (!res.success) throw new Error(res.error || 'Gagal');
+      onSuccess?.();
+    } catch (e) {
+      setError(e.message || 'Terjadi kesalahan');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <div>
+            <p className="font-black text-slate-900 text-sm">Kembali Lebih Awal</p>
+            <p className="text-[11px] text-slate-400 font-mono">{booking.order_id} · {booking.item_name}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-slate-100 transition-colors">
+            <X size={16} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="px-4 py-4 space-y-3">
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Waktu Kembali</label>
+            <input
+              type="datetime-local"
+              value={returnAt}
+              onChange={e => setReturnAt(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-slate-50"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">
+              Buffer Bersih-bersih — <span className="text-rose-500">{bufferMin} menit</span>
+            </label>
+            <input
+              type="range" min={0} max={180} step={15}
+              value={bufferMin}
+              onChange={e => setBufMin(Number(e.target.value))}
+              className="w-full accent-rose-500"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+              <span>0</span><span>60</span><span>120</span><span>180m</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Catatan (opsional)</label>
+            <input
+              type="text"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="mis. motor dikembalikan dalam kondisi baik"
+              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 bg-slate-50"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
+        </div>
+
+        <div className="px-4 pb-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+            Batal
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-black hover:bg-rose-700 transition-colors disabled:opacity-50"
+          >
+            {saving ? 'Menyimpan...' : 'Catat Kembali'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // KARTU BOOKING — di-memo agar tidak re-render
 // ==========================================
-const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate }) => {
+const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate, onEarlyReturn }) => {
   const { total, paid, outstanding } = getFinancials(b);
   const hasOutstanding = outstanding > 0;
   const statusCfg      = STATUS_BOOKING[b.status] || STATUS_BOOKING.pending;
@@ -177,51 +282,68 @@ const BookingCard = memo(({ b, isExpanded, onToggle, onEdit, onQuickUpdate }) =>
           </div>
 
           {/* Tombol aksi */}
-          <div className="px-3 pb-3 grid grid-cols-4 gap-1.5">
+          <div className="px-3 pb-3 space-y-1.5">
             <button
               type="button"
               onClick={() => onEdit(b)}
-              className="col-span-4 bg-blue-600 text-white font-black py-2 rounded-xl text-xs hover:bg-blue-700 transition-colors"
+              className="w-full bg-blue-600 text-white font-black py-2 rounded-xl text-xs hover:bg-blue-700 transition-colors"
             >
               Detail &amp; Update
             </button>
-            <button
-              type="button"
-              onClick={openWa}
-              className="col-span-1 bg-slate-900 text-white font-black py-2 rounded-xl text-xs hover:bg-emerald-600 transition-colors flex items-center justify-center"
-            >
-              <MessageCircle size={14} />
-            </button>
-            <button
-              type="button"
-              disabled={isPaid}
-              onClick={() => onQuickUpdate?.(b.order_id, { status: b.status, payment_status: 'paid' })}
-              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
-                isPaid ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'
-              }`}
-            >
-              <CheckCircle2 size={14} />
-            </button>
-            <button
-              type="button"
-              disabled={!isPending}
-              onClick={() => onQuickUpdate?.(b.order_id, { status: 'active', payment_status: b.payment_status })}
-              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
-                !isPending ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-              }`}
-            >
-              <PlayCircle size={14} />
-            </button>
-            <button
-              type="button"
-              disabled={!isActive}
-              onClick={() => onQuickUpdate?.(b.order_id, { status: 'completed', payment_status: b.payment_status })}
-              className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
-                !isActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'
-              }`}
-            >
-              <Flag size={14} />
-            </button>
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={openWa}
+                className="col-span-1 bg-slate-900 text-white font-black py-2 rounded-xl text-xs hover:bg-emerald-600 transition-colors flex items-center justify-center"
+                title="WhatsApp"
+              >
+                <MessageCircle size={14} />
+              </button>
+              <button
+                type="button"
+                disabled={isPaid}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: b.status, payment_status: 'paid' })}
+                className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                  isPaid ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                }`}
+                title="Tandai Lunas"
+              >
+                <CheckCircle2 size={14} />
+              </button>
+              <button
+                type="button"
+                disabled={!isPending}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: 'active', payment_status: b.payment_status })}
+                className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                  !isPending ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                }`}
+                title="Aktifkan"
+              >
+                <PlayCircle size={14} />
+              </button>
+              <button
+                type="button"
+                disabled={!isActive}
+                onClick={() => onQuickUpdate?.(b.order_id, { status: 'completed', payment_status: b.payment_status })}
+                className={`col-span-1 font-black py-2 rounded-xl text-[10px] transition-colors flex items-center justify-center ${
+                  !isActive ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-800 text-white hover:bg-slate-900'
+                }`}
+                title="Selesai (on-time)"
+              >
+                <Flag size={14} />
+              </button>
+            </div>
+            {/* Tombol kembali lebih awal — hanya untuk motor yang sedang aktif */}
+            {isActive && b.item_type === 'motor' && (
+              <button
+                type="button"
+                onClick={() => onEarlyReturn?.(b)}
+                className="w-full bg-amber-50 border border-amber-200 text-amber-700 font-black py-2 rounded-xl text-xs hover:bg-amber-100 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <CornerDownLeft size={13} />
+                Kembali Lebih Awal
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -233,11 +355,12 @@ BookingCard.displayName = 'BookingCard';
 // ==========================================
 // KOMPONEN UTAMA
 // ==========================================
-const BookingTable = ({ data, onEdit, onQuickUpdate }) => {
+const BookingTable = ({ data, onEdit, onQuickUpdate, onRefresh }) => {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
   const [searchTerm,    setSearchTerm]    = useState('');
   const [filterDate,    setFilterDate]    = useState('');
   const [filterPayment, setFilterPayment] = useState('all');
+  const [earlyReturnTarget, setEarlyReturnTarget] = useState(null);
 
   // Debounce search
   const debouncedSearch = useDebouncedValue(searchTerm, 300);
@@ -392,9 +515,21 @@ const BookingTable = ({ data, onEdit, onQuickUpdate }) => {
               onToggle={() => toggleExpand(b.order_id)}
               onEdit={handleEdit}
               onQuickUpdate={onQuickUpdate}
+              onEarlyReturn={setEarlyReturnTarget}
             />
           ))}
         </div>
+      )}
+
+      {earlyReturnTarget && (
+        <EarlyReturnModal
+          booking={earlyReturnTarget}
+          onClose={() => setEarlyReturnTarget(null)}
+          onSuccess={() => {
+            setEarlyReturnTarget(null);
+            onRefresh?.();
+          }}
+        />
       )}
     </div>
   );

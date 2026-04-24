@@ -88,8 +88,10 @@ if (process.env.NODE_ENV === 'production') {
 // ═══════════════════════════════════════════════════════════════════════════════
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  'https://brotherstrans.id',
+  'https://beta.brotherstrans.id',
+  'http://localhost:3000',
   'http://localhost:5173',
-  'http://localhost:4173',
   'http://127.0.0.1:5173',
 ].filter(Boolean);
 

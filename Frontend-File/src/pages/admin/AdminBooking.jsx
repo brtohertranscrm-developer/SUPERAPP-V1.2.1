@@ -5,7 +5,7 @@ import BookingModal from '../../components/admin/booking/BookingModal';
 
 const AdminBooking = () => {
   // 1. Tambahkan updateBookingPricing di sini
-  const { bookings, loading, updateBookingStatus, updateBookingPricing } = useBooking();
+  const { bookings, loading, updateBookingStatus, updateBookingPricing, fetchBookings } = useBooking();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
@@ -27,10 +27,11 @@ const AdminBooking = () => {
       {loading ? (
         <p>Loading data...</p>
       ) : (
-        <BookingTable 
-          data={bookings} 
-          onEdit={handleOpenEdit} 
+        <BookingTable
+          data={bookings}
+          onEdit={handleOpenEdit}
           onQuickUpdate={updateBookingStatus}
+          onRefresh={fetchBookings}
         />
       )}
 

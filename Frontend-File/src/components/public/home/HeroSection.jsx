@@ -57,7 +57,7 @@ const HeroSection = () => {
         <form onSubmit={handleSearch} className="bg-white p-4 sm:p-5 rounded-3xl shadow-2xl max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-6 gap-4 items-end relative z-20">
           <div className="md:col-span-1 text-left">
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest ml-1">
-              Kota Tujuan
+              Cabang Brother Trans
             </label>
             <div className="flex items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 focus-within:ring-2 focus-within:ring-rose-500 focus-within:border-rose-500">
               <MapPin size={18} className="text-rose-500 shrink-0" />

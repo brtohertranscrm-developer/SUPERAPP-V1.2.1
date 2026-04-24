@@ -11,7 +11,7 @@ const CatalogFilter = ({
       <div ref={searchRef} className="bg-white p-6 sm:p-8 rounded-[3rem] shadow-xl shadow-slate-200/60 border border-slate-100 mb-12 relative z-20 -mt-20">
         <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">Kota Tujuan</label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 block ml-1">Cabang Brother Trans</label>
             <select
               value={searchParams.location}
               onChange={(e) => setSearchParams({ ...searchParams, location: e.target.value })}

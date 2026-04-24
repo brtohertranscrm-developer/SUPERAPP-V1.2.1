@@ -1,4 +1,4 @@
-const { notifyNewBooking, notifyExtendBooking, notifyKycPending, notifyGmapsReview } = require('../utils/telegram');
+const { notifyNewBooking, notifyExtendBooking, notifyKycPending, notifyGmapsReview, notifyPaymentProofUploaded } = require('../utils/telegram');
 const { calculateMotorRentalBreakdown } = require('../utils/motorRentalPricing');
 const { quoteDelivery } = require('../utils/deliveryPricing');
 const multer = require('multer');
@@ -402,11 +402,23 @@ router.post('/users/payments/reconciliations', (req, res) => {
         [orderId, bank, amount, date, proofUrl, notes || null]
       );
 
+      // Notifikasi ke admin via Telegram (best-effort, tidak block response)
+      try {
+        const bookingRow = await dbGet(`SELECT item_name FROM bookings WHERE order_id = ? LIMIT 1`, [orderId]);
+        const userRow    = await dbGet(`SELECT name, phone FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
+        notifyPaymentProofUploaded(
+          { order_id: orderId, bank_name: bank, transfer_amount: amount, transfer_date: date },
+          bookingRow,
+          userRow,
+        );
+      } catch (_) { /* silent — jangan gagalkan response karena notif gagal */ }
+
       res.status(201).json({
         success: true,
         message: 'Bukti transfer berhasil diunggah. Tim admin akan memverifikasi secepatnya.',
         id: result.lastID,
         proof_url: proofUrl,
+        recon_status: 'pending',
       });
     } catch (e) {
       console.error('POST /users/payments/reconciliations error:', e.message);
@@ -766,18 +778,24 @@ router.get('/bookings/:orderId', async (req, res) => {
     const orderId = req.params.orderId;
     if (!orderId) return res.status(400).json({ success: false, error: 'Order ID wajib diisi.' });
 
-	    const row = await dbGet(
-	      `SELECT order_id, user_id, item_type, item_name, location, start_date, end_date,
-	              delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng, delivery_distance_km, delivery_method,
-	              trip_scope, trip_destination,
-	              base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-	              paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
-	              unit_id, plate_number,
-	              created_at
-	       FROM bookings
-       WHERE order_id = ? AND user_id = ?
+    const row = await dbGet(
+      `SELECT b.order_id, b.user_id, b.item_type, b.item_name, b.location, b.start_date, b.end_date,
+              b.delivery_type, b.delivery_station_id, b.delivery_address, b.delivery_lat, b.delivery_lng, b.delivery_distance_km, b.delivery_method,
+              b.trip_scope, b.trip_destination,
+              b.base_price, b.discount_amount, b.promo_code, b.service_fee, b.extend_fee, b.addon_fee, b.delivery_fee,
+              b.paid_amount, b.total_price, b.status, b.payment_status, b.payment_method, b.duration_hours, b.price_notes,
+              b.unit_id, b.plate_number, b.created_at,
+              r.status AS recon_status, r.bank_name AS recon_bank, r.transfer_date AS recon_transfer_date
+       FROM bookings b
+       LEFT JOIN (
+         SELECT order_id, status, bank_name, transfer_date
+         FROM payment_reconciliations
+         WHERE order_id = ?
+         ORDER BY created_at DESC LIMIT 1
+       ) r ON r.order_id = b.order_id
+       WHERE b.order_id = ? AND b.user_id = ?
        LIMIT 1`,
-      [orderId, req.user.id]
+      [orderId, orderId, req.user.id]
     );
 
     if (!row) {
@@ -1008,25 +1026,15 @@ router.post('/claim-tc-miles', async (req, res) => {
 // ==========================================
 // GMAPS REVIEW
 // ==========================================
-const reviewStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = 'uploads/reviews/';
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, 'review-' + crypto.randomBytes(12).toString('hex') + ext);
-  },
-});
+const ALLOWED_REVIEW_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 const uploadReview = multer({
-  storage: reviewStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const extOk  = ['.jpg','.jpeg','.png','.webp'].includes(path.extname(file.originalname).toLowerCase());
-    const mimeOk = ['image/jpeg','image/png','image/webp'].includes(file.mimetype);
-    mimeOk && extOk ? cb(null, true) : cb(new Error('Hanya JPG/PNG/WebP yang diizinkan.'));
+    ALLOWED_REVIEW_TYPES.includes(file.mimetype)
+      ? cb(null, true)
+      : cb(new Error('Hanya JPG/PNG/WebP yang diizinkan.'));
   },
 });
 
@@ -1073,7 +1081,15 @@ router.post('/reviews/gmaps', function(req, res) {
       }
 
       var order_id = (req.body || {}).order_id || null;
-      var screenshotUrl = req.protocol + '://' + req.get('host') + '/uploads/reviews/' + req.file.filename;
+      const ext = mimeToExt(req.file.mimetype) || '.jpg';
+      const filename = 'review-' + crypto.randomBytes(12).toString('hex') + ext;
+      const stored = await uploadBufferToStorage({
+        buffer:   req.file.buffer,
+        filename,
+        folder:   'reviews',
+        localDir: path.join(__dirname, '..', 'uploads', 'reviews'),
+      });
+      var screenshotUrl = stored.url;
 
       var result = await dbRun(
         'INSERT INTO gmaps_reviews (user_id, order_id, screenshot_url) VALUES (?, ?, ?)',

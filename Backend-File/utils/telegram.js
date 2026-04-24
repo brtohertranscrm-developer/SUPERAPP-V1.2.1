@@ -250,11 +250,36 @@ const notifyGmapsReview = function(review, user) {
   });
 };
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. BUKTI TRANSFER DIUNGGAH (user upload proof)
+// ═══════════════════════════════════════════════════════════════════════════════
+const notifyPaymentProofUploaded = (recon, booking, user) => notify({
+  chat_id:    CHAT_ID,
+  parse_mode: 'MarkdownV2',
+  disable_web_page_preview: true,
+  text: [
+    `💳 *BUKTI TRANSFER MASUK*`,
+    ``,
+    `🔖 Order: \`${esc(recon?.order_id)}\``,
+    `👤 Pelanggan: ${esc(user?.name || '\\-')}`,
+    `📱 WA: ${esc(user?.phone || '\\-')}`,
+    `🛵 Item: ${esc(booking?.item_name || '\\-')}`,
+    ``,
+    `🏦 Bank: ${esc(recon?.bank_name)}`,
+    `💰 Nominal: *${esc(fmtRp(recon?.transfer_amount))}*`,
+    `📅 Tgl Transfer: ${esc(recon?.transfer_date)}`,
+    ``,
+    `⏰ ${esc(fmtTime())}`,
+    `👉 [Verifikasi di Finance](${ADMIN_URL}/finance)`,
+  ].join('\n'),
+});
+
 module.exports = {
   notifyNewBooking,
   notifyExtendBooking,
   notifyKycPending,
   notifyPaymentConfirmed,
+  notifyPaymentProofUploaded,
   testConnection,
   isEnabled,
   notifyGmapsReview,

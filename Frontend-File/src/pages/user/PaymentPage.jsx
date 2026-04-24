@@ -19,18 +19,23 @@ export default function PaymentPage() {
   const [transferBank, setTransferBank] = useState('BCA');
   const [transferDate, setTransferDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [transferAmount, setTransferAmount] = useState('');
+  // recon_status dari backend: 'pending' | 'matched' | 'rejected' | null
+  const [reconStatus, setReconStatus] = useState(null);
 
   useEffect(() => {
     if (orderData?.total_price != null) {
       setTransferAmount(String(Number(orderData.total_price || 0)));
     }
-  }, [orderData?.total_price]);
+    if (orderData?.recon_status) {
+      setReconStatus(orderData.recon_status);
+    }
+  }, [orderData?.total_price, orderData?.recon_status]);
 
   const handleUploadProof = async () => {
     setUploadMsg('');
     setUploadErr('');
 
-    const input = document.getElementById('locker-proof-file');
+    const input = document.getElementById('proof-file');
     const file = input?.files?.[0];
     if (!file) {
       setUploadErr('Silakan pilih file bukti transfer.');
@@ -61,6 +66,7 @@ export default function PaymentPage() {
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`);
       setUploadMsg(data.message || 'Bukti berhasil diunggah.');
+      setReconStatus('pending');
       input.value = '';
     } catch (e) {
       setUploadErr(e.message || 'Gagal mengunggah bukti.');
@@ -144,69 +150,101 @@ export default function PaymentPage() {
                     <div className="text-sm font-black text-brand-dark">Upload Bukti Transfer</div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bank Pengirim</div>
-                      <select
-                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
-                        value={transferBank}
-                        onChange={(e) => setTransferBank(e.target.value)}
-                      >
-                        <option value="BCA">BCA</option>
-                        <option value="Mandiri">Mandiri</option>
-                      </select>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tanggal Transfer</div>
-                      <input
-                        type="date"
-                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
-                        value={transferDate}
-                        onChange={(e) => setTransferDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nominal</div>
-                      <input
-                        type="number"
-                        min="0"
-                        className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
-                        value={transferAmount}
-                        onChange={(e) => setTransferAmount(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="mt-3">
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">File Bukti (JPG/PNG/WebP/PDF)</div>
-                    <div className="bg-white border border-gray-200 rounded-xl px-3 py-2">
-                      <input
-                        id="locker-proof-file"
-                        type="file"
-                        accept=".jpg,.jpeg,.png,.webp,.pdf"
-                        className="block w-full text-sm font-bold text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-dark file:px-3 file:py-2 file:text-white hover:file:bg-slate-800"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleUploadProof}
-                    disabled={isUploading || !orderData?.order_id}
-                    className="mt-4 w-full py-3.5 rounded-2xl bg-brand-primary text-white font-black hover:bg-brand-secondary transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isUploading ? <><Loader2 size={16} className="animate-spin" /> Mengunggah...</> : 'Upload Bukti Transfer'}
-                  </button>
-
-                  {uploadMsg && (
-                    <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-emerald-800 text-xs font-black">
-                      {uploadMsg}
+                  {/* Status banner jika sudah ada rekonsiliasi */}
+                  {reconStatus === 'pending' && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm font-bold flex items-start gap-3">
+                      <Loader2 size={18} className="animate-spin text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-black">Bukti sedang diverifikasi</div>
+                        <div className="text-xs font-medium mt-0.5 text-amber-600">Tim admin akan mengkonfirmasi pembayaranmu secepatnya. Tidak perlu upload ulang.</div>
+                      </div>
                     </div>
                   )}
-                  {uploadErr && (
-                    <div className="mt-3 bg-rose-50 border border-rose-200 rounded-2xl p-3 text-rose-800 text-xs font-black">
-                      {uploadErr}
+
+                  {reconStatus === 'matched' && (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-800 text-sm font-bold flex items-center gap-3">
+                      <span className="text-xl">✅</span>
+                      <div>
+                        <div className="font-black">Pembayaran terverifikasi</div>
+                        <div className="text-xs font-medium mt-0.5 text-emerald-600">Transfer sudah dikonfirmasi oleh admin.</div>
+                      </div>
                     </div>
+                  )}
+
+                  {reconStatus === 'rejected' && (
+                    <div className="mb-3 bg-rose-50 border border-rose-200 rounded-2xl p-3 text-rose-700 text-xs font-bold">
+                      ⚠️ Bukti sebelumnya ditolak admin. Silakan upload ulang dengan bukti yang benar.
+                    </div>
+                  )}
+
+                  {/* Form upload — tampil jika belum pending/matched */}
+                  {reconStatus !== 'pending' && reconStatus !== 'matched' && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Bank Pengirim</div>
+                          <select
+                            className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                            value={transferBank}
+                            onChange={(e) => setTransferBank(e.target.value)}
+                          >
+                            <option value="BCA">BCA</option>
+                            <option value="Mandiri">Mandiri</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tanggal Transfer</div>
+                          <input
+                            type="date"
+                            className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                            value={transferDate}
+                            onChange={(e) => setTransferDate(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Nominal</div>
+                          <input
+                            type="number"
+                            min="0"
+                            className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 font-bold text-gray-800 outline-none"
+                            value={transferAmount}
+                            onChange={(e) => setTransferAmount(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">File Bukti (JPG/PNG/WebP/PDF)</div>
+                        <div className="bg-white border border-gray-200 rounded-xl px-3 py-2">
+                          <input
+                            id="proof-file"
+                            type="file"
+                            accept=".jpg,.jpeg,.png,.webp,.pdf"
+                            className="block w-full text-sm font-bold text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-dark file:px-3 file:py-2 file:text-white hover:file:bg-slate-800"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleUploadProof}
+                        disabled={isUploading || !orderData?.order_id}
+                        className="mt-4 w-full py-3.5 rounded-2xl bg-brand-primary text-white font-black hover:bg-brand-secondary transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {isUploading ? <><Loader2 size={16} className="animate-spin" /> Mengunggah...</> : 'Upload Bukti Transfer'}
+                      </button>
+
+                      {uploadMsg && (
+                        <div className="mt-3 bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-emerald-800 text-xs font-black">
+                          {uploadMsg}
+                        </div>
+                      )}
+                      {uploadErr && (
+                        <div className="mt-3 bg-rose-50 border border-rose-200 rounded-2xl p-3 text-rose-800 text-xs font-black">
+                          {uploadErr}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
