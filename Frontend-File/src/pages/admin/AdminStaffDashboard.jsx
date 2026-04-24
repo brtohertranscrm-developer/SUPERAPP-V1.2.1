@@ -1,16 +1,13 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   Truck,
-  RotateCcw,
   CheckCircle2,
-  Clock3,
-  Users,
   Phone,
   MapPin,
   RefreshCw,
   Loader2,
   Search,
-  Star,
+  Calendar,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
@@ -57,17 +54,6 @@ const fmtDateTime = (value) => {
   });
 };
 
-const TeamStatusBadge = ({ status }) => {
-  const s = String(status || 'on').toLowerCase();
-  const palette =
-    s === 'on' ? 'bg-emerald-100 text-emerald-700'
-      : s === 'off' ? 'bg-slate-100 text-slate-700'
-        : s === 'leave' ? 'bg-amber-100 text-amber-700'
-          : 'bg-rose-100 text-rose-700';
-  const label = s === 'on' ? 'ON' : s === 'off' ? 'LIBUR' : s === 'leave' ? 'CUTI' : 'SAKIT';
-  return <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-widest ${palette}`}>{label}</span>;
-};
-
 const TaskStatusBadge = ({ status }) => {
   const s = String(status || 'scheduled').toLowerCase();
   const palette =
@@ -77,47 +63,6 @@ const TaskStatusBadge = ({ status }) => {
   const label = s === 'completed' ? 'SELESAI' : s === 'cancelled' ? 'BATAL' : 'TERJADWAL';
   return <span className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest ${palette}`}>{label}</span>;
 };
-
-function StatCard({ icon, label, value, tone = 'slate' }) {
-  const tones = {
-    slate: 'bg-slate-900 text-white',
-    amber: 'bg-amber-500 text-white',
-    emerald: 'bg-emerald-500 text-white',
-    rose: 'bg-rose-500 text-white',
-    blue: 'bg-blue-500 text-white',
-    violet: 'bg-violet-500 text-white',
-  };
-  return (
-    <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</div>
-          <div className="mt-2 text-3xl font-black text-slate-900">{value}</div>
-        </div>
-        <div className={`rounded-2xl p-3 ${tones[tone] || tones.slate}`}>
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Ringkasan personal stat kecil
-function MiniStat({ label, value, color = 'slate' }) {
-  const colors = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-100',
-    violet: 'bg-violet-50 text-violet-700 border-violet-100',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    slate: 'bg-slate-50 text-slate-700 border-slate-100',
-  };
-  return (
-    <div className={`rounded-2xl border px-4 py-3 ${colors[color]}`}>
-      <div className="text-[10px] font-black uppercase tracking-widest opacity-70">{label}</div>
-      <div className="mt-1 text-2xl font-black">{value}</div>
-    </div>
-  );
-}
 
 export default function AdminStaffDashboard() {
   const { user } = useContext(AuthContext) || {};
@@ -129,11 +74,9 @@ export default function AdminStaffDashboard() {
   const [search, setSearch] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [teamLoading, setTeamLoading] = useState(false);
   const [deliveryTasks, setDeliveryTasks] = useState([]);
   const [returnTasks, setReturnTasks] = useState([]);
   const [teamData, setTeamData] = useState([]);
-  const [teamCounts, setTeamCounts] = useState({ total: 0, on: 0, off: 0, leave: 0, sick: 0 });
   const [error, setError] = useState('');
 
   // Prefer employee name from Manning table (matched by user_id) for a more personal greeting
@@ -171,16 +114,11 @@ export default function AdminStaffDashboard() {
   };
 
   const fetchTeam = async () => {
-    setTeamLoading(true);
     try {
       const data = await apiFetch(`/api/admin/manning/today?date=${encodeURIComponent(selectedDate)}`);
       setTeamData(Array.isArray(data?.data) ? data.data : []);
-      setTeamCounts(data?.counts || { total: 0, on: 0, off: 0, leave: 0, sick: 0 });
     } catch {
       setTeamData([]);
-      setTeamCounts({ total: 0, on: 0, off: 0, leave: 0, sick: 0 });
-    } finally {
-      setTeamLoading(false);
     }
   };
 
@@ -208,11 +146,6 @@ export default function AdminStaffDashboard() {
       : [],
     [allTasks, myName]
   );
-
-  const myAntar = useMemo(() => myTasks.filter((t) => t.task_type === 'delivery').length, [myTasks]);
-  const myAmbil = useMemo(() => myTasks.filter((t) => t.task_type === 'return').length, [myTasks]);
-  const mySelesai = useMemo(() => myTasks.filter((t) => String(t.status || '') === 'completed').length, [myTasks]);
-  const myTerjadwal = useMemo(() => myTasks.filter((t) => String(t.status || '') === 'scheduled').length, [myTasks]);
 
   // Tampilkan tugas sendiri di atas, sisanya setelahnya
   const sortedTasks = useMemo(() => {
@@ -261,86 +194,38 @@ export default function AdminStaffDashboard() {
             ) : 'Dashboard Tugas'}
           </h1>
           <p className="mt-2 text-sm text-white/60 font-medium italic">"{motivasiHariIni}"</p>
-          <div className="mt-5 flex flex-col sm:flex-row gap-2">
-            <Link
-              to="/admin/logistics"
-              className="rounded-2xl bg-white text-slate-900 px-4 py-3 text-sm font-black inline-flex items-center justify-center gap-2 hover:bg-slate-100 transition-colors"
+          {/* Quick menu: staff hanya butuh 2 hal */}
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => document.getElementById('staff-tasks')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="rounded-3xl bg-white text-slate-900 px-5 py-4 text-left shadow-sm hover:bg-slate-100 transition-colors"
             >
-              <Truck size={16} /> Kelola Semua Jadwal
-            </Link>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">Menu</div>
+              <div className="mt-1 text-lg font-black flex items-center gap-2">
+                <Truck size={18} /> Tugas Hari Ini
+              </div>
+              <div className="mt-1 text-xs font-bold text-slate-500">Lihat daftar antar & ambil</div>
+            </button>
+
             <Link
-              to="/admin/manning"
-              className="rounded-2xl bg-white/10 text-white px-4 py-3 text-sm font-black inline-flex items-center justify-center gap-2 hover:bg-white/15 transition-colors"
+              to="/admin/fleet"
+              className="rounded-3xl bg-white/10 text-white px-5 py-4 text-left border border-white/10 hover:bg-white/15 transition-colors"
             >
-              <Users size={16} /> Tim & Libur
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[10px] font-black uppercase tracking-widest text-white/60">Menu</div>
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-white/10 text-white/80 border border-white/10">
+                  View Only
+                </span>
+              </div>
+              <div className="mt-1 text-lg font-black flex items-center gap-2">
+                <Calendar size={18} /> Fleet Inventory
+              </div>
+              <div className="mt-1 text-xs font-bold text-white/60">Cek ketersediaan armada</div>
             </Link>
           </div>
         </div>
       </div>
-
-      {/* Personal stats — hanya tampil jika ada tugas yang di-assign ke nama ini */}
-      {myName && (myTasks.length > 0 || !isLoading) && (
-        <div className="rounded-3xl bg-gradient-to-br from-blue-600 to-violet-600 p-5 text-white shadow-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <Star size={16} className="text-yellow-300" />
-            <div className="text-[10px] font-black uppercase tracking-widest text-white/70">Statistik Kamu Hari Ini</div>
-          </div>
-          {myTasks.length === 0 ? (
-            <div className="text-sm font-bold text-white/60">
-              Belum ada tugas yang di-assign ke <span className="font-black text-white">{myName}</span> untuk tanggal ini.
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-white/10 rounded-2xl px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-white/60">Antar Motor</div>
-                  <div className="mt-1 text-3xl font-black">{myAntar}</div>
-                  <div className="text-[10px] text-white/50 font-bold">pengantaran</div>
-                </div>
-                <div className="bg-white/10 rounded-2xl px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-white/60">Ambil Motor</div>
-                  <div className="mt-1 text-3xl font-black">{myAmbil}</div>
-                  <div className="text-[10px] text-white/50 font-bold">pengembalian</div>
-                </div>
-                <div className="bg-white/10 rounded-2xl px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-white/60">Selesai</div>
-                  <div className="mt-1 text-3xl font-black text-emerald-300">{mySelesai}</div>
-                  <div className="text-[10px] text-white/50 font-bold">tugas done</div>
-                </div>
-                <div className="bg-white/10 rounded-2xl px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-white/60">Sisa</div>
-                  <div className="mt-1 text-3xl font-black text-amber-300">{myTerjadwal}</div>
-                  <div className="text-[10px] text-white/50 font-bold">belum selesai</div>
-                </div>
-              </div>
-
-              {/* Daftar transaksi yang di-handle */}
-              <div className="mt-4">
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-2">Transaksi Yang Kamu Handle</div>
-                <div className="flex flex-wrap gap-2">
-                  {myTasks.map((t) => (
-                    <div
-                      key={t.id}
-                      className="bg-white/10 rounded-xl px-3 py-1.5 text-xs font-bold flex items-center gap-1.5"
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${t.task_type === 'delivery' ? 'bg-amber-300' : 'bg-violet-300'}`} />
-                      <span>{t.customer_name || 'Tanpa Nama'}</span>
-                      {t.order_id && <span className="text-white/50">• {t.order_id}</span>}
-                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                        String(t.status) === 'completed'
-                          ? 'bg-emerald-500/40 text-emerald-200'
-                          : 'bg-amber-500/40 text-amber-200'
-                      }`}>
-                        {String(t.status) === 'completed' ? '✓' : t.task_type === 'delivery' ? 'ANTAR' : 'AMBIL'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Date filter + search + refresh */}
       <div className="rounded-3xl border border-slate-100 bg-white p-4 md:p-5 shadow-sm">
@@ -371,15 +256,7 @@ export default function AdminStaffDashboard() {
         </div>
       </div>
 
-      {/* Stat cards keseluruhan */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard icon={<Truck size={22} />} label="Pengantaran Hari Ini" value={deliveryTasks.length} tone="amber" />
-        <StatCard icon={<RotateCcw size={22} />} label="Pengembalian Hari Ini" value={returnTasks.length} tone="slate" />
-        <StatCard icon={<Clock3 size={22} />} label="Belum Selesai" value={pendingTasks.length} tone="rose" />
-        <StatCard icon={<Users size={22} />} label="Tim On Duty" value={teamCounts.on || 0} tone="emerald" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-[1.45fr_0.95fr] gap-6">
+      <div id="staff-tasks" className="grid grid-cols-1 gap-6">
         {/* Daftar tugas */}
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 mb-4">
@@ -490,81 +367,6 @@ export default function AdminStaffDashboard() {
               })}
             </div>
           )}
-        </section>
-
-        {/* Sidebar: tim */}
-        <section className="space-y-4">
-          <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <Users size={16} className="text-slate-400" /> Tim Hari Ini
-              </h2>
-              <div className="flex items-center gap-2">
-                {teamLoading && <Loader2 className="animate-spin text-slate-400" size={14} />}
-                <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
-                  {teamCounts.on || 0} on duty
-                </span>
-              </div>
-            </div>
-
-            {teamData.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-slate-400 font-bold text-sm">
-                Belum ada data tim.
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {teamData.map((member) => {
-                  const isMe = myName && member.name === myName;
-                  const memberTasks = allTasks.filter((t) => t.assigned_to_name === member.name);
-                  const memberAntar = memberTasks.filter((t) => t.task_type === 'delivery').length;
-                  const memberAmbil = memberTasks.filter((t) => t.task_type === 'return').length;
-                  const isOn = String(member.status || 'on') === 'on';
-
-                  return (
-                    <div
-                      key={member.id}
-                      className={`py-3 flex items-center justify-between gap-3 ${isMe ? 'opacity-100' : ''}`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {/* Avatar initial */}
-                        <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-black ${
-                          isMe ? 'bg-blue-600 text-white' : isOn ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-400'
-                        }`}>
-                          {member.name?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className={`font-black text-sm truncate ${isMe ? 'text-blue-700' : 'text-slate-900'}`}>
-                              {member.name}
-                            </span>
-                            {isMe && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-600 text-white shrink-0">KAMU</span>}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {memberAntar > 0 && (
-                              <span className="text-[10px] font-black text-amber-600">{memberAntar}A</span>
-                            )}
-                            {memberAmbil > 0 && (
-                              <span className="text-[10px] font-black text-violet-600">{memberAmbil}R</span>
-                            )}
-                            {memberAntar === 0 && memberAmbil === 0 && (
-                              <span className="text-[10px] text-slate-400 font-medium">–</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <TeamStatusBadge status={member.status} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Legend */}
-            <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-3 text-[10px] font-black text-slate-400">
-              <span><span className="text-amber-600">A</span> = Antar</span>
-              <span><span className="text-violet-600">R</span> = Return</span>
-            </div>
-          </div>
         </section>
       </div>
 

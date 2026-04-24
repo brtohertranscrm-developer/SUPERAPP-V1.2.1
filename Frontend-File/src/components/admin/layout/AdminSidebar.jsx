@@ -22,7 +22,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Tim & Libur',     path: '/admin/manning',    key: 'manning',   icon: <Users size={20} /> },
         { name: 'Armada Motor',    path: '/admin/armada',     key: 'armada',    icon: <Bike size={20} /> },
         { name: 'Armada Mobil',    path: '/admin/cars',       key: 'armada',    icon: <CarFront size={20} /> },
-        { name: 'Fleet Inventory', path: '/admin/fleet',      key: 'armada',    icon: <Calendar size={20} /> },
+        { name: 'Fleet Inventory', path: '/admin/fleet',      key: ['armada','logistics'], icon: <Calendar size={20} /> },
         { name: 'Manajemen Loker', path: '/admin/loker',      key: 'loker',     icon: <Package size={20} /> },
       ],
     },
@@ -69,8 +69,23 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
 
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
   const isPartnerOnly = !isSuperAdmin && userPermissions.includes('partners') && !userPermissions.includes('dashboard');
+  const isOpsStaffOnly =
+    !isSuperAdmin &&
+    user?.role === 'subadmin' &&
+    userPermissions.length === 1 &&
+    userPermissions[0] === 'logistics';
 
-  const normalizedSections = menuSections.map((section) => ({
+  const baseSections = isOpsStaffOnly ? ([
+    {
+      title: 'Operasional',
+      items: [
+        { name: 'Tugas Hari Ini',  path: '/admin/staff', key: 'logistics', icon: <ClipboardList size={20} /> },
+        { name: 'Fleet Inventory', path: '/admin/fleet', key: ['logistics'], icon: <Calendar size={20} /> },
+      ],
+    },
+  ]) : menuSections;
+
+  const normalizedSections = baseSections.map((section) => ({
     ...section,
     items: section.items.map((item) => {
       if (isPartnerOnly && item.path === '/admin/partners') {
@@ -80,7 +95,11 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
     }),
   }));
 
-  const isMenuAllowed = (menu) => isSuperAdmin || userPermissions.includes(menu.key);
+  const isMenuAllowed = (menu) => {
+    if (isSuperAdmin) return true;
+    const keys = Array.isArray(menu.key) ? menu.key : [menu.key];
+    return keys.some(k => userPermissions.includes(k));
+  };
 
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : 'A';
   const roleDisplay =
