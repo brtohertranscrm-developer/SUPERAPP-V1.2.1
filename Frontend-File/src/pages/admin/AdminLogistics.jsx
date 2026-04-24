@@ -115,6 +115,12 @@ export default function AdminLogistics() {
   const [selectedDate, setSelectedDate] = useState(todayYmd());
   const [showAllDates, setShowAllDates] = useState(false);
 
+  // Booking Cards (auto create logistics tasks)
+  const [pendingBookings, setPendingBookings] = useState([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [pendingError, setPendingError] = useState('');
+  const [prefillBooking, setPrefillBooking] = useState(null);
+
   // Team Today (Manning)
   const [teamLoc, setTeamLoc] = useState('Semua');
   const [teamLoading, setTeamLoading] = useState(false);
@@ -157,6 +163,20 @@ export default function AdminLogistics() {
     }
   };
 
+  const fetchPendingBookings = async () => {
+    setPendingLoading(true);
+    setPendingError('');
+    try {
+      const data = await apiFetch(`/api/admin/logistics/pending-bookings?task_type=${activeTab}&date=${selectedDate}`);
+      setPendingBookings(Array.isArray(data?.data) ? data.data : []);
+    } catch (err) {
+      setPendingError(err?.message || 'Gagal memuat booking.');
+      setPendingBookings([]);
+    } finally {
+      setPendingLoading(false);
+    }
+  };
+
   const fetchTeam = async () => {
     setTeamLoading(true);
     try {
@@ -179,6 +199,12 @@ export default function AdminLogistics() {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, selectedDate, showAllDates]);
+
+  useEffect(() => {
+    // Booking cards selalu pakai filter tanggal aktif (lebih mudah untuk operasional).
+    fetchPendingBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedDate]);
 
   useEffect(() => {
     fetchTeam();
@@ -226,6 +252,7 @@ export default function AdminLogistics() {
 
   const openCreate = () => {
     setEditId(null);
+    setPrefillBooking(null);
     resetForm();
     setIsCreateOpen(true);
   };
@@ -241,6 +268,7 @@ export default function AdminLogistics() {
   const openEdit = async (task, { preferDetail = true } = {}) => {
     if (!canManage) return;
     setEditId(task?.id || null);
+    setPrefillBooking(null);
     resetForm();
     setIsCreateOpen(true);
 
@@ -335,8 +363,10 @@ export default function AdminLogistics() {
 
       setIsCreateOpen(false);
       setEditId(null);
+      setPrefillBooking(null);
       resetForm();
       await fetchTasks();
+      await fetchPendingBookings();
     } catch (err) {
       alert(err?.message || 'Gagal membuat jadwal.');
     } finally {
@@ -344,8 +374,27 @@ export default function AdminLogistics() {
     }
   };
 
+  const openCreateFromBooking = (b) => {
+    if (!canManage) return;
+    setEditId(null);
+    setPrefillBooking(b || null);
+    resetForm();
+    setIsCreateOpen(true);
+    setForm((p) => ({
+      ...p,
+      order_id: b?.order_id || '',
+      scheduled_at: toDatetimeLocal(b?.suggested_at || ''),
+      assigned_to_name: '',
+      notes: '',
+    }));
+  };
+
   const title = activeTab === 'delivery' ? 'Kelola Jadwal Pengantaran' : 'Kelola Jadwal Pengembalian';
   const headerDateText = showAllDates ? 'Semua Tanggal' : fmtDate(`${selectedDate}T00:00`);
+  const teamOn = useMemo(
+    () => (teamData || []).filter((m) => String(m?.status || 'on').toLowerCase() === 'on'),
+    [teamData]
+  );
 
   const summary = useMemo(() => {
     const out = { scheduled: 0, completed: 0, cancelled: 0 };
@@ -541,6 +590,99 @@ export default function AdminLogistics() {
             {t.label}
           </button>
         ))}
+      </div>
+
+      {/* Booking Cards (auto-create task) */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sumber Booking</div>
+            <div className="mt-1 font-black text-gray-900">
+              Booking yang siap dibuat jadwal ({pendingBookings.length})
+            </div>
+            <div className="text-xs text-gray-500 font-bold mt-1">
+              Klik kartu untuk otomatis isi <span className="font-black">Order ID</span> dan waktu. Kamu tinggal pilih PIC.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={fetchPendingBookings}
+            className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl font-black flex items-center gap-2 hover:bg-gray-50"
+            disabled={pendingLoading}
+            title="Refresh booking"
+          >
+            <RefreshCw size={18} className={pendingLoading ? 'animate-spin' : ''} /> Refresh Booking
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {pendingLoading ? (
+            <div className="flex items-center gap-2 text-gray-400 font-bold">
+              <Loader2 className="animate-spin" size={16} /> Memuat booking...
+            </div>
+          ) : pendingError ? (
+            <div className="p-4 bg-rose-50 text-rose-700 rounded-2xl font-bold text-sm">{pendingError}</div>
+          ) : pendingBookings.length === 0 ? (
+            <div className="text-sm text-gray-500 font-medium">
+              Tidak ada booking untuk tanggal ini yang butuh dibuat jadwal.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {pendingBookings.map((b) => (
+                <button
+                  key={b.order_id}
+                  type="button"
+                  onClick={() => openCreateFromBooking(b)}
+                  disabled={!canManage}
+                  className={`text-left rounded-3xl p-4 border transition shadow-sm ${
+                    canManage
+                      ? 'bg-gray-50 border-gray-100 hover:bg-white hover:border-gray-200'
+                      : 'bg-gray-50 border-gray-100 opacity-70 cursor-not-allowed'
+                  }`}
+                  title={canManage ? 'Klik untuk buat jadwal dari booking' : 'Butuh permission logistics_manage untuk membuat jadwal'}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Order</div>
+                      <div className="font-black text-gray-900 truncate">{b.order_id}</div>
+                      <div className="text-xs text-gray-500 font-bold mt-1 truncate">
+                        {b.user_name || 'Pelanggan'}{b.user_phone ? ` • ${b.user_phone}` : ''}
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-[10px] font-black tracking-widest">
+                        {activeTab === 'delivery' ? 'ANTAR' : 'KEMBALI'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-brand-primary" />
+                      <span className="truncate" title={b.suggested_at || ''}>{fmtDateTime(b.suggested_at)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Bike size={14} className="text-brand-primary" />
+                      <span className="truncate" title={b.item_name || ''}>{b.item_name || 'Motor'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 sm:col-span-2">
+                      <MapPin size={14} className="text-brand-primary" />
+                      <span className="truncate" title={b.delivery_address || b.location || ''}>{b.delivery_address || b.location || '—'}</span>
+                    </div>
+                    {(b.plate_number || b.unit_id) ? (
+                      <div className="flex items-center gap-2 sm:col-span-2">
+                        <ClipboardCheck size={14} className="text-brand-primary" />
+                        <span className="truncate">
+                          Unit: {b.plate_number || `#${b.unit_id}`}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* List */}
@@ -789,9 +931,27 @@ export default function AdminLogistics() {
             </div>
 
             <form onSubmit={handleCreate} className="p-6 space-y-5">
-              <div className="bg-brand-dark rounded-2xl p-4 text-white text-sm font-semibold">
-                Tips: Isi <span className="font-black">Order ID</span> untuk auto-isi (jika data booking ada). Kalau manual, isi field lainnya.
-              </div>
+	              <div className="bg-brand-dark rounded-2xl p-4 text-white text-sm font-semibold">
+	                Tips: Isi <span className="font-black">Order ID</span> untuk auto-isi (jika data booking ada). Kalau manual, isi field lainnya.
+	              </div>
+
+	              {prefillBooking?.order_id && (
+	                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+	                  <div className="text-[10px] font-black uppercase tracking-widest text-emerald-800/70">Dari Booking</div>
+	                  <div className="mt-1 font-black text-emerald-900">
+	                    {prefillBooking.order_id} • {prefillBooking.item_name || 'Motor'}
+	                  </div>
+	                  <div className="mt-1 text-xs text-emerald-900/80 font-bold">
+	                    {prefillBooking.user_name || 'Pelanggan'}{prefillBooking.user_phone ? ` • ${prefillBooking.user_phone}` : ''}
+	                  </div>
+	                  <div className="mt-2 text-xs text-emerald-900/80 font-bold">
+	                    Lokasi: {prefillBooking.delivery_address || prefillBooking.location || '—'}
+	                  </div>
+	                  <div className="mt-2 text-xs text-emerald-900/80 font-bold">
+	                    Kamu cukup pilih <span className="font-black">PIC</span> dan atur jam, lalu simpan.
+	                  </div>
+	                </div>
+	              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -836,26 +996,37 @@ export default function AdminLogistics() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">No. HP Pelanggan</label>
-                  <input
-                    value={form.customer_phone}
-                    onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                    placeholder="08xxxxxxxxxx"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">PIC Pengantar</label>
-                  <input
-                    value={form.assigned_to_name}
-                    onChange={(e) => setForm((p) => ({ ...p, assigned_to_name: e.target.value }))}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
-                    placeholder="Nama tim/driver"
-                  />
-                </div>
-              </div>
+	              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	                <div>
+	                  <label className="block text-sm font-bold text-gray-700 mb-2">No. HP Pelanggan</label>
+	                  <input
+	                    value={form.customer_phone}
+	                    onChange={(e) => setForm((p) => ({ ...p, customer_phone: e.target.value }))}
+	                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
+	                    placeholder="08xxxxxxxxxx"
+	                  />
+	                </div>
+	                <div>
+	                  <label className="block text-sm font-bold text-gray-700 mb-2">PIC Pengantar</label>
+	                  <input
+	                    list="team_on_suggest"
+	                    value={form.assigned_to_name}
+	                    onChange={(e) => setForm((p) => ({ ...p, assigned_to_name: e.target.value }))}
+	                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-brand-primary"
+	                    placeholder="Nama tim/driver"
+	                  />
+	                  <datalist id="team_on_suggest">
+	                    {teamOn.map((m) => (
+	                      <option
+	                        key={m.id}
+	                        value={m.name}
+	                      >
+	                        {m.base_location || ''} {m.role_tag ? `• ${m.role_tag}` : ''}
+	                      </option>
+	                    ))}
+	                  </datalist>
+	                </div>
+	              </div>
 
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">Lokasi Antar / Ambil</label>

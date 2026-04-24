@@ -33,6 +33,10 @@ const VALID_STATUSES = ['scheduled', 'completed', 'cancelled'];
 const normalizeTaskType = (v) => String(v || '').trim().toLowerCase();
 const normalizeStatus = (v) => String(v || '').trim().toLowerCase();
 
+// SQLite compatibility: bookings kadang simpan tanggal saja (YYYY-MM-DD) tanpa jam.
+// Helper ini menyamakan jadi "YYYY-MM-DD HH:MM:SS" untuk dipakai di datetime().
+const dtExpr = (col) => `CASE WHEN instr(${col}, ' ') > 0 THEN ${col} ELSE ${col} || ' 00:00:00' END`;
+
 const computeBookingTotals = (row) => {
   if (!row) return null;
   const base = Number(row.base_price) || 0;
@@ -141,6 +145,86 @@ router.get('/tasks', requirePermission('logistics'), async (req, res) => {
   } catch (err) {
     console.error('GET /admin/logistics/tasks error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data jadwal.' });
+  }
+});
+
+// ==========================================
+// GET /api/admin/logistics/pending-bookings
+// Permission: logistics (view)
+// Tujuan: tampilkan booking yang belum punya task logistics (delivery/return)
+// agar admin tinggal klik kartu dan assign pengantar tanpa input ulang.
+// ==========================================
+router.get('/pending-bookings', requirePermission('logistics'), async (req, res) => {
+  try {
+    const taskType = req.query.task_type ? normalizeTaskType(req.query.task_type) : null;
+    if (!taskType || !VALID_TASK_TYPES.includes(taskType)) {
+      return res.status(400).json({ success: false, error: 'task_type wajib: delivery / return.' });
+    }
+
+    const date = String(req.query.date || '').trim(); // YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, error: 'Query date wajib format YYYY-MM-DD.' });
+    }
+
+    const from = `${date} 00:00:00`;
+    const to = `${date} 23:59:59`;
+
+    const whenCol = taskType === 'delivery' ? 'b.start_date' : 'b.end_date';
+
+    // Delivery only jika delivery_type != self (butuh pengantaran)
+    // Return ditampilkan untuk semua motor booking yang paid (operasional pengembalian).
+    const deliveryFilter = taskType === 'delivery'
+      ? `AND COALESCE(b.delivery_type, '') <> '' AND lower(b.delivery_type) <> 'self'`
+      : '';
+
+    const rows = await dbAll(
+      `
+      SELECT
+        b.order_id,
+        b.item_type,
+        b.item_name,
+        b.location,
+        b.start_date,
+        b.end_date,
+        b.delivery_type,
+        b.delivery_address,
+        b.delivery_station_id,
+        b.unit_id,
+        b.plate_number,
+        u.name AS user_name,
+        u.phone AS user_phone
+      FROM bookings b
+      LEFT JOIN users u ON b.user_id = u.id
+      LEFT JOIN logistics_tasks t
+        ON t.order_id = b.order_id
+       AND t.task_type = ?
+       AND t.status <> 'cancelled'
+      WHERE lower(COALESCE(b.item_type, '')) = 'motor'
+        AND lower(COALESCE(b.payment_status, '')) = 'paid'
+        AND lower(COALESCE(b.status, '')) <> 'cancelled'
+        ${deliveryFilter}
+        AND datetime(${dtExpr(whenCol)}) >= datetime(?)
+        AND datetime(${dtExpr(whenCol)}) <= datetime(?)
+        AND t.id IS NULL
+      ORDER BY datetime(${dtExpr(whenCol)}) ASC, b.order_id ASC
+      `,
+      [taskType, from, to]
+    );
+
+    const defaultTime = taskType === 'delivery' ? '09:00:00' : '17:00:00';
+    const withSuggested = (rows || []).map((b) => {
+      const rawWhen = String((taskType === 'delivery' ? b.start_date : b.end_date) || '').trim();
+      // Jika booking hanya tanggal, kita set jam default agar datetime-local terisi.
+      const suggested_at = rawWhen && rawWhen.length <= 10
+        ? `${rawWhen} ${defaultTime}`
+        : rawWhen;
+      return { ...b, suggested_at };
+    });
+
+    res.json({ success: true, data: withSuggested });
+  } catch (err) {
+    console.error('GET /admin/logistics/pending-bookings error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil booking pending.' });
   }
 });
 
