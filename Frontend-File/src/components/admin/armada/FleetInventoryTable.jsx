@@ -1,339 +1,396 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback, useContext } from 'react';
 import {
-  ChevronLeft, ChevronRight, Plus, X, Check,
-  AlertTriangle, Wrench, Calendar, Clock, Info,
-  Bike, ChevronDown, Loader2, RefreshCw
+  ChevronLeft, ChevronRight, X, Plus, Wrench,
+  AlertTriangle, Calendar, Bike, ChevronDown, Loader2, RefreshCw, Trash2
 } from 'lucide-react';
 import { apiFetch } from '../../../utils/api';
 import { AuthContext } from '../../../context/AuthContext';
 
-// [FIX P8] Hapus UNITS dan INITIAL_BOOKINGS hardcoded
-// Data sekarang diambil dari API
-// NOTE: semua request gunakan apiFetch supaya konsisten handle auth/401.
-
-// ─── Status config ────────────────────────────────────────────────────────────
-const STATUS = {
-  booked:  { bg: '#16a34a', text: '#fff',         label: 'Tersewa' },
-  trouble: { bg: '#dc2626', text: '#fff',         label: 'Trouble' },
-  extend:  { bg: '#d97706', text: '#fff',         label: 'Extend' },
-  ojk:     { bg: '#2563eb', text: '#fff',         label: 'OJK/Korporat' },
-  partial: { bg: '#0d9488', text: '#fff',         label: 'Check-in/out' },
-  free:    { bg: 'transparent', text: '#94a3b8', label: 'Kosong', border: '#e2e8f0' },
-  blocked: { bg: '#374151', text: '#fff',         label: 'Diblokir' },
-};
-
-const STATUS_OPTIONS = ['booked','ojk','partial','extend','trouble','blocked','free'];
-
-function getDaysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
-function getDayOfWeek(year, month, day) { return new Date(year, month, day).getDay(); }
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getDaysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
 const DAY_LABELS  = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
 const MONTH_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
-function getWeekStart(year, month, dayOfMonth) {
-  const d = new Date(year, month, dayOfMonth);
-  const start = new Date(d);
-  start.setDate(d.getDate() - d.getDay());
-  return start;
+function getWeekStart(y, m, d) {
+  const dt = new Date(y, m, d);
+  dt.setDate(dt.getDate() - dt.getDay());
+  return dt;
 }
-function getWeekDays(startDate) {
+function getWeekDays(start) {
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + i);
-    return d;
+    const d = new Date(start); d.setDate(start.getDate() + i); return d;
   });
-}
-function fmtKey(date, unitId) {
-  const y  = date.getFullYear();
-  const m  = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${unitId}_${y}-${m}-${dd}`;
 }
 function fmtDateKey(date) {
-  const y  = date.getFullYear();
-  const m  = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dd}`;
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-
-function parseMaybeSqlDateTime(value) {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-  // SQLite often stores as "YYYY-MM-DD HH:MM:SS" (no timezone)
-  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const d = new Date(normalized);
-  return Number.isNaN(d.getTime()) ? null : d;
+function fmtKey(date, unitId) { return `${unitId}_${fmtDateKey(date)}`; }
+function addDays(k, n) { const d = new Date(`${k}T00:00:00`); d.setDate(d.getDate()+n); return fmtDateKey(d); }
+function parseDt(v) {
+  if (!v) return null;
+  const s = String(v).trim().replace(' ','T');
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
 }
-
-function fmtHMFromMinute(min) {
-  const m = Math.max(0, Math.min(1439, Number(min) || 0));
-  const hh = String(Math.floor(m / 60)).padStart(2, '0');
-  const mm = String(m % 60).padStart(2, '0');
-  return `${hh}:${mm}`;
+function toHM(dt) {
+  if (!dt) return '';
+  return `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
 }
-
-function minuteFromHM(text) {
-  const v = String(text || '').trim();
-  const m = v.match(/^(\d{2}):(\d{2})$/);
+function toMin(hm) {
+  const m = String(hm||'').match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return null;
-  const hh = parseInt(m[1], 10);
-  const mm = parseInt(m[2], 10);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-  return hh * 60 + mm;
+  return parseInt(m[1],10)*60+parseInt(m[2],10);
+}
+function minToHM(min) {
+  const m = Math.max(0,Math.min(1439,min||0));
+  return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 }
 
-function addDays(dateKey, deltaDays) {
-  const d = new Date(`${dateKey}T00:00:00`);
-  d.setDate(d.getDate() + deltaDays);
-  return fmtDateKey(d);
+// ─── Cell status ──────────────────────────────────────────────────────────────
+// green=1 tamu, orange=2+ tamu, red=maintenance, striped=keduanya
+const CSTATUS = {
+  free:        { bg: 'transparent', text: '#94a3b8', label: 'Kosong' },
+  single:      { bg: '#16a34a',     text: '#fff',    label: '1 Booking' },
+  double:      { bg: '#d97706',     text: '#fff',    label: '2+ Booking' },
+  maintenance: { bg: '#dc2626',     text: '#fff',    label: 'Maintenance' },
+  mixed:       { bg: '#d97706',     text: '#fff',    label: 'Booking + Servis' },
+};
+
+function getCellStatus(cell) {
+  if (!cell) return 'free';
+  const { rentalCount, hasBlock } = cell;
+  if (rentalCount === 0 && !hasBlock) return 'free';
+  if (rentalCount === 0 && hasBlock)  return 'maintenance';
+  if (rentalCount >= 2 && hasBlock)   return 'mixed';
+  if (rentalCount >= 2)               return 'double';
+  if (hasBlock)                       return 'mixed';
+  return 'single';
 }
 
-function ManualRentalModal({ open, unit, dateKey, initial, bufferMinutes, onClose, onSaved }) {
-  const [name, setName] = useState(initial?.customer_name || '');
-  const [phone, setPhone] = useState(initial?.customer_phone || '');
-  const [startHM, setStartHM] = useState(initial?.startHM || '09:00');
-  const [endHM, setEndHM] = useState(initial?.endHM || '12:00');
-  const [notes, setNotes] = useState(initial?.notes || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
+// ─── CellDetailModal ──────────────────────────────────────────────────────────
+function CellDetailModal({ cell, onClose, onRefresh, canManage }) {
+  const { unitId, unitName, plat, dateKey, dateStr, dayLabel, cellData } = cell;
+  const rentals = cellData?.rentals || [];
+  const blocks  = cellData?.blocks  || [];
 
-  useEffect(() => {
-    if (!open) return;
-    setName(initial?.customer_name || '');
-    setPhone(initial?.customer_phone || '');
-    setStartHM(initial?.startHM || '09:00');
-    setEndHM(initial?.endHM || '12:00');
-    setNotes(initial?.notes || '');
+  const [showAddForm,   setShowAddForm]   = useState(false);
+  const [showBlockForm, setShowBlockForm] = useState(false);
+  const [form, setForm] = useState({ name: '', phone: '', startHM: '08:00', endHM: '18:00', notes: '' });
+  const [blockForm, setBlockForm] = useState({ reason: 'Servis berkala', startHM: '08:00', endHM: '17:00' });
+  const [saving, setSaving]   = useState(false);
+  const [deleting, setDeleting] = useState(null);
+  const [error, setError]     = useState('');
+
+  const buildUrl = (path) => {
+    const base = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+    return `${base}${path}`;
+  };
+  const getHeaders = () => {
+    const token = localStorage.getItem('token');
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const handleAddManual = async () => {
     setError('');
-  }, [open, initial]);
-
-  if (!open || !unit) return null;
-
-  const handleSave = async (alsoBuffer = false) => {
-    const trimmedName = String(name || '').trim();
-    const trimmedPhone = String(phone || '').trim();
-    const sMin = minuteFromHM(startHM);
-    const eMin = minuteFromHM(endHM);
-
-    if (!trimmedName) return setError('Nama penyewa wajib diisi.');
-    if (!trimmedPhone) return setError('No HP wajib diisi.');
-    if (sMin === null || eMin === null) return setError('Waktu harus format HH:MM.');
-    if (eMin <= sMin) return setError('Jam selesai harus setelah jam mulai.');
-
-    setIsSaving(true);
-    setError('');
+    if (!form.name.trim()) { setError('Nama tamu wajib diisi.'); return; }
+    const startMin = toMin(form.startHM);
+    const endMin   = toMin(form.endHM);
+    if (startMin === null || endMin === null || endMin <= startMin) {
+      setError('Jam kembali harus lebih dari jam ambil.'); return;
+    }
+    setSaving(true);
     try {
-      const payload = {
-        unit_id: unit.id,
-        block_type: 'rental_manual',
-        customer_name: trimmedName,
-        customer_phone: trimmedPhone,
-        notes: String(notes || '').trim() || null,
-        reason: 'Manual rental',
-        start_at: `${dateKey} ${startHM}:00`,
-        end_at: `${dateKey} ${endHM}:00`,
-      };
-
-      if (initial?.id) {
-        await apiFetch(`/api/admin/units/blocks/${initial.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      } else {
-        await apiFetch('/api/admin/units/blocks', { method: 'POST', body: JSON.stringify(payload) });
-      }
-
-      if (alsoBuffer && Number(bufferMinutes) > 0) {
-        const buf = Math.max(0, Math.min(240, Number(bufferMinutes) || 0));
-        const startBufMin = eMin;
-        const endBufMin = Math.min(1440, eMin + buf);
-        if (endBufMin > startBufMin) {
-          await apiFetch('/api/admin/units/blocks', {
-            method: 'POST',
-            body: JSON.stringify({
-              unit_id: unit.id,
-              block_type: 'buffer',
-              reason: `Buffer ${buf} menit`,
-              start_at: `${dateKey} ${fmtHMFromMinute(startBufMin)}:00`,
-              end_at: `${dateKey} ${fmtHMFromMinute(endBufMin)}:00`,
-            }),
-          });
-        }
-      }
-
-      onSaved?.();
-      onClose?.();
-    } catch (e) {
-      setError(e?.message || 'Gagal menyimpan slot.');
-    } finally {
-      setIsSaving(false);
-    }
+      const startAt = `${dateKey} ${form.startHM}:00`;
+      const endAt   = `${dateKey} ${form.endHM}:00`;
+      const res = await fetch(buildUrl('/api/admin/units/blocks'), {
+        method: 'POST',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unit_id: unitId,
+          start_at: startAt,
+          end_at: endAt,
+          reason: `Rental: ${form.name}`,
+          block_type: 'rental_manual',
+          customer_name: form.name.trim(),
+          customer_phone: form.phone.trim(),
+          notes: form.notes.trim(),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Gagal menyimpan.');
+      setForm({ name: '', phone: '', startHM: '08:00', endHM: '18:00', notes: '' });
+      setShowAddForm(false);
+      onRefresh();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
   };
+
+  const handleAddBlock = async () => {
+    setError('');
+    if (!blockForm.reason.trim()) { setError('Alasan wajib diisi.'); return; }
+    const startMin = toMin(blockForm.startHM);
+    const endMin   = toMin(blockForm.endHM);
+    if (startMin === null || endMin === null || endMin <= startMin) {
+      setError('Jam selesai harus lebih dari jam mulai.'); return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(buildUrl('/api/admin/units/blocks'), {
+        method: 'POST',
+        headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unit_id: unitId,
+          start_at: `${dateKey} ${blockForm.startHM}:00`,
+          end_at:   `${dateKey} ${blockForm.endHM}:00`,
+          reason: blockForm.reason.trim(),
+          block_type: 'maintenance',
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Gagal.');
+      setShowBlockForm(false);
+      onRefresh();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteBlock = async (blockId) => {
+    if (!window.confirm('Hapus entri ini?')) return;
+    setDeleting(blockId);
+    try {
+      const res = await fetch(buildUrl(`/api/admin/units/blocks/${blockId}`), {
+        method: 'DELETE', headers: getHeaders(),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || 'Gagal hapus.');
+      onRefresh();
+    } catch (e) { alert(e.message); }
+    finally { setDeleting(null); }
+  };
+
+  const handleCancelBooking = async (orderId) => {
+    if (!window.confirm(`Batalkan booking ${orderId}? Unit akan tersedia kembali.`)) return;
+    setDeleting(orderId);
+    try {
+      const res = await apiFetch(`/api/admin/bookings/${orderId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'cancelled', payment_status: 'unpaid' }),
+      });
+      if (!res.success) throw new Error(res.error || 'Gagal.');
+      onRefresh();
+    } catch (e) { alert(e.message); }
+    finally { setDeleting(null); }
+  };
+
+  const rentalCount = rentals.length;
+  const allEmpty = rentalCount === 0 && blocks.length === 0;
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
       onClick={onClose}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 520, boxShadow: '0 25px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        <div style={{ background: '#0f172a', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
-              {initial?.id ? 'Edit Slot Sewa' : 'Buat Slot Sewa'}
-            </p>
-            <p style={{ color: '#fff', fontWeight: 900, fontSize: 14 }}>{unit.name} · <span style={{ fontFamily: 'monospace' }}>{unit.plat}</span></p>
-            <p style={{ color: '#64748b', fontSize: 11, fontWeight: 700, marginTop: 4 }}>{dateKey}</p>
-          </div>
-          <button onClick={onClose} style={{ color: '#64748b', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 10, padding: 8, cursor: 'pointer', display: 'flex' }}>
-            <X size={16} />
-          </button>
-        </div>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 60px rgba(0,0,0,0.25)' }}>
 
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {error && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 12px', color: '#b91c1c', fontWeight: 800, fontSize: 12 }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* Header */}
+        <div style={{ background: '#0f172a', padding: '16px 20px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Nama Penyewa</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
+              <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Fleet Inventory</p>
+              <p style={{ color: '#fff', fontWeight: 900, fontSize: 15, margin: '2px 0 0' }}>{unitName}</p>
+              <p style={{ color: '#64748b', fontSize: 11, fontFamily: 'monospace', margin: '2px 0 0' }}>{plat} · {dayLabel}, {dateStr}</p>
             </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>No HP</label>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="62812xxxxxxx"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff' }} />
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Mulai</label>
-              <input value={startHM} onChange={(e) => setStartHM(e.target.value)} placeholder="09:00"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc', fontFamily: 'monospace', fontWeight: 800 }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Selesai</label>
-              <input value={endHM} onChange={(e) => setEndHM(e.target.value)} placeholder="12:00"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc', fontFamily: 'monospace', fontWeight: 800 }} />
-            </div>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Catatan (opsional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Contoh: balik cepat jam 12, minta 2 helm"
-              style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 12, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff', minHeight: 72, resize: 'none' }} />
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <button
-              onClick={() => handleSave(false)}
-              disabled={isSaving}
-              style={{ flex: 1, padding: '10px 14px', borderRadius: 12, border: 'none', background: '#78081C', color: '#fff', fontWeight: 900, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: isSaving ? 0.7 : 1 }}
-            >
-              {isSaving ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={16} />}
-              Simpan Slot
-            </button>
-            <button
-              onClick={() => handleSave(true)}
-              disabled={isSaving || Number(bufferMinutes) <= 0}
-              style={{ padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#fff', color: '#0f172a', fontWeight: 900, fontSize: 12, cursor: 'pointer', opacity: (isSaving || Number(bufferMinutes) <= 0) ? 0.6 : 1 }}
-              title={Number(bufferMinutes) > 0 ? `Simpan lalu blokir buffer ${bufferMinutes} menit` : 'Atur buffer > 0 untuk aktifkan'}
-            >
-              Simpan + Buffer
+            <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+              <X size={16} />
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ─── Mini modal ───────────────────────────────────────────────────────────────
-function BookingModal({ cell, onClose, onSave, onDelete }) {
-  const isNew = !cell.booking;
-  const [form, setForm] = useState({
-    name:   cell.booking?.name   || '',
-    status: cell.booking?.status || 'booked',
-    time:   cell.booking?.time   || '',
-    notes:  cell.booking?.notes  || '',
-  });
-
-  const handleSave = () => {
-    if (!form.name.trim() && form.status !== 'free' && form.status !== 'blocked') {
-      alert('Nama penyewa wajib diisi.');
-      return;
-    }
-    onSave(form);
-  };
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(15,23,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-      onClick={onClose}
-    >
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 400, boxShadow: '0 25px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        <div style={{ background: '#0f172a', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p style={{ color: '#94a3b8', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>
-              {isNew ? 'Tambah Booking Manual' : 'Edit Booking'}
-            </p>
-            <p style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>{cell.unitName}</p>
-            <p style={{ color: '#64748b', fontSize: 11, fontFamily: 'monospace' }}>{cell.plat}</p>
-            <p style={{ color: '#78816e', fontSize: 11, marginTop: 4 }}>{cell.dayLabel}, {cell.dateStr}</p>
-          </div>
-          <button onClick={onClose} style={{ color: '#64748b', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-            <X size={16} />
-          </button>
-        </div>
-
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Status</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {STATUS_OPTIONS.map(s => (
-                <button key={s} onClick={() => setForm(f => ({ ...f, status: s }))}
-                  style={{ padding: '5px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: '2px solid', borderColor: form.status === s ? STATUS[s].bg || '#94a3b8' : '#e2e8f0', background: form.status === s ? (STATUS[s].bg || '#f1f5f9') : '#f8fafc', color: form.status === s ? (STATUS[s].text || '#374151') : '#64748b' }}>
-                  {STATUS[s].label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {form.status !== 'free' && form.status !== 'blocked' && (
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Nama Penyewa</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Contoh: Budi Santoso"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 13, fontWeight: 600, outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }}
-                onFocus={e => e.target.style.borderColor = '#78081C'} onBlur={e => e.target.style.borderColor = '#e2e8f0'}
-              />
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Jam Check-in</label>
-              <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Catatan</label>
-              <input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="opsional"
-                style={{ width: '100%', padding: '10px 12px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }} />
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            {!isNew && (
-              <button onClick={onDelete} style={{ padding: '10px 16px', borderRadius: 10, border: '1.5px solid #fee2e2', background: '#fff', color: '#dc2626', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
-                Hapus
-              </button>
+          {/* Summary badges */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+            <span style={{ background: rentalCount === 0 ? 'rgba(255,255,255,0.1)' : rentalCount === 1 ? '#16a34a' : '#d97706', color: '#fff', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20 }}>
+              {rentalCount === 0 ? 'Kosong' : `${rentalCount}× Tamu`}
+            </span>
+            {blocks.length > 0 && (
+              <span style={{ background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20 }}>
+                {blocks.length}× Servis/Blok
+              </span>
             )}
-            <button onClick={handleSave} style={{ flex: 1, padding: '10px 16px', borderRadius: 10, border: 'none', background: '#78081C', color: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Check size={15} /> Simpan
-            </button>
           </div>
         </div>
+
+        {/* Body */}
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* Empty state */}
+            {allEmpty && (
+              <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>
+                <Bike size={28} style={{ marginBottom: 8, opacity: 0.3 }} />
+                <p style={{ margin: 0, fontWeight: 600 }}>Unit kosong hari ini</p>
+              </div>
+            )}
+
+            {/* Rental list */}
+            {rentals.length > 0 && (
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Tamu</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {rentals.map((r, i) => (
+                    <div key={i} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: r.type === 'booking' ? '#16a34a' : '#d97706', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 800, fontSize: 13, color: '#1e293b' }}>{r.name}</span>
+                          {r.phone && <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>{r.phone}</span>}
+                          {r.type === 'booking' && (
+                            <span style={{ fontSize: 9, fontWeight: 700, background: '#dcfce7', color: '#16a34a', padding: '1px 6px', borderRadius: 6 }}>APP</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#4b5563', fontFamily: 'monospace', marginTop: 2 }}>
+                          {r.startHM} → {r.endHM}
+                          {r.notes && <span style={{ color: '#94a3b8', fontFamily: 'inherit', marginLeft: 6 }}>· {r.notes}</span>}
+                        </div>
+                        {r.orderId && <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 1 }}>{r.orderId}</div>}
+                      </div>
+                      {canManage && (
+                        <button
+                          onClick={() => r.type === 'booking' ? handleCancelBooking(r.orderId) : handleDeleteBlock(r.blockId)}
+                          disabled={!!deleting}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, opacity: deleting ? 0.5 : 1, flexShrink: 0 }}
+                          title={r.type === 'booking' ? 'Batalkan booking' : 'Hapus'}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Block list */}
+            {blocks.length > 0 && (
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Servis / Blokir</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {blocks.map((bl, i) => (
+                    <div key={i} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <Wrench size={14} style={{ color: '#dc2626', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 13, color: '#991b1b' }}>{bl.reason}</div>
+                        <div style={{ fontSize: 12, color: '#7f1d1d', fontFamily: 'monospace', marginTop: 2 }}>{bl.startHM} → {bl.endHM}</div>
+                      </div>
+                      {canManage && (
+                        <button
+                          onClick={() => handleDeleteBlock(bl.blockId)}
+                          disabled={!!deleting}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626', padding: 4, opacity: deleting ? 0.5 : 1, flexShrink: 0 }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {error && <p style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', padding: '8px 12px', borderRadius: 10, margin: 0 }}>{error}</p>}
+
+            {/* Add rental form */}
+            {canManage && showAddForm && (
+              <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: '#1e293b', margin: 0 }}>Tambah Tamu</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Nama Tamu *</label>
+                    <input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} placeholder="Budi Santoso"
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>No. HP</label>
+                    <input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} placeholder="0812..."
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Catatan</label>
+                    <input value={form.notes} onChange={e => setForm(f=>({...f,notes:e.target.value}))} placeholder="opsional"
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Jam Ambil</label>
+                    <input type="time" value={form.startHM} onChange={e => setForm(f=>({...f,startHM:e.target.value}))}
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Jam Kembali</label>
+                    <input type="time" value={form.endHM} onChange={e => setForm(f=>({...f,endHM:e.target.value}))}
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #e2e8f0', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setShowAddForm(false); setError(''); }}
+                    style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', color: '#64748b' }}>
+                    Batal
+                  </button>
+                  <button onClick={handleAddManual} disabled={saving}
+                    style={{ flex: 2, padding: '9px', borderRadius: 10, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
+                    {saving ? 'Menyimpan...' : 'Simpan Tamu'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Add block form */}
+            {canManage && showBlockForm && (
+              <div style={{ background: '#fff5f5', border: '1.5px solid #fecaca', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, color: '#991b1b', margin: 0 }}>Blokir / Servis</p>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Alasan *</label>
+                  <input value={blockForm.reason} onChange={e => setBlockForm(f=>({...f,reason:e.target.value}))}
+                    style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Mulai</label>
+                    <input type="time" value={blockForm.startHM} onChange={e => setBlockForm(f=>({...f,startHM:e.target.value}))}
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>Selesai</label>
+                    <input type="time" value={blockForm.endHM} onChange={e => setBlockForm(f=>({...f,endHM:e.target.value}))}
+                      style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #fecaca', borderRadius: 8, fontSize: 13, boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setShowBlockForm(false); setError(''); }}
+                    style={{ flex: 1, padding: '9px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', color: '#64748b' }}>
+                    Batal
+                  </button>
+                  <button onClick={handleAddBlock} disabled={saving}
+                    style={{ flex: 2, padding: '9px', borderRadius: 10, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
+                    {saving ? 'Menyimpan...' : 'Blokir Unit'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        {canManage && !showAddForm && !showBlockForm && (
+          <div style={{ padding: '12px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => { setShowAddForm(true); setShowBlockForm(false); setError(''); }}
+              style={{ flex: 1, padding: '10px', borderRadius: 12, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 800, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Plus size={14} /> Tambah Tamu
+            </button>
+            <button onClick={() => { setShowBlockForm(true); setShowAddForm(false); setError(''); }}
+              style={{ padding: '10px 14px', borderRadius: 12, border: '1.5px solid #fecaca', background: '#fff', color: '#dc2626', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <Wrench size={13} /> Servis
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -343,481 +400,316 @@ function BookingModal({ cell, onClose, onSave, onDelete }) {
 export default function FleetInventoryTable() {
   const { user } = useContext(AuthContext) || {};
   const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
-  const canManage = isSuperAdmin; // Staff operasional: view-only
+  const canManage = isSuperAdmin;
 
   const today = new Date();
-  const [viewMode, setViewMode]           = useState('week');
-  const [dayDateKey, setDayDateKey]       = useState(() => fmtDateKey(today)); // YYYY-MM-DD
-  const [bufferMinutes, setBufferMinutes] = useState(30);
-  const [currentYear, setCurrentYear]     = useState(today.getFullYear());
-  const [currentMonth, setCurrentMonth]   = useState(today.getMonth());
-  const [weekStart, setWeekStart]         = useState(() => getWeekStart(today.getFullYear(), today.getMonth(), today.getDate()));
-  const [bookings, setBookings]           = useState({});
-  const [dayBookings, setDayBookings]     = useState([]);
-  const [dayBlocks, setDayBlocks]         = useState([]);
-  const [isDayLoading, setIsDayLoading]   = useState(false);
-  const [dayError, setDayError]           = useState('');
-  const [rentalModal, setRentalModal]     = useState(null); // { unit, initial }
-  const [modalCell, setModalCell]         = useState(null);
-  const [filterType, setFilterType]       = useState('Semua');
+  const todayKey = fmtDateKey(today);
+
+  const [viewMode, setViewMode]     = useState('week');
+  const [currentYear, setCurrentYear]   = useState(today.getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [weekStart, setWeekStart]   = useState(() => getWeekStart(today.getFullYear(), today.getMonth(), today.getDate()));
+  const [cellMap, setCellMap]       = useState({});
+  const [units, setUnits]           = useState([]);
+  const [filterType, setFilterType] = useState('Semua');
   const [expandedTypes, setExpandedTypes] = useState({});
-  const [isMobile, setIsMobile]           = useState(window.innerWidth < 768);
-  const tableRef = useRef(null);
+  const [isLoading, setIsLoading]   = useState(true);
+  const [loadError, setLoadError]   = useState('');
+  const [modalCell, setModalCell]   = useState(null);
+  const [isMobile, setIsMobile]     = useState(window.innerWidth < 768);
 
-  // [FIX P8] State untuk data dari API
-  const [units, setUnits]         = useState([]);
-  const [unitBlocks, setUnitBlocks] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const unitBlocksRef = useRef([]);
+  const rawBookingsRef = useRef([]);
+  const rawBlocksRef   = useRef([]);
 
-  // ── Resize listener ────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const h = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
   }, []);
 
-  // [FIX P8] Fetch units (motor_units) dari API
+  // ── Build cellMap from raw data ──────────────────────────────────────────────
+  const buildCellMap = useCallback((bookings, blocks) => {
+    const map = {};
+
+    const addToMap = (key, item) => {
+      if (!map[key]) map[key] = { rentals: [], blocks: [], rentalCount: 0, hasBlock: false };
+      if (item.itemType === 'rental') { map[key].rentals.push(item); map[key].rentalCount++; }
+      else { map[key].blocks.push(item); map[key].hasBlock = true; }
+    };
+
+    const skipStatuses = ['cancelled', 'completed', 'selesai'];
+    for (const b of bookings) {
+      if (!b.unit_id || !b.start_date || !b.end_date) continue;
+      if (skipStatuses.includes(String(b.status||'').toLowerCase())) continue;
+
+      const startDt = parseDt(b.start_date);
+      const endDt   = parseDt(b.end_date);
+      if (!startDt || !endDt) continue;
+
+      const startDayKey = fmtDateKey(startDt);
+      const endDayKey   = fmtDateKey(endDt);
+      const cur = new Date(startDt); cur.setHours(0,0,0,0);
+
+      while (fmtDateKey(cur) <= endDayKey) {
+        const dk = fmtDateKey(cur);
+        const isStart = dk === startDayKey;
+        const isEnd   = dk === endDayKey;
+        const startHM = isStart ? toHM(startDt) : '00:00';
+        const endHM   = isEnd   ? toHM(endDt)   : '24:00';
+        addToMap(`${b.unit_id}_${dk}`, {
+          itemType: 'rental', type: 'booking',
+          orderId: b.order_id, name: b.user_name || 'Penyewa',
+          phone: b.user_phone || '', notes: '',
+          startHM, endHM, status: b.status,
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+
+    for (const bl of blocks) {
+      if (!bl.unit_id || !bl.start_at || !bl.end_at) continue;
+      const startDt = parseDt(bl.start_at);
+      const endDt   = parseDt(bl.end_at);
+      if (!startDt || !endDt) continue;
+
+      const startDayKey = fmtDateKey(startDt);
+      const endDayKey   = fmtDateKey(endDt);
+      const cur = new Date(startDt); cur.setHours(0,0,0,0);
+
+      while (fmtDateKey(cur) <= endDayKey) {
+        const dk = fmtDateKey(cur);
+        const isStart = dk === startDayKey;
+        const isEnd   = dk === endDayKey;
+        const startHM = isStart ? toHM(startDt) : '00:00';
+        const endHM   = isEnd   ? toHM(endDt)   : '24:00';
+
+        if (bl.block_type === 'rental_manual') {
+          addToMap(`${bl.unit_id}_${dk}`, {
+            itemType: 'rental', type: 'manual',
+            blockId: bl.id, name: bl.customer_name || 'Manual',
+            phone: bl.customer_phone || '', notes: bl.notes || '',
+            startHM, endHM,
+          });
+        } else if (bl.block_type !== 'buffer') {
+          addToMap(`${bl.unit_id}_${dk}`, {
+            itemType: 'block',
+            blockId: bl.id, reason: bl.reason || 'Diblokir',
+            block_type: bl.block_type,
+            startHM, endHM,
+          });
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    setCellMap(map);
+  }, []);
+
   const fetchUnits = useCallback(async () => {
     try {
       const data = await apiFetch('/api/admin/motor-units-all');
       if (data?.success && Array.isArray(data.data)) {
-        // Transform format dari DB ke format yang dipakai komponen
-        // DB: { id, motor_id, plate_number, status, condition_notes, motor_name, motor_category }
-        // Komponen: { id, type, name, plat }
-        const transformed = data.data.map(u => ({
-          id:   u.id,
-          type: u.motor_category || u.motor_name || 'Lainnya',
-          name: u.motor_name || 'Motor',
-          plat: u.plate_number,
-          dbStatus: u.status, // RDY, SVC, OUT dari DB
-        }));
-        setUnits(transformed);
+        setUnits(data.data.map(u => ({
+          id: u.id, type: u.motor_category || u.motor_name || 'Lainnya',
+          name: u.motor_name || 'Motor', plat: u.plate_number,
+        })));
         setLoadError('');
-      } else {
-        setLoadError(data?.error || 'Gagal memuat data unit.');
+        return;
       }
-    } catch {
-      setLoadError('Tidak dapat terhubung ke server.');
-    }
-  }, []);
-
-  const fetchUnitBlocks = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/admin/units/blocks');
-      if (data?.success && Array.isArray(data.data)) {
-        setUnitBlocks(data.data);
-        unitBlocksRef.current = data.data;
-        return data.data;
-      } else {
-        setUnitBlocks([]);
-        unitBlocksRef.current = [];
-        return [];
-      }
+      setUnits([]);
+      setLoadError(data?.error || 'Gagal memuat unit.');
     } catch (e) {
-      // Endpoint ini optional; kalau backend belum update, anggap kosong.
-      if (e?.status === 404) {
-        setUnitBlocks([]);
-        unitBlocksRef.current = [];
-        return [];
-      }
-      setUnitBlocks([]);
-      unitBlocksRef.current = [];
-      return [];
+      setUnits([]);
+      setLoadError(e?.message || 'Gagal memuat unit.');
     }
   }, []);
 
-  const fetchDayData = useCallback(async (dateKey) => {
-    setIsDayLoading(true);
-    setDayError('');
+  const fetchAll = useCallback(async () => {
     try {
-      const start = `${dateKey} 00:00:00`;
-      const end = `${addDays(dateKey, 1)} 00:00:00`;
-
       const [bRes, blRes] = await Promise.all([
-        apiFetch(`/api/admin/bookings?item_type=motor&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
-        apiFetch(`/api/admin/units/blocks?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
+        apiFetch('/api/admin/bookings?item_type=motor'),
+        apiFetch('/api/admin/units/blocks'),
       ]);
-
-      setDayBookings(Array.isArray(bRes?.data) ? bRes.data : []);
-      setDayBlocks(Array.isArray(blRes?.data) ? blRes.data : []);
-      setDayError('');
+      const bookings = Array.isArray(bRes?.data)  ? bRes.data  : [];
+      const blocks   = Array.isArray(blRes?.data) ? blRes.data : [];
+      rawBookingsRef.current = bookings;
+      rawBlocksRef.current   = blocks;
+      buildCellMap(bookings, blocks);
     } catch (e) {
-      setDayBookings([]);
-      setDayBlocks([]);
-      setDayError(e?.message || 'Gagal memuat data harian.');
-    } finally {
-      setIsDayLoading(false);
+      rawBookingsRef.current = [];
+      rawBlocksRef.current = [];
+      buildCellMap([], []);
+      if (e?.status !== 401) console.warn('fetchAll error:', e?.message);
+      setLoadError(e?.message || 'Gagal memuat booking/blokir.');
     }
-  }, []);
+  }, [buildCellMap]);
 
-  useEffect(() => {
-    if (viewMode !== 'day') return;
-    fetchDayData(dayDateKey);
-  }, [viewMode, dayDateKey, fetchDayData]);
+  const refreshAll = useCallback(async () => {
+    await fetchAll();
+    // Also refresh modalCell's cellData if open
+    setModalCell(prev => {
+      if (!prev) return null;
+      return prev; // will re-read from cellMap via effect below
+    });
+  }, [fetchAll]);
 
-  // [FIX P8] Fetch bookings aktif dari API dan konversi ke format calendar
-  const fetchBookings = useCallback(async (blocksOverride = null) => {
-    try {
-      const data = await apiFetch('/api/admin/bookings?item_type=motor');
-      if (data?.success && Array.isArray(data.data)) {
-        // Konversi array booking ke format key-value calendar
-        // Format key: `${unit_id}_${YYYY-MM-DD}`
-        const bookingMap = {};
-        data.data.forEach(b => {
-          if (!b.unit_id || !b.start_date || !b.end_date) return;
-
-          // Tentukan status visual dari booking status
-          let visualStatus = 'booked';
-          if (b.status === 'cancelled') return; // skip cancelled
-          if (b.payment_status === 'unpaid' && b.status === 'active') visualStatus = 'extend';
-          if (b.status === 'pending') visualStatus = 'booked';
-
-          // Isi semua hari antara start_date dan end_date
-          const start = new Date(b.start_date);
-          const end   = new Date(b.end_date);
-          const cur   = new Date(start);
-
-          while (cur <= end) {
-            const key = `${b.unit_id}_${fmtDateKey(cur)}`;
-            bookingMap[key] = {
-              name:     b.user_name || 'Penyewa',
-              status:   visualStatus,
-              time:     b.start_date === fmtDateKey(cur) ? (b.checkin_time || '') : '',
-              notes:    b.order_id,
-              order_id: b.order_id,
-            };
-            cur.setDate(cur.getDate() + 1);
-          }
-        });
-        const blocks = Array.isArray(blocksOverride) ? blocksOverride : unitBlocksRef.current;
-        if (Array.isArray(blocks) && blocks.length > 0) {
-          blocks.forEach((blk) => {
-            if (!blk.unit_id || !blk.start_at || !blk.end_at) return;
-            const start = new Date(blk.start_at);
-            const end = new Date(blk.end_at);
-            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
-            const cur = new Date(start);
-            while (cur <= end) {
-              const key = `${blk.unit_id}_${fmtDateKey(cur)}`;
-              if (!bookingMap[key]) {
-                bookingMap[key] = {
-                  name: 'Blocked',
-                  status: 'blocked',
-                  time: '',
-                  notes: blk.reason || 'Diblokir',
-                  block_id: blk.id,
-                };
-              }
-              cur.setDate(cur.getDate() + 1);
-            }
-          });
-        }
-
-        setBookings(bookingMap);
-      }
-    } catch (e) {
-      // Bookings gagal dimuat — calendar tetap tampil, hanya kosong
-      if (e?.status !== 401) {
-        console.warn('FleetInventoryTable: gagal memuat bookings');
-      }
-    }
-  }, []);
-
-  // [FIX P8] Load data saat mount
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      await fetchUnits();
-      const blocks = await fetchUnitBlocks();
-      await fetchBookings(blocks);
-      setIsLoading(false);
+      try {
+        await fetchUnits();
+        await fetchAll();
+      } finally {
+        setIsLoading(false);
+      }
     };
     load();
-  }, [fetchUnits, fetchUnitBlocks, fetchBookings]);
+  }, [fetchUnits, fetchAll]);
 
-  // ── Filtered units ──────────────────────────────────────────────────────────
-  const types = useMemo(() => [...new Set(units.map(u => u.type))], [units]);
-  const filteredUnits = useMemo(() =>
-    filterType === 'Semua' ? units : units.filter(u => u.type === filterType),
-    [filterType, units]
-  );
+  // Re-sync modalCell.cellData after refresh
+  useEffect(() => {
+    if (!modalCell) return;
+    const key = `${modalCell.unitId}_${modalCell.dateKey}`;
+    setModalCell(prev => prev ? { ...prev, cellData: cellMap[key] || { rentals: [], blocks: [], rentalCount: 0, hasBlock: false } } : null);
+  }, [cellMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Week navigation ─────────────────────────────────────────────────────────
+  // ── Navigation ──────────────────────────────────────────────────────────────
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
-  const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); setWeekStart(d); };
-  const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate() + 7); setWeekStart(d); };
-  const prevDay = () => setDayDateKey((k) => addDays(k, -1));
-  const nextDay = () => setDayDateKey((k) => addDays(k, 1));
+  const prevWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()-7); setWeekStart(d); };
+  const nextWeek = () => { const d = new Date(weekStart); d.setDate(d.getDate()+7); setWeekStart(d); };
+  const prevMonth = () => { if (currentMonth===0) { setCurrentMonth(11); setCurrentYear(y=>y-1); } else setCurrentMonth(m=>m-1); };
+  const nextMonth = () => { if (currentMonth===11) { setCurrentMonth(0); setCurrentYear(y=>y+1); } else setCurrentMonth(m=>m+1); };
   const goToToday = () => {
     setWeekStart(getWeekStart(today.getFullYear(), today.getMonth(), today.getDate()));
     setCurrentYear(today.getFullYear());
     setCurrentMonth(today.getMonth());
-    setDayDateKey(fmtDateKey(today));
   };
 
-  // ── Month navigation ────────────────────────────────────────────────────────
-  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
-  const prevMonth = () => { if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); } else setCurrentMonth(m => m - 1); };
-  const nextMonth = () => { if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1); } else setCurrentMonth(m => m + 1); };
-
-  // ── Cell click ──────────────────────────────────────────────────────────────
-  const handleCellClick = (unit, date) => {
-    if (!canManage) return;
-    const key = fmtKey(date, unit.id);
-    setModalCell({
-      key,
-      unitId:   unit.id,
-      unitName: unit.name,
-      plat:     unit.plat,
-      dateKey:  fmtDateKey(date),
-      dateStr:  `${date.getDate()} ${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`,
-      dayLabel: DAY_LABELS[date.getDay()],
-      booking:  bookings[key] || null,
-    });
-  };
-
-  const refreshAll = useCallback(async () => {
-    const blocks = await fetchUnitBlocks();
-    await fetchBookings(blocks);
-  }, [fetchUnitBlocks, fetchBookings]);
-
-  // handleSave:
-  // - status "blocked": simpan ke DB unit_blocks
-  // - status "free": hapus block jika ada
-  // - selain itu: tetap local overlay (booking manual)
-  const handleSave = async (form) => {
-    if (!modalCell) return;
-    if (!canManage) return;
-
-    if (form.status === 'blocked') {
-      try {
-        const startAt = `${modalCell.dateKey} 00:00:00`;
-        const endAt = `${modalCell.dateKey} 23:59:59`;
-        const res = await fetch(buildUrl('/api/admin/units/blocks'), {
-          method: 'POST',
-          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            unit_id: modalCell.unitId,
-            start_at: startAt,
-            end_at: endAt,
-            reason: form.notes || 'Diblokir',
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          alert(json.error || 'Gagal memblokir unit.');
-        }
-      } catch {
-        alert('Gagal memblokir unit (koneksi/server).');
-      } finally {
-        await refreshAll();
-        setModalCell(null);
-      }
-      return;
-    }
-
-    if (form.status === 'free') {
-      // If cell is a block, delete it from DB. Otherwise remove local overlay.
-      const existing = bookings?.[modalCell.key];
-      const blockId = existing?.status === 'blocked' ? existing?.block_id : null;
-      if (blockId) {
-        try {
-          const res = await fetch(buildUrl(`/api/admin/units/blocks/${blockId}`), {
-            method: 'DELETE',
-            headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-          });
-          const json = await res.json();
-          if (!res.ok || !json.success) {
-            alert(json.error || 'Gagal menghapus blokir unit.');
-          }
-        } catch {
-          alert('Gagal menghapus blokir unit (koneksi/server).');
-        } finally {
-          await refreshAll();
-          setModalCell(null);
-        }
-      } else {
-        setBookings((b) => {
-          const n = { ...b };
-          delete n[modalCell.key];
-          return n;
-        });
-        setModalCell(null);
-      }
-      return;
-    }
-
-    setBookings((b) => ({ ...b, [modalCell.key]: form }));
-    setModalCell(null);
-  };
-
-  const handleDelete = async () => {
-    if (!modalCell) return;
-    if (!canManage) return;
-    const existing = bookings?.[modalCell.key];
-    const blockId = existing?.status === 'blocked' ? existing?.block_id : null;
-
-    if (blockId) {
-      try {
-        const res = await fetch(buildUrl(`/api/admin/units/blocks/${blockId}`), {
-          method: 'DELETE',
-          headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        });
-        const json = await res.json();
-        if (!res.ok || !json.success) {
-          alert(json.error || 'Gagal menghapus blokir unit.');
-        }
-      } catch {
-        alert('Gagal menghapus blokir unit (koneksi/server).');
-      } finally {
-        await refreshAll();
-        setModalCell(null);
-      }
-      return;
-    }
-
-    setBookings((b) => {
-      const n = { ...b };
-      delete n[modalCell.key];
-      return n;
-    });
-    setModalCell(null);
-  };
+  // ── Filters ─────────────────────────────────────────────────────────────────
+  const types = useMemo(() => [...new Set(units.map(u => u.type))], [units]);
+  const filteredUnits = useMemo(() =>
+    filterType === 'Semua' ? units : units.filter(u => u.type === filterType),
+  [filterType, units]);
+  const groupedUnits = useMemo(() => {
+    const g = {};
+    filteredUnits.forEach(u => { if (!g[u.type]) g[u.type]=[]; g[u.type].push(u); });
+    return g;
+  }, [filteredUnits]);
 
   // ── Metrics ─────────────────────────────────────────────────────────────────
-  const todayKey    = fmtDateKey(today);
   const todayBooked = units.filter(u => {
-    const k = `${u.id}_${todayKey}`;
-    return bookings[k] && ['booked','ojk','extend','partial'].includes(bookings[k].status);
+    const c = cellMap[`${u.id}_${todayKey}`];
+    return c && c.rentalCount > 0;
   }).length;
-  const todayTrouble = units.filter(u => bookings[`${u.id}_${todayKey}`]?.status === 'trouble').length;
-  const todayFree    = units.length - todayBooked - todayTrouble;
+  const todayMaint = units.filter(u => {
+    const c = cellMap[`${u.id}_${todayKey}`];
+    return c && c.hasBlock;
+  }).length;
+  const todayFree = units.length - todayBooked;
 
   const weekOcc = useMemo(() => {
     let booked = 0, total = 0;
     weekDays.forEach(d => {
       units.forEach(u => {
         total++;
-        const k = fmtKey(d, u.id);
-        if (bookings[k] && bookings[k].status !== 'free') booked++;
+        const c = cellMap[`${u.id}_${fmtDateKey(d)}`];
+        if (c && c.rentalCount > 0) booked++;
       });
     });
-    return total > 0 ? Math.round((booked / total) * 100) : 0;
-  }, [weekDays, bookings, units]);
+    return total > 0 ? Math.round((booked/total)*100) : 0;
+  }, [weekDays, cellMap, units]);
+
+  // ── Cell click ──────────────────────────────────────────────────────────────
+  const handleCellClick = (unit, date) => {
+    const dk  = fmtDateKey(date);
+    const key = `${unit.id}_${dk}`;
+    setModalCell({
+      unitId: unit.id, unitName: unit.name, plat: unit.plat,
+      dateKey: dk,
+      dateStr: `${date.getDate()} ${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`,
+      dayLabel: DAY_LABELS[date.getDay()],
+      cellData: cellMap[key] || { rentals: [], blocks: [], rentalCount: 0, hasBlock: false },
+    });
+  };
 
   // ── Cell renderer ────────────────────────────────────────────────────────────
   const renderCell = (unit, date, isToday) => {
-    const key = fmtKey(date, unit.id);
-    const b   = bookings[key];
-    const st  = b ? STATUS[b.status] || STATUS.free : STATUS.free;
-    const isEmpty = !b || b.status === 'free';
+    const dk     = fmtDateKey(date);
+    const key    = `${unit.id}_${dk}`;
+    const cell   = cellMap[key];
+    const ckey   = getCellStatus(cell);
+    const cst    = CSTATUS[ckey];
+    const isEmpty = ckey === 'free';
+    const count  = cell?.rentalCount || 0;
+
+    // Striped pattern for mixed (maintenance + rental)
+    const bgStyle = ckey === 'mixed'
+      ? { background: 'repeating-linear-gradient(45deg, #d97706, #d97706 6px, #dc2626 6px, #dc2626 12px)' }
+      : { background: isEmpty ? (isToday ? 'rgba(120,8,28,0.04)' : 'transparent') : cst.bg };
 
     return (
-      <td key={date.toISOString()} style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
+      <td key={dk} style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
         <div
-          onClick={canManage ? () => handleCellClick(unit, date) : undefined}
-          title={b ? `${b.name}${b.time ? ' · ' + b.time : ''}` : (canManage ? 'Kosong – klik untuk tambah booking' : 'Kosong')}
-          style={{ minHeight: isMobile ? 40 : 52, borderRadius: 6, padding: isMobile ? '4px 5px' : '5px 7px', cursor: canManage ? 'pointer' : 'default', background: isEmpty ? (isToday ? 'rgba(120,8,28,0.04)' : st.bg) : st.bg, border: isEmpty ? `1.5px dashed ${isToday ? '#78081C40' : '#e2e8f0'}` : '1.5px solid transparent', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'opacity 0.15s, transform 0.1s' }}
-          onMouseEnter={e => { e.currentTarget.style.opacity = '0.82'; e.currentTarget.style.transform = 'scale(1.03)'; }}
-          onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; }}
+          onClick={() => handleCellClick(unit, date)}
+          title={isEmpty ? 'Kosong – klik untuk tambah' : `${count} tamu${cell?.hasBlock ? ' + servis' : ''}`}
+          style={{
+            minHeight: isMobile ? 44 : 56, borderRadius: 7,
+            padding: isMobile ? '4px 5px' : '5px 7px',
+            cursor: 'pointer',
+            border: isEmpty ? `1.5px dashed ${isToday ? '#78081C50' : '#e2e8f0'}` : '1.5px solid transparent',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 3, transition: 'opacity 0.15s, transform 0.1s',
+            ...bgStyle,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.opacity='0.8'; e.currentTarget.style.transform='scale(1.04)'; }}
+          onMouseLeave={e => { e.currentTarget.style.opacity='1'; e.currentTarget.style.transform='scale(1)'; }}
         >
           {!isEmpty && (
             <>
-              <span style={{ fontSize: isMobile ? 9 : 11, fontWeight: 700, color: st.text, lineHeight: 1.25, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: isMobile ? 1 : 2, WebkitBoxOrient: 'vertical' }}>
-                {b.name}
-              </span>
-              {b.time && !isMobile && (
-                <span style={{ fontSize: 9, color: st.text, opacity: 0.8, fontWeight: 600 }}>{b.time}</span>
+              {count > 0 && (
+                <span style={{ fontSize: count > 1 ? 16 : 13, fontWeight: 900, color: cst.text, lineHeight: 1 }}>
+                  {count > 1 ? `${count}×` : '✓'}
+                </span>
+              )}
+              {cell?.hasBlock && count === 0 && (
+                <Wrench size={13} style={{ color: cst.text, opacity: 0.9 }} />
+              )}
+              {cell?.hasBlock && count > 0 && (
+                <Wrench size={9} style={{ color: '#fff', opacity: 0.8 }} />
               )}
             </>
           )}
-          {isEmpty && <span style={{ fontSize: 16, textAlign: 'center', opacity: 0.18, color: isToday ? '#78081C' : '#94a3b8', lineHeight: 1 }}>+</span>}
+          {isEmpty && (
+            <span style={{ fontSize: 18, opacity: 0.15, color: isToday ? '#78081C' : '#94a3b8' }}>+</span>
+          )}
         </div>
       </td>
     );
   };
 
-  // ── Group units by type ────────────────────────────────────────────────────
-  const groupedUnits = useMemo(() => {
-    const groups = {};
-    filteredUnits.forEach(u => {
-      if (!groups[u.type]) groups[u.type] = [];
-      groups[u.type].push(u);
-    });
-    return groups;
-  }, [filteredUnits]);
-
-  const cardStyle       = { background: '#fff', borderRadius: 16, border: '1px solid #e8eaf0', overflow: 'hidden' };
+  // ── Styles ───────────────────────────────────────────────────────────────────
+  const cardStyle = { background: '#fff', borderRadius: 16, border: '1px solid #e8eaf0', overflow: 'hidden' };
   const headerCellStyle = { fontSize: 10, fontWeight: 700, color: '#64748b', textAlign: 'center', padding: isMobile ? '6px 3px' : '8px 4px', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' };
 
-  const weekEnd   = weekDays[6];
+  const weekEnd = weekDays[6];
   const weekLabel = weekStart.getMonth() === weekEnd.getMonth()
     ? `${weekStart.getDate()}–${weekEnd.getDate()} ${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getFullYear()}`
     : `${weekStart.getDate()} ${MONTH_NAMES[weekStart.getMonth()]} – ${weekEnd.getDate()} ${MONTH_NAMES[weekEnd.getMonth()]} ${weekEnd.getFullYear()}`;
 
-  // ── Mobile card view ────────────────────────────────────────────────────────
-  const MobileWeekCards = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      {Object.entries(groupedUnits).map(([type, typeUnits]) => (
-        <div key={type}>
-          <div onClick={() => setExpandedTypes(e => ({ ...e, [type]: !e[type] }))}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8fafc', borderRadius: 10, cursor: 'pointer', marginBottom: expandedTypes[type] === false ? 0 : 6, userSelect: 'none' }}>
-            <Bike size={13} style={{ color: '#64748b' }} />
-            <span style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.1em', flex: 1 }}>{type}</span>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>{typeUnits.length} unit</span>
-            <ChevronDown size={13} style={{ color: '#94a3b8', transform: expandedTypes[type] === false ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
-          </div>
-
-          {expandedTypes[type] !== false && typeUnits.map(unit => (
-            <div key={unit.id} style={{ ...cardStyle, marginBottom: 6 }}>
-              <div style={{ padding: '10px 12px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>{unit.name}</span>
-                  <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', marginLeft: 8 }}>{unit.plat}</span>
-                </div>
-              </div>
-              <div style={{ overflowX: 'auto', padding: '8px 10px', display: 'flex', gap: 6 }}>
-                {weekDays.map(date => {
-                  const isToday = fmtDateKey(date) === todayKey;
-                  const key = fmtKey(date, unit.id);
-                  const b   = bookings[key];
-                  const st  = b ? STATUS[b.status] || STATUS.free : STATUS.free;
-                  const isEmpty = !b || b.status === 'free';
-                  return (
-                    <div key={date.toISOString()} onClick={() => handleCellClick(unit, date)}
-                      style={{ minWidth: 56, borderRadius: 8, padding: '6px 5px', cursor: 'pointer', background: isEmpty ? (isToday ? '#fff5f5' : '#f8fafc') : st.bg, border: `1.5px ${isEmpty ? 'dashed' : 'solid'} ${isEmpty ? (isToday ? '#78081C40' : '#e2e8f0') : 'transparent'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: isToday ? '#78081C' : '#94a3b8', textTransform: 'uppercase' }}>{DAY_LABELS[date.getDay()]}</span>
-                      <span style={{ fontSize: 14, fontWeight: 800, color: isToday ? '#78081C' : (isEmpty ? '#374151' : st.text) }}>{date.getDate()}</span>
-                      {!isEmpty && <span style={{ fontSize: 8, fontWeight: 700, color: st.text, textAlign: 'center', lineHeight: 1.2, maxWidth: 50, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{b.name.split(' ')[0]}</span>}
-                      {isEmpty  && <span style={{ fontSize: 14, color: '#d1d5db', lineHeight: 1 }}>+</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-
-  // ── Desktop table view ──────────────────────────────────────────────────────
+  // ── Desktop table ────────────────────────────────────────────────────────────
   const DesktopTable = ({ days }) => (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: 156 }} />
-          {days.map((_, i) => <col key={i} />)}
+          <col style={{ width: 160 }} />
+          {days.map((_,i) => <col key={i} />)}
         </colgroup>
         <thead>
           <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0' }}>
-            <th style={{ ...headerCellStyle, textAlign: 'left', paddingLeft: 14, width: 156 }}>Unit / Plat</th>
+            <th style={{ ...headerCellStyle, textAlign: 'left', paddingLeft: 14 }}>Unit / Plat</th>
             {days.map(date => {
               const isToday = fmtDateKey(date) === todayKey;
               return (
-                <th key={date.toISOString()} style={{ ...headerCellStyle, color: isToday ? '#78081C' : '#64748b', fontWeight: isToday ? 800 : 700, background: isToday ? '#fff5f5' : 'transparent' }}>
+                <th key={fmtDateKey(date)} style={{ ...headerCellStyle, color: isToday ? '#78081C' : '#64748b', fontWeight: isToday ? 800 : 700, background: isToday ? '#fff5f5' : 'transparent' }}>
                   <div>{DAY_LABELS[date.getDay()]}</div>
                   <div style={{ fontSize: 13, fontWeight: 800, color: isToday ? '#78081C' : '#1e293b' }}>{date.getDate()}</div>
                 </th>
@@ -829,20 +721,19 @@ export default function FleetInventoryTable() {
           {Object.entries(groupedUnits).map(([type, typeUnits]) => (
             <React.Fragment key={type}>
               <tr>
-                <td colSpan={days.length + 1} style={{ padding: '5px 14px', background: '#f1f5f9', fontSize: 9, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: '1px solid #e2e8f0', borderTop: '1px solid #e2e8f0' }}>
-                  {type} <span style={{ color: '#94a3b8', fontWeight: 600 }}>({typeUnits.length} unit)</span>
+                <td colSpan={days.length+1} style={{ padding: '5px 14px', background: '#f1f5f9', fontSize: 9, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.12em', borderBottom: '1px solid #e2e8f0', borderTop: '1px solid #e2e8f0' }}>
+                  {type} <span style={{ color: '#94a3b8', fontWeight: 600 }}>({typeUnits.length})</span>
                 </td>
               </tr>
               {typeUnits.map((unit, ri) => (
-                <tr key={unit.id} style={{ borderBottom: ri === typeUnits.length - 1 ? '2px solid #e2e8f0' : '1px solid #f1f5f9' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#fafbfc'}
-                  onMouseLeave={e => e.currentTarget.style.background = ''}
-                >
+                <tr key={unit.id} style={{ borderBottom: ri===typeUnits.length-1 ? '2px solid #e2e8f0' : '1px solid #f1f5f9' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#fafbfc'}
+                  onMouseLeave={e => e.currentTarget.style.background=''}>
                   <td style={{ padding: '4px 8px 4px 14px', borderRight: '1.5px solid #e2e8f0', verticalAlign: 'middle' }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', lineHeight: 1.3 }}>{unit.name}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace', marginTop: 1 }}>{unit.plat}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b' }}>{unit.name}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>{unit.plat}</div>
                   </td>
-                  {days.map(date => renderCell(unit, date, fmtDateKey(date) === todayKey))}
+                  {days.map(date => renderCell(unit, date, fmtDateKey(date)===todayKey))}
                 </tr>
               ))}
             </React.Fragment>
@@ -852,13 +743,60 @@ export default function FleetInventoryTable() {
     </div>
   );
 
-  // ── Month view ──────────────────────────────────────────────────────────────
+  // ── Mobile week cards ────────────────────────────────────────────────────────
+  const MobileWeekCards = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {Object.entries(groupedUnits).map(([type, typeUnits]) => (
+        <div key={type}>
+          <div onClick={() => setExpandedTypes(e => ({...e,[type]:!e[type]}))}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: '#f8fafc', borderRadius: 10, cursor: 'pointer', marginBottom: expandedTypes[type]===false ? 0 : 6, userSelect: 'none' }}>
+            <Bike size={13} style={{ color: '#64748b' }} />
+            <span style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.1em', flex: 1 }}>{type}</span>
+            <ChevronDown size={13} style={{ color: '#94a3b8', transform: expandedTypes[type]===false ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} />
+          </div>
+          {expandedTypes[type]!==false && typeUnits.map(unit => (
+            <div key={unit.id} style={{ ...cardStyle, marginBottom: 6 }}>
+              <div style={{ padding: '8px 12px 6px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#1e293b' }}>{unit.name}</span>
+                <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>{unit.plat}</span>
+              </div>
+              <div style={{ overflowX: 'auto', padding: '8px 10px', display: 'flex', gap: 5 }}>
+                {weekDays.map(date => {
+                  const dk = fmtDateKey(date);
+                  const isToday = dk === todayKey;
+                  const cell = cellMap[`${unit.id}_${dk}`];
+                  const ckey = getCellStatus(cell);
+                  const cst  = CSTATUS[ckey];
+                  const isEmpty = ckey === 'free';
+                  const count = cell?.rentalCount || 0;
+                  return (
+                    <div key={dk} onClick={() => handleCellClick(unit, date)}
+                      style={{ minWidth: 48, borderRadius: 8, padding: '5px 3px', cursor: 'pointer', background: isEmpty ? (isToday ? '#fff5f5' : '#f8fafc') : cst.bg, border: `1.5px ${isEmpty ? 'dashed' : 'solid'} ${isEmpty ? (isToday ? '#78081C40' : '#e2e8f0') : 'transparent'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: isToday ? '#78081C' : '#94a3b8', textTransform: 'uppercase' }}>{DAY_LABELS[date.getDay()]}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: isToday ? '#78081C' : (isEmpty ? '#374151' : cst.text) }}>{date.getDate()}</span>
+                      {!isEmpty && count > 0 && (
+                        <span style={{ fontSize: 10, fontWeight: 900, color: cst.text }}>{count > 1 ? `${count}×` : '✓'}</span>
+                      )}
+                      {!isEmpty && cell?.hasBlock && count === 0 && <Wrench size={10} style={{ color: cst.text }} />}
+                      {isEmpty && <span style={{ fontSize: 14, color: '#d1d5db' }}>+</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── Month view ───────────────────────────────────────────────────────────────
   const MonthView = () => {
-    const days = Array.from({ length: daysInMonth }, (_, i) => new Date(currentYear, currentMonth, i + 1));
+    const days = Array.from({ length: getDaysInMonth(currentYear, currentMonth) }, (_, i) => new Date(currentYear, currentMonth, i+1));
     if (isMobile) {
       return (
         <div style={{ padding: '0 4px' }}>
-          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 12, textAlign: 'center' }}>Tap hari di tabel mingguan untuk edit booking · Mode bulan hanya untuk overview</p>
+          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 600, marginBottom: 12, textAlign: 'center' }}>Mode bulan — overview. Tap sel untuk detail.</p>
           {Object.entries(groupedUnits).map(([type, typeUnits]) => (
             <div key={type} style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, paddingLeft: 2 }}>{type}</div>
@@ -866,9 +804,9 @@ export default function FleetInventoryTable() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={{ ...headerCellStyle, textAlign: 'left', paddingLeft: 10, width: 90, whiteSpace: 'nowrap' }}>Plat</th>
-                      {days.slice(0, 31).map(d => (
-                        <th key={d.getDate()} style={{ ...headerCellStyle, padding: '6px 2px', fontSize: 9, color: fmtDateKey(d) === todayKey ? '#78081C' : '#94a3b8', fontWeight: fmtDateKey(d) === todayKey ? 800 : 600 }}>{d.getDate()}</th>
+                      <th style={{ ...headerCellStyle, textAlign: 'left', paddingLeft: 10, width: 90 }}>Plat</th>
+                      {days.map(d => (
+                        <th key={d.getDate()} style={{ ...headerCellStyle, padding: '6px 2px', fontSize: 9, color: fmtDateKey(d)===todayKey ? '#78081C' : '#94a3b8' }}>{d.getDate()}</th>
                       ))}
                     </tr>
                   </thead>
@@ -877,15 +815,16 @@ export default function FleetInventoryTable() {
                       <tr key={unit.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '4px 10px', fontSize: 9, fontFamily: 'monospace', color: '#64748b', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0' }}>{unit.plat}</td>
                         {days.map(date => {
-                          const key = fmtKey(date, unit.id);
-                          const b   = bookings[key];
-                          const bg  = b ? STATUS[b.status]?.bg || '#e2e8f0' : 'transparent';
-                          const isToday = fmtDateKey(date) === todayKey;
+                          const dk   = fmtDateKey(date);
+                          const cell = cellMap[`${unit.id}_${dk}`];
+                          const ckey = getCellStatus(cell);
+                          const cst  = CSTATUS[ckey];
+                          const isToday = dk === todayKey;
                           return (
-                            <td key={date.getDate()} style={{ padding: '3px 2px', textAlign: 'center' }}>
-                              <div onClick={() => handleCellClick(unit, date)} title={b?.name || 'Kosong'}
-                                style={{ width: 14, height: 14, borderRadius: 3, margin: '0 auto', background: b ? bg : isToday ? '#fee2e2' : '#f1f5f9', cursor: 'pointer', border: isToday && !b ? '1px dashed #78081C60' : 'none', transition: 'opacity 0.15s' }}
-                                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'} onMouseLeave={e => e.currentTarget.style.opacity = '1'} />
+                            <td key={dk} style={{ padding: '3px 2px', textAlign: 'center' }}>
+                              <div onClick={() => handleCellClick(unit, date)} title={cst.label}
+                                style={{ width: 14, height: 14, borderRadius: 3, margin: '0 auto', background: ckey==='free' ? (isToday ? '#fee2e2' : '#f1f5f9') : cst.bg, cursor: 'pointer', border: isToday && ckey==='free' ? '1px dashed #78081C60' : 'none' }}
+                                onMouseEnter={e => e.currentTarget.style.opacity='0.7'} onMouseLeave={e => e.currentTarget.style.opacity='1'} />
                             </td>
                           );
                         })}
@@ -902,371 +841,10 @@ export default function FleetInventoryTable() {
     return <DesktopTable days={days} />;
   };
 
-  // ── Day timeline view (support multi-booking per day) ───────────────────────
-  const DayTimeline = () => {
-    const dayStart = new Date(`${dayDateKey}T00:00:00`);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setDate(dayEnd.getDate() + 1);
-
-    const toMinute = (d) => Math.round((d.getTime() - dayStart.getTime()) / 60000);
-    const clampMinute = (m) => Math.max(0, Math.min(1440, m));
-    const fmtTime = (d) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-
-    const makeEvent = (kind, startAt, endAt, meta) => {
-      const s = parseMaybeSqlDateTime(startAt);
-      const e = parseMaybeSqlDateTime(endAt);
-      if (!s || !e) return null;
-      const startMin = clampMinute(toMinute(s));
-      const endMin = clampMinute(toMinute(e));
-      if (endMin <= startMin) return null;
-      return { kind, startMin, endMin, meta: meta || {} };
-    };
-
-    const bookingStyle = (b) => {
-      const status = String(b?.status || '').toLowerCase();
-      if (status === 'completed' || status === 'selesai') return { bg: '#94a3b8', text: '#0f172a' };
-      if (status === 'pending') return { bg: '#f59e0b', text: '#0f172a' };
-      if (status === 'active') return { bg: '#16a34a', text: '#fff' };
-      return { bg: '#22c55e', text: '#fff' };
-    };
-
-    const openNewRental = (unit, startMin = 9 * 60, endMin = 12 * 60) => {
-      if (!canManage) return;
-      setRentalModal({
-        unit,
-        initial: {
-          startHM: fmtHMFromMinute(startMin),
-          endHM: fmtHMFromMinute(endMin),
-        },
-      });
-    };
-
-    const openEditRental = (unit, block) => {
-      if (!canManage) return;
-      const s = parseMaybeSqlDateTime(block?.start_at);
-      const e = parseMaybeSqlDateTime(block?.end_at);
-      const startMin = s ? Math.max(0, Math.min(1439, Math.round((s.getTime() - dayStart.getTime()) / 60000))) : 9 * 60;
-      const endMin = e ? Math.max(0, Math.min(1440, Math.round((e.getTime() - dayStart.getTime()) / 60000))) : 12 * 60;
-      setRentalModal({
-        unit,
-        initial: {
-          id: block?.id,
-          customer_name: block?.customer_name || '',
-          customer_phone: block?.customer_phone || '',
-          notes: block?.notes || '',
-          startHM: fmtHMFromMinute(startMin),
-          endHM: fmtHMFromMinute(endMin),
-        },
-      });
-    };
-
-    const handleTimelineClick = (unit, e) => {
-      if (!canManage) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-      const ratio = rect.width > 0 ? x / rect.width : 0;
-      const minute = Math.round(ratio * 1440);
-      const snap = 15;
-      const snapped = Math.round(minute / snap) * snap;
-      const start = Math.max(0, Math.min(1410, snapped));
-      const end = Math.min(1440, start + 120);
-      openNewRental(unit, start, end);
-    };
-
-    const rows = filteredUnits.map((u) => {
-      const unitId = Number(u.id);
-      const events = [];
-
-      for (const b of dayBookings || []) {
-        if (Number(b?.unit_id) !== unitId) continue;
-        // Ignore cancelled
-        if (String(b?.status || '').toLowerCase() === 'cancelled') continue;
-        const ev = makeEvent('booking', b.start_date, b.end_date, {
-          order_id: b.order_id,
-          user_name: b.user_name,
-          status: b.status,
-          payment_status: b.payment_status,
-        });
-        if (ev) events.push(ev);
-      }
-
-      for (const bl of dayBlocks || []) {
-        if (Number(bl?.unit_id) !== unitId) continue;
-        const ev = makeEvent('block', bl.start_at, bl.end_at, {
-          id: bl.id,
-          reason: bl.reason,
-          block_type: bl.block_type,
-          customer_name: bl.customer_name,
-          customer_phone: bl.customer_phone,
-          notes: bl.notes,
-          start_at: bl.start_at,
-          end_at: bl.end_at,
-        });
-        if (ev) events.push(ev);
-      }
-
-      // Turnaround buffer after each rental end (booking + manual rental)
-      if ((Number(bufferMinutes) || 0) > 0) {
-        const mins = Math.max(0, Math.min(240, Number(bufferMinutes) || 0));
-        for (const ev of events.filter((e) => e.kind === 'booking' || (e.kind === 'block' && e.meta?.block_type === 'rental_manual'))) {
-          const bStart = ev.endMin;
-          const bEnd = clampMinute(ev.endMin + mins);
-          if (bEnd > bStart) {
-            events.push({
-              kind: 'buffer',
-              startMin: bStart,
-              endMin: bEnd,
-              meta: { label: `Buffer ${mins}m` },
-            });
-          }
-        }
-      }
-
-      events.sort((a, b) => a.startMin - b.startMin);
-      return { unit: u, events };
-    });
-
-    const hourMarks = [0, 6, 12, 18, 24];
-
-    return (
-      <div style={{ padding: 14 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Tanggal</div>
-              <input
-                type="date"
-                value={dayDateKey}
-                onChange={(e) => setDayDateKey(e.target.value)}
-                style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#1e293b', background: '#fff' }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Buffer (menit)</div>
-              <input
-                type="number"
-                min={0}
-                max={240}
-                value={bufferMinutes}
-                onChange={(e) => setBufferMinutes(parseInt(e.target.value || '0', 10))}
-                style={{ width: 120, padding: '8px 10px', borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12, fontWeight: 700, color: '#1e293b', background: '#fff' }}
-              />
-            </div>
-            <button
-              onClick={() => fetchDayData(dayDateKey)}
-              style={{ marginTop: 18, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 800, color: '#64748b', display: 'flex', alignItems: 'center', gap: 6 }}
-              title="Refresh harian"
-            >
-              <RefreshCw size={14} /> Refresh
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {isDayLoading ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 12, fontWeight: 700 }}>
-                <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Memuat timeline...
-              </div>
-            ) : dayError ? (
-              <div style={{ color: '#dc2626', fontSize: 12, fontWeight: 800 }}>{dayError}</div>
-            ) : (
-              <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>
-                {rows.length} unit · {dayBookings.length} booking · {dayBlocks.length} blokir
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: 980 }}>
-            <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <div style={{ width: 260, fontSize: 10, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Unit</div>
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', padding: '0 10px', fontSize: 10, fontWeight: 800, color: '#94a3b8' }}>
-                {hourMarks.map((h) => (
-                  <span key={h}>{String(h).padStart(2, '0')}:00</span>
-                ))}
-              </div>
-            </div>
-
-            {rows.map(({ unit, events }) => (
-              <div key={unit.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ width: 260 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>{unit.name}</div>
-                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b', fontWeight: 800 }}>{unit.plat}</span>
-                    <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>{unit.type}</span>
-                  </div>
-	                  <div style={{ marginTop: 8 }}>
-	                    {canManage && (
-	                      <button
-	                        onClick={() => openNewRental(unit)}
-	                        style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 900, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-	                        title="Tambah slot sewa manual (tanpa booking)"
-	                      >
-	                        <Plus size={14} /> Tambah slot
-	                      </button>
-	                    )}
-	                  </div>
-                </div>
-
-	                <div
-	                  style={{ flex: 1, position: 'relative', height: 46, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}
-	                  onClick={canManage ? (e) => handleTimelineClick(unit, e) : undefined}
-	                  title={canManage ? 'Klik timeline untuk buat slot sewa (snap 15 menit)' : 'View only'}
-	                >
-                  {/* Hour grid */}
-                  {Array.from({ length: 24 }).map((_, i) => (
-                    <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(i / 24) * 100}%`, width: 1, background: i % 6 === 0 ? '#e2e8f0' : '#f1f5f9' }} />
-                  ))}
-
-                  {events.map((ev, idx) => {
-                    const left = (ev.startMin / 1440) * 100;
-                    const width = ((ev.endMin - ev.startMin) / 1440) * 100;
-
-                    if (ev.kind === 'buffer') {
-                      return (
-                        <div
-                          key={`buf-${idx}`}
-                          title={`${ev.meta?.label || 'Buffer'} · ${String(ev.startMin).padStart(2, '0')}m`}
-                          style={{
-                            position: 'absolute',
-                            top: 26,
-                            left: `${left}%`,
-                            width: `${Math.max(0.3, width)}%`,
-                            height: 14,
-                            background: 'repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 6px, #f8fafc 6px, #f8fafc 12px)',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 8,
-                          }}
-                        />
-                      );
-                    }
-
-                    if (ev.kind === 'block') {
-                      if (ev.meta?.block_type === 'rental_manual') {
-                        const label = ev.meta?.customer_name ? String(ev.meta.customer_name).slice(0, 26) : 'Manual rental';
-                        return (
-	                          <div
-	                            key={`rent-${idx}`}
-	                            title={`${label}${ev.meta?.customer_phone ? ` · ${ev.meta.customer_phone}` : ''}${ev.meta?.notes ? `\n${ev.meta.notes}` : ''}`}
-	                            onClick={canManage ? ((e) => { e.stopPropagation(); openEditRental(unit, ev.meta); }) : undefined}
-	                            style={{
-                              position: 'absolute',
-                              top: 8,
-                              left: `${left}%`,
-                              width: `${Math.max(0.6, width)}%`,
-                              height: 16,
-                              background: '#0d9488',
-                              color: '#fff',
-                              borderRadius: 9,
-                              fontSize: 10,
-                              fontWeight: 900,
-                              padding: '0 8px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              overflow: 'hidden',
-                              whiteSpace: 'nowrap',
-                              textOverflow: 'ellipsis',
-                              boxShadow: '0 6px 14px rgba(15,23,42,0.10)',
-	                              cursor: canManage ? 'pointer' : 'default',
-	                            }}
-	                          >
-                            {label}
-                          </div>
-                        );
-                      }
-
-                      const label = ev.meta?.reason ? String(ev.meta.reason).slice(0, 26) : 'Diblokir';
-                      return (
-                        <div
-                          key={`blk-${idx}`}
-                          title={`Blocked · ${label}`}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            position: 'absolute',
-                            top: 8,
-                            left: `${left}%`,
-                            width: `${Math.max(0.5, width)}%`,
-                            height: 16,
-                            background: '#374151',
-                            color: '#fff',
-                            borderRadius: 9,
-                            fontSize: 10,
-                            fontWeight: 800,
-                            padding: '0 8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            overflow: 'hidden',
-                            whiteSpace: 'nowrap',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {label}
-                        </div>
-                      );
-                    }
-
-                    const st = bookingStyle(ev.meta);
-                    const label = `${ev.meta?.user_name || 'Penyewa'} · ${ev.meta?.order_id || ''}`.trim();
-                    const startAt = new Date(dayStart.getTime() + ev.startMin * 60000);
-                    const endAt = new Date(dayStart.getTime() + ev.endMin * 60000);
-                    return (
-                      <div
-                        key={`bk-${idx}`}
-                        title={`${label}\n${fmtTime(startAt)} - ${fmtTime(endAt)}`}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          position: 'absolute',
-                          top: 8,
-                          left: `${left}%`,
-                          width: `${Math.max(0.6, width)}%`,
-                          height: 16,
-                          background: st.bg,
-                          color: st.text,
-                          borderRadius: 9,
-                          fontSize: 10,
-                          fontWeight: 900,
-                          padding: '0 8px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          overflow: 'hidden',
-                          whiteSpace: 'nowrap',
-                          textOverflow: 'ellipsis',
-                          boxShadow: '0 6px 14px rgba(15,23,42,0.10)',
-                        }}
-                      >
-                        {label}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 4, background: '#16a34a', display: 'inline-block' }} /> Booking
-          </span>
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 4, background: '#374151', display: 'inline-block' }} /> Block
-          </span>
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 4, background: 'repeating-linear-gradient(45deg, #e2e8f0, #e2e8f0 6px, #f8fafc 6px, #f8fafc 12px)', border: '1px solid #e2e8f0', display: 'inline-block' }} /> Buffer
-          </span>
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#94a3b8', fontWeight: 700 }}>
-            Tips: jika unit bisa disewa lebih dari 1x sehari, blok akan terlihat terpisah per jam.
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'Inter', -apple-system, sans-serif", maxWidth: 1200, margin: '0 auto', padding: isMobile ? '16px 12px' : '24px 20px' }}>
 
-      {/* [FIX P8] Loading state */}
       {isLoading && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '40px 0', color: '#64748b' }}>
           <Loader2 size={20} style={{ animation: 'spin 1s linear infinite' }} />
@@ -1275,15 +853,14 @@ export default function FleetInventoryTable() {
         </div>
       )}
 
-      {/* [FIX P8] Error state */}
       {!isLoading && loadError && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <AlertTriangle size={18} style={{ color: '#dc2626', flexShrink: 0 }} />
+          <AlertTriangle size={18} style={{ color: '#dc2626' }} />
           <div style={{ flex: 1 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#dc2626' }}>Gagal memuat data unit</p>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#dc2626' }}>Gagal memuat data</p>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: '#ef4444' }}>{loadError}</p>
           </div>
-          <button onClick={() => { setIsLoading(true); fetchUnits().then(() => setIsLoading(false)); }}
+          <button onClick={() => { setIsLoading(true); fetchUnits().then(()=>setIsLoading(false)); }}
             style={{ background: '#fff', border: '1px solid #fecaca', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 5 }}>
             <RefreshCw size={12} /> Coba Lagi
           </button>
@@ -1292,30 +869,40 @@ export default function FleetInventoryTable() {
 
       {!isLoading && !loadError && (
         <>
-          {/* ── Metrics ──────────────────────────────────────────────────────── */}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 2 : 4}, 1fr)`, gap: isMobile ? 8 : 12, marginBottom: 16 }}>
+          {/* View-only banner for non-admin */}
+          {!canManage && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '9px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 15 }}>👁️</span>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#92400e' }}>Mode Pantau</span>
+                <span style={{ fontSize: 11, color: '#a16207', marginLeft: 8 }}>Kamu dapat melihat jadwal armada, tapi tidak bisa mengubah data.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Metrics */}
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile?2:4}, 1fr)`, gap: isMobile?8:12, marginBottom: 16 }}>
             {[
               { label: 'Tersewa hari ini', value: todayBooked,   color: '#16a34a' },
               { label: 'Kosong',           value: todayFree,     color: '#64748b' },
-              { label: 'Trouble',          value: todayTrouble,  color: '#dc2626' },
+              { label: 'Maintenance',      value: todayMaint,    color: '#dc2626' },
               { label: 'Total armada',     value: units.length,  color: '#0f172a' },
             ].map(m => (
-              <div key={m.label} style={{ background: '#fff', borderRadius: 12, padding: isMobile ? '12px' : '14px 18px', border: '1px solid #e8eaf0' }}>
-                <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
+              <div key={m.label} style={{ background: '#fff', borderRadius: 12, padding: isMobile?'12px':'14px 18px', border: '1px solid #e8eaf0' }}>
+                <div style={{ fontSize: isMobile?20:24, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, fontWeight: 600 }}>{m.label}</div>
               </div>
             ))}
           </div>
 
-          {/* ── Occupancy bar ─────────────────────────────────────────────────── */}
+          {/* Occupancy */}
           <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', border: '1px solid #e8eaf0', marginBottom: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>Tingkat hunian minggu ini</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>{weekOcc}%</span>
-                {/* [FIX P8] Tombol refresh data */}
-                <button onClick={() => { fetchBookings(); fetchUnits(); }} title="Refresh data dari server"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, display: 'flex', alignItems: 'center' }}>
+                <button onClick={refreshAll} title="Refresh"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, display: 'flex' }}>
                   <RefreshCw size={13} />
                 </button>
               </div>
@@ -1325,90 +912,89 @@ export default function FleetInventoryTable() {
             </div>
           </div>
 
-          {/* ── Controls ──────────────────────────────────────────────────────── */}
+          {/* Controls */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 14, alignItems: 'center' }}>
             <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3, gap: 2 }}>
-              {['day', 'week', 'month'].map(v => (
+              {['week','month'].map(v => (
                 <button key={v} onClick={() => setViewMode(v)}
-                  style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, transition: 'all 0.15s', background: viewMode === v ? '#fff' : 'transparent', color: viewMode === v ? '#1e293b' : '#64748b', boxShadow: viewMode === v ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
-                  {v === 'day' ? 'Harian' : v === 'week' ? 'Mingguan' : 'Bulanan'}
+                  style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, transition: 'all 0.15s', background: viewMode===v ? '#fff' : 'transparent', color: viewMode===v ? '#1e293b' : '#64748b', boxShadow: viewMode===v ? '0 1px 4px rgba(0,0,0,0.1)' : 'none' }}>
+                  {v === 'week' ? 'Mingguan' : 'Bulanan'}
                 </button>
               ))}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button onClick={viewMode === 'day' ? prevDay : (viewMode === 'week' ? prevWeek : prevMonth)} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><ChevronLeft size={14} /></button>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', minWidth: isMobile ? 140 : 200, textAlign: 'center' }}>
-                {viewMode === 'day'
-                  ? dayDateKey
-                  : viewMode === 'week'
-                    ? weekLabel
-                    : `${MONTH_NAMES[currentMonth]} ${currentYear}`}
+              <button onClick={viewMode==='week' ? prevWeek : prevMonth}
+                style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <ChevronLeft size={14} />
+              </button>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', minWidth: isMobile?140:200, textAlign: 'center' }}>
+                {viewMode==='week' ? weekLabel : `${MONTH_NAMES[currentMonth]} ${currentYear}`}
               </span>
-              <button onClick={viewMode === 'day' ? nextDay : (viewMode === 'week' ? nextWeek : nextMonth)} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><ChevronRight size={14} /></button>
+              <button onClick={viewMode==='week' ? nextWeek : nextMonth}
+                style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <ChevronRight size={14} />
+              </button>
             </div>
 
-            <button onClick={goToToday} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
+            <button onClick={goToToday}
+              style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#64748b', display: 'flex', alignItems: 'center', gap: 5 }}>
               <Calendar size={13} /> Hari ini
             </button>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginLeft: 'auto' }}>
               {['Semua', ...types].map(t => (
                 <button key={t} onClick={() => setFilterType(t)}
-                  style={{ padding: '5px 12px', borderRadius: 20, border: '1.5px solid', borderColor: filterType === t ? '#78081C' : '#e2e8f0', background: filterType === t ? '#78081C' : '#fff', color: filterType === t ? '#fff' : '#64748b', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                  style={{ padding: '5px 12px', borderRadius: 20, border: '1.5px solid', borderColor: filterType===t ? '#78081C' : '#e2e8f0', background: filterType===t ? '#78081C' : '#fff', color: filterType===t ? '#fff' : '#64748b', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
                   {t}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* ── Legend ────────────────────────────────────────────────────────── */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-            {Object.entries(STATUS).map(([k, v]) => (
+          {/* Legend */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            {Object.entries(CSTATUS).filter(([k]) => k !== 'free').map(([k, v]) => (
               <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: v.bg || 'transparent', border: v.border ? `1.5px dashed ${v.border}` : 'none' }} />
+                <div style={{ width: 12, height: 12, borderRadius: 3, background: k==='mixed' ? 'repeating-linear-gradient(45deg,#d97706,#d97706 3px,#dc2626 3px,#dc2626 6px)' : v.bg }} />
                 <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>{v.label}</span>
               </div>
             ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 3, border: '1.5px dashed #e2e8f0' }} />
+              <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Kosong</span>
+            </div>
           </div>
 
-          {/* ── Table ─────────────────────────────────────────────────────────── */}
-          <div ref={tableRef} style={{ ...cardStyle }}>
+          {/* Table */}
+          <div style={{ ...cardStyle }}>
             {units.length === 0 ? (
               <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                <Bike size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                <Bike size={32} style={{ margin: '0 auto 12px', opacity: 0.3, display: 'block' }} />
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>Belum ada unit motor terdaftar.</p>
-                <p style={{ margin: '4px 0 0', fontSize: 11 }}>Tambahkan unit di menu Armada terlebih dahulu.</p>
               </div>
-            ) : (
-              viewMode === 'day'
-                ? <DayTimeline />
-                : viewMode === 'week'
-                  ? isMobile ? <div style={{ padding: '10px 8px' }}><MobileWeekCards /></div> : <DesktopTable days={weekDays} />
-                  : <MonthView />
-            )}
+            ) : viewMode === 'week'
+              ? isMobile
+                ? <div style={{ padding: '10px 8px' }}><MobileWeekCards /></div>
+                : <DesktopTable days={weekDays} />
+              : <MonthView />
+            }
           </div>
 
           <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'right', marginTop: 8, fontWeight: 600 }}>
-            Klik sel untuk tambah atau edit booking · Data disinkronkan dari sistem booking
+            Klik sel untuk lihat atau tambah booking · Hijau = 1 tamu · Oranye = 2+ tamu · Merah = maintenance
           </p>
         </>
       )}
 
-      {/* ── Modal ─────────────────────────────────────────────────────────────── */}
       {modalCell && (
-        <BookingModal cell={modalCell} onClose={() => setModalCell(null)} onSave={handleSave} onDelete={handleDelete} />
+        <CellDetailModal
+          cell={modalCell}
+          onClose={() => setModalCell(null)}
+          onRefresh={async () => { await refreshAll(); }}
+          canManage={canManage}
+        />
       )}
-
-      <ManualRentalModal
-        open={!!rentalModal}
-        unit={rentalModal?.unit || null}
-        dateKey={dayDateKey}
-        initial={rentalModal?.initial || null}
-        bufferMinutes={bufferMinutes}
-        onClose={() => setRentalModal(null)}
-        onSaved={() => fetchDayData(dayDateKey)}
-      />
     </div>
   );
 }

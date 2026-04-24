@@ -607,7 +607,8 @@ router.put('/kyc/:id', requirePermission('users'), async (req, res) => {
 // MOTOR UNITS — ALL (untuk FleetInventoryTable)
 // [FIX P8] Endpoint baru — ambil semua unit beserta nama motor & kategori
 // ==========================================
-router.get('/motor-units-all', requirePermission('armada'), async (req, res) => {
+// View-only access: staff operasional (logistics) boleh lihat unit untuk Fleet Inventory.
+router.get('/motor-units-all', requireAnyPermission(['armada', 'logistics']), async (req, res) => {
   try {
     const rows = await dbAll(`
       SELECT mu.id, mu.motor_id, mu.plate_number, mu.status, mu.condition_notes,
@@ -750,7 +751,7 @@ router.post('/units/blocks', requireAdminRole, async (req, res) => {
 });
 
 // View-only: staff operasional boleh lihat (armada), tapi hanya admin yang bisa create/edit/delete.
-router.get('/units/blocks', requireAnyPermission(['booking', 'armada']), async (req, res) => {
+router.get('/units/blocks', requireAnyPermission(['booking', 'armada', 'logistics']), async (req, res) => {
   try {
     const unitId = req.query.unit_id ? parseInt(req.query.unit_id, 10) : null;
     const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
@@ -1427,7 +1428,8 @@ router.delete('/car-units/:unitId', requirePermission('armada'), async (req, res
 // TRANSAKSI & BOOKING (Akses: booking)
 // ==========================================
 // View-only: armada boleh lihat list booking untuk Fleet Inventory.
-router.get('/bookings', requireAnyPermission(['booking', 'armada']), async (req, res) => {
+// View-only access: staff operasional (logistics) butuh lihat booking motor untuk Fleet Inventory & operasional.
+router.get('/bookings', requireAnyPermission(['booking', 'armada', 'logistics']), async (req, res) => {
   try {
     const itemType = req.query.item_type ? String(req.query.item_type).trim().toLowerCase() : null;
     const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
@@ -1706,6 +1708,79 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
   } catch (err) {
     console.error('PUT /admin/bookings/:orderId/status error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengupdate status transaksi.' });
+  }
+});
+
+// ==========================================
+// EARLY RETURN — kembali lebih awal
+// Mengupdate end_date ke waktu aktual + auto-buffer block
+// ==========================================
+router.put('/bookings/:orderId/early-return', requirePermission('booking'), async (req, res) => {
+  try {
+    const { actual_return_at, buffer_minutes, notes } = req.body || {};
+
+    const booking = await dbGet(
+      `SELECT order_id, status, unit_id, user_id, total_price, start_date, end_date
+       FROM bookings WHERE order_id = ? LIMIT 1`,
+      [req.params.orderId]
+    );
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking tidak ditemukan.' });
+    }
+    if (!['active', 'pending'].includes(String(booking.status || '').toLowerCase())) {
+      return res.status(400).json({ success: false, error: 'Booking harus berstatus active untuk early return.' });
+    }
+
+    const returnAt = normalizeToSqliteDateTime(actual_return_at || new Date().toISOString());
+
+    // Pastikan return time tidak lebih awal dari start_date
+    if (new Date(returnAt) <= new Date(normalizeToSqliteDateTime(booking.start_date))) {
+      return res.status(400).json({ success: false, error: 'Waktu kembali tidak boleh sebelum waktu mulai.' });
+    }
+
+    const noteText = notes ? `Kembali lebih awal. ${notes}` : 'Kembali lebih awal.';
+
+    await dbRun(
+      `UPDATE bookings
+         SET end_date = ?,
+             status = 'selesai',
+             price_notes = CASE
+               WHEN price_notes IS NULL OR price_notes = '' THEN ?
+               ELSE price_notes || ' | ' || ?
+             END
+       WHERE order_id = ?`,
+      [returnAt, noteText, noteText, req.params.orderId]
+    );
+
+    // Auto-create buffer block untuk bersih-bersih
+    if (booking.unit_id) {
+      const bufMins = Math.min(240, Math.max(0, parseInt(buffer_minutes ?? 60, 10) || 60));
+      if (bufMins > 0) {
+        const bufEnd = new Date(returnAt.replace(' ', 'T'));
+        bufEnd.setMinutes(bufEnd.getMinutes() + bufMins);
+        const bufEndStr = normalizeToSqliteDateTime(bufEnd.toISOString());
+        await dbRun(
+          `INSERT INTO unit_blocks (unit_id, start_at, end_at, reason, block_type, notes, created_by)
+           VALUES (?, ?, ?, 'Buffer bersih', 'buffer', ?, 'system')`,
+          [booking.unit_id, returnAt, bufEndStr, `Auto-buffer ${bufMins}m setelah early return ${req.params.orderId}`]
+        );
+      }
+    }
+
+    // Tambahkan miles reward
+    try {
+      const earnedMiles = Math.floor((booking.total_price || 0) / 10000);
+      if (earnedMiles > 0 && booking.user_id) {
+        await dbRun(`UPDATE users SET miles = miles + ? WHERE id = ?`, [earnedMiles, booking.user_id]);
+      }
+    } catch (milesErr) {
+      console.error('⚠️  Miles gagal:', milesErr.message);
+    }
+
+    res.json({ success: true, message: 'Early return berhasil dicatat. Unit akan tersedia setelah buffer.' });
+  } catch (err) {
+    console.error('PUT /admin/bookings/:orderId/early-return error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mencatat early return.' });
   }
 });
 
