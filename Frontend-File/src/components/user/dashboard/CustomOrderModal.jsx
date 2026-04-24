@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { X, Loader2, Truck, MapPin, Calendar, FileText, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { WA_CONTACTS } from '../../../config/contacts';
 
-const CITY_OTHER = 'Kota lainnya';
-const BASE_CITIES = ['Yogyakarta', 'Solo', 'Semarang', 'Magelang', 'Klaten'];
+const CITIES = ['Yogyakarta', 'Solo'];
 
 const todayYmd = () => {
   const d = new Date();
@@ -35,19 +34,11 @@ export default function CustomOrderModal({ user, onClose }) {
   const [saving, setSaving] = useState(false);
   const [backendNotice, setBackendNotice] = useState(null); // string | null
 
-  const cityOptions = Array.from(new Set([...BASE_CITIES, CITY_OTHER]));
-  const resolveCity = (selected, other) => {
-    if (selected === CITY_OTHER) return String(other || '').trim();
-    return String(selected || '').trim();
-  };
-
-  const initialToCityInList = user?.location && BASE_CITIES.includes(user.location);
+  const initialToCityInList = user?.location && CITIES.includes(user.location);
   const [form, setForm] = useState({
     unit_type: '',
     from_city: '',
-    from_city_other: '',
-    to_city: initialToCityInList ? user.location : (user?.location ? CITY_OTHER : ''),
-    to_city_other: initialToCityInList ? '' : (user?.location || ''),
+    to_city: initialToCityInList ? user.location : '',
     start_date: tomorrowYmd(),
     end_date: '',
     notes: '',
@@ -58,15 +49,10 @@ export default function CustomOrderModal({ user, onClose }) {
 
   const validate = () => {
     const e = {};
-    const fromCity = resolveCity(form.from_city, form.from_city_other);
-    const toCity = resolveCity(form.to_city, form.to_city_other);
-
     if (!form.unit_type.trim()) e.unit_type = 'Wajib diisi.';
     if (!form.from_city) e.from_city = 'Pilih kota asal unit.';
-    if (form.from_city === CITY_OTHER && !fromCity) e.from_city_other = 'Tulis nama kota asal.';
     if (!form.to_city) e.to_city = 'Pilih kota tujuan.';
-    if (form.to_city === CITY_OTHER && !toCity) e.to_city_other = 'Tulis nama kota tujuan.';
-    if (fromCity && toCity && fromCity === toCity) e.to_city = 'Kota tujuan harus berbeda dari kota asal.';
+    if (form.from_city && form.to_city && form.from_city === form.to_city) e.to_city = 'Kota tujuan harus berbeda dari kota asal.';
     if (!form.start_date) e.start_date = 'Wajib diisi.';
     if (form.start_date <= todayYmd()) e.start_date = 'Booking minimal H-1 (mulai besok).';
     if (!form.end_date) e.end_date = 'Wajib diisi.';
@@ -82,9 +68,6 @@ export default function CustomOrderModal({ user, onClose }) {
     setSaving(true);
     setBackendNotice(null);
 
-    const fromCity = resolveCity(form.from_city, form.from_city_other);
-    const toCity = resolveCity(form.to_city, form.to_city_other);
-
     try {
       const token = localStorage.getItem('token');
       const resp = await fetch(`${API_URL}/api/custom-orders`, {
@@ -97,8 +80,8 @@ export default function CustomOrderModal({ user, onClose }) {
           user_name: user?.name || null,
           user_phone: user?.phone || null,
           unit_type: form.unit_type.trim(),
-          from_city: fromCity,
-          to_city: toCity,
+          from_city: form.from_city,
+          to_city: form.to_city,
           start_date: form.start_date,
           end_date: form.end_date,
           notes: form.notes.trim() || null,
@@ -123,8 +106,8 @@ export default function CustomOrderModal({ user, onClose }) {
       `Nama: ${user?.name || 'Pelanggan'}\n` +
       `Kontak: ${user?.phone || '-'}\n\n` +
       `Unit: ${form.unit_type}\n` +
-      `Dari kota: ${fromCity}\n` +
-      `Tujuan: ${toCity}\n` +
+      `Dari kota: ${form.from_city}\n` +
+      `Tujuan: ${form.to_city}\n` +
       `Mulai: ${fmtDate(form.start_date)}\n` +
       `Selesai: ${fmtDate(form.end_date)} (${duration} hari)\n` +
       (form.notes ? `\nCatatan: ${form.notes}` : '') +
@@ -230,20 +213,9 @@ export default function CustomOrderModal({ user, onClose }) {
                 className={`w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none bg-white focus:ring-2 focus:ring-slate-900 ${errors.from_city ? 'border-red-300' : 'border-slate-200'}`}
               >
                 <option value="">Pilih kota</option>
-                {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               {errors.from_city && <p className="mt-1 text-xs text-red-500 font-bold">{errors.from_city}</p>}
-              {form.from_city === CITY_OTHER && (
-                <>
-                  <input
-                    value={form.from_city_other}
-                    onChange={(e) => set('from_city_other', e.target.value)}
-                    placeholder="Tulis nama kota asal"
-                    className={`mt-2 w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 ${errors.from_city_other ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
-                  />
-                  {errors.from_city_other && <p className="mt-1 text-xs text-red-500 font-bold">{errors.from_city_other}</p>}
-                </>
-              )}
             </div>
             <div>
               <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 flex items-center gap-1">
@@ -255,20 +227,9 @@ export default function CustomOrderModal({ user, onClose }) {
                 className={`w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none bg-white focus:ring-2 focus:ring-slate-900 ${errors.to_city ? 'border-red-300' : 'border-slate-200'}`}
               >
                 <option value="">Pilih kota</option>
-                {cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CITIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               {errors.to_city && <p className="mt-1 text-xs text-red-500 font-bold">{errors.to_city}</p>}
-              {form.to_city === CITY_OTHER && (
-                <>
-                  <input
-                    value={form.to_city_other}
-                    onChange={(e) => set('to_city_other', e.target.value)}
-                    placeholder="Tulis nama kota tujuan"
-                    className={`mt-2 w-full border rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-slate-900 ${errors.to_city_other ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
-                  />
-                  {errors.to_city_other && <p className="mt-1 text-xs text-red-500 font-bold">{errors.to_city_other}</p>}
-                </>
-              )}
             </div>
           </div>
 

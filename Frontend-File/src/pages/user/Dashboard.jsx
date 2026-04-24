@@ -197,7 +197,7 @@ export default function Dashboard() {
                     <span className="text-rose-400">Kita Kirimin!</span>
                   </h3>
                   <p className="text-slate-400 text-sm font-medium leading-relaxed max-w-xs">
-                    Nggak nemu unit yang kamu mau di kotamu? Kami bisa kirim dari kota lain — Jogja, Solo, Semarang, dan sekitarnya.
+                    Nggak nemu unit yang kamu mau di kotamu? Kami bisa kirim dari kota lain — Jogja atau Solo.
                   </p>
 
                   {/* Syarat pills */}
