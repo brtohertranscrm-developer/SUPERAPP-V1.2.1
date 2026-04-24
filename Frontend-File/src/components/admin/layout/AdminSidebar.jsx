@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Bike, FileText, TrendingUp, Users,
   Settings, LogOut, ClipboardList, Package, DollarSign,
   Calendar, Gift, Ticket, ShieldCheck, LifeBuoy, PackagePlus,
-  Truck, Handshake,
+  Truck, Handshake, CarFront,
 } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
@@ -20,7 +20,8 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Data Pesanan',    path: '/admin/booking',    key: 'booking',   icon: <ClipboardList size={20} /> },
         { name: 'Kelola Jadwal',   path: '/admin/logistics',  key: 'logistics', icon: <Truck size={20} /> },
         { name: 'Tim & Libur',     path: '/admin/manning',    key: 'manning',   icon: <Users size={20} /> },
-        { name: 'Manajemen Armada',path: '/admin/armada',     key: 'armada',    icon: <Bike size={20} /> },
+        { name: 'Armada Motor',    path: '/admin/armada',     key: 'armada',    icon: <Bike size={20} /> },
+        { name: 'Armada Mobil',    path: '/admin/cars',       key: 'armada',    icon: <CarFront size={20} /> },
         { name: 'Fleet Inventory', path: '/admin/fleet',      key: 'armada',    icon: <Calendar size={20} /> },
         { name: 'Manajemen Loker', path: '/admin/loker',      key: 'loker',     icon: <Package size={20} /> },
       ],

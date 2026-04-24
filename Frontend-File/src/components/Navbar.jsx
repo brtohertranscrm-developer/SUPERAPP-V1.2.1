@@ -73,6 +73,7 @@ export default function Navbar() {
             {/* Menu Navigasi Tengah (Tampil HANYA di Desktop) */}
             <div className="hidden lg:flex items-center gap-8 font-semibold text-gray-500 text-sm">
               <span onClick={() => navigate('/motor')} className="hover:text-brand-primary cursor-pointer transition-colors">Rental Motor</span>
+              <span onClick={() => navigate('/mobil')} className="hover:text-brand-primary cursor-pointer transition-colors">Rental Mobil</span>
               <span onClick={() => navigate('/loker')} className="hover:text-brand-primary cursor-pointer transition-colors">Smart Loker</span>
               <span onClick={() => navigate('/artikel')} className="hover:text-brand-primary cursor-pointer transition-colors">Artikel & Tips</span>
             </div>
@@ -162,6 +163,14 @@ export default function Navbar() {
               className="w-full flex items-center justify-between py-4 border-b border-gray-100 text-left group"
             >
               <span className="text-3xl sm:text-4xl font-black text-slate-800 group-hover:text-brand-primary transition-colors tracking-tight">Rental Motor</span>
+              <ChevronRight size={32} className="text-gray-300 group-hover:text-brand-primary group-hover:translate-x-2 transition-all" />
+            </button>
+
+            <button 
+              onClick={() => navigate('/mobil')}
+              className="w-full flex items-center justify-between py-4 border-b border-gray-100 text-left group"
+            >
+              <span className="text-3xl sm:text-4xl font-black text-slate-800 group-hover:text-brand-primary transition-colors tracking-tight">Rental Mobil</span>
               <ChevronRight size={32} className="text-gray-300 group-hover:text-brand-primary group-hover:translate-x-2 transition-all" />
             </button>
             

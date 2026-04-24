@@ -34,6 +34,7 @@ import ReferralPage from '../pages/user/ReferralPage';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import AdminBooking from '../pages/admin/AdminBooking';
 import AdminArmada from '../pages/admin/AdminArmada';
+import AdminCars from '../pages/admin/AdminCars';
 import AdminFleet from '../pages/admin/AdminFleet';
 import AdminLoker from '../pages/admin/AdminLoker';
 import AdminUsers from '../pages/admin/AdminUsers';
@@ -109,6 +110,7 @@ const AppRoutes = () => {
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="booking" element={<AdminBooking />} />
           <Route path="armada" element={<AdminArmada />} />
+          <Route path="cars" element={<AdminCars />} />
           <Route path="loker" element={<AdminLoker />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="kyc" element={<AdminKyc />} />

@@ -97,6 +97,23 @@ const HeroSection = () => {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3 text-sm">
+          <button
+            type="button"
+            onClick={() => navigate('/motor')}
+            className="px-6 py-3 rounded-2xl bg-white/10 border border-white/15 text-white font-black hover:bg-white/15 transition"
+          >
+            Lihat Katalog Motor
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/mobil')}
+            className="px-6 py-3 rounded-2xl bg-rose-500 text-white font-black hover:bg-rose-600 transition shadow-xl shadow-rose-500/25"
+          >
+            Rental Mobil
+          </button>
+        </div>
       </div>
     </div>
   );

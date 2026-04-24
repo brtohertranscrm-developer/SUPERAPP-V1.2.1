@@ -1206,6 +1206,224 @@ router.delete('/units/:unitId', requirePermission('armada'), async (req, res) =>
 });
 
 // ==========================================
+// ARMADA MOBIL (Akses: armada)
+// ==========================================
+router.get('/cars', requirePermission('armada'), async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `
+      SELECT c.*,
+             (SELECT COUNT(*) FROM car_units cu WHERE cu.car_id = c.id AND cu.status = 'RDY') as active_stock,
+             (SELECT COUNT(*) FROM car_units cu WHERE cu.car_id = c.id) as total_units
+      FROM cars c
+      ORDER BY c.id DESC
+      `
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/cars error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data mobil.' });
+  }
+});
+
+router.post('/cars', requirePermission('armada'), async (req, res) => {
+  try {
+    const {
+      name,
+      display_name,
+      category,
+      seats,
+      transmission,
+      base_price,
+      image_url,
+      description,
+    } = req.body || {};
+
+    if (!name || !base_price) {
+      return res.status(400).json({ success: false, error: 'Nama dan harga wajib diisi.' });
+    }
+
+    const internalName = String(name).trim();
+    const publicName = String(display_name || name || '').trim() || internalName;
+
+    const result = await dbRun(
+      `INSERT INTO cars (name, display_name, category, seats, transmission, base_price, image_url, description)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        internalName,
+        publicName,
+        category || 'Car',
+        parseInt(seats, 10) || 5,
+        String(transmission || 'AT').toUpperCase(),
+        parseInt(base_price, 10) || 0,
+        image_url || null,
+        description || null,
+      ]
+    );
+
+    res.status(201).json({ success: true, message: 'Katalog mobil ditambahkan.', id: result.lastID });
+  } catch (err) {
+    console.error('POST /admin/cars error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan mobil.' });
+  }
+});
+
+router.put('/cars/:id', requirePermission('armada'), async (req, res) => {
+  try {
+    const {
+      name,
+      display_name,
+      category,
+      seats,
+      transmission,
+      base_price,
+      image_url,
+      description,
+    } = req.body || {};
+
+    if (!name || !base_price) {
+      return res.status(400).json({ success: false, error: 'Nama dan harga wajib diisi.' });
+    }
+
+    const internalName = String(name).trim();
+    const publicName = String(display_name || name || '').trim() || internalName;
+
+    const result = await dbRun(
+      `UPDATE cars
+       SET name = ?, display_name = ?, category = ?, seats = ?, transmission = ?, base_price = ?, image_url = ?, description = ?
+       WHERE id = ?`,
+      [
+        internalName,
+        publicName,
+        category || 'Car',
+        parseInt(seats, 10) || 5,
+        String(transmission || 'AT').toUpperCase(),
+        parseInt(base_price, 10) || 0,
+        image_url || null,
+        description || null,
+        req.params.id,
+      ]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Mobil tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Katalog mobil diperbarui.' });
+  } catch (err) {
+    console.error('PUT /admin/cars/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui mobil.' });
+  }
+});
+
+router.delete('/cars/:id', requirePermission('armada'), async (req, res) => {
+  try {
+    const result = await dbRun(`DELETE FROM cars WHERE id = ?`, [req.params.id]);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Mobil tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Katalog mobil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/cars/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus mobil.' });
+  }
+});
+
+router.get('/cars/:id/units', requirePermission('armada'), async (req, res) => {
+  try {
+    const rows = await dbAll(`SELECT * FROM car_units WHERE car_id = ? ORDER BY id DESC`, [req.params.id]);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/cars/:id/units error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data unit mobil.' });
+  }
+});
+
+router.post('/cars/:id/units', requirePermission('armada'), async (req, res) => {
+  try {
+    const { plate_number, status, current_location, condition_notes } = req.body || {};
+    if (!plate_number || String(plate_number).trim().length < 3) {
+      return res.status(400).json({ success: false, error: 'Plat nomor wajib diisi (minimal 3 karakter).' });
+    }
+
+    const validStatuses = ['RDY', 'RNT', 'DRT', 'MNT'];
+    const unitStatus = validStatuses.includes(String(status || '').toUpperCase())
+      ? String(status).toUpperCase()
+      : 'RDY';
+
+    const result = await dbRun(
+      `INSERT INTO car_units (car_id, plate_number, status, current_location, condition_notes)
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        req.params.id,
+        String(plate_number).trim().toUpperCase(),
+        unitStatus,
+        current_location || 'Yogyakarta',
+        condition_notes || null,
+      ]
+    );
+
+    res.status(201).json({ success: true, message: 'Unit mobil ditambahkan.', id: result.lastID });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(409).json({ success: false, error: 'Plat nomor sudah terdaftar.' });
+    }
+    console.error('POST /admin/cars/:id/units error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan unit mobil.' });
+  }
+});
+
+router.put('/car-units/:unitId', requirePermission('armada'), async (req, res) => {
+  try {
+    const { plate_number, status, current_location, condition_notes } = req.body || {};
+    if (!plate_number) {
+      return res.status(400).json({ success: false, error: 'Plat nomor wajib diisi.' });
+    }
+
+    const validStatuses = ['RDY', 'RNT', 'DRT', 'MNT'];
+    const unitStatus = validStatuses.includes(String(status || '').toUpperCase())
+      ? String(status).toUpperCase()
+      : 'RDY';
+
+    const result = await dbRun(
+      `UPDATE car_units
+       SET plate_number = ?, status = ?, current_location = ?, condition_notes = ?
+       WHERE id = ?`,
+      [
+        String(plate_number).trim().toUpperCase(),
+        unitStatus,
+        current_location || 'Yogyakarta',
+        condition_notes || null,
+        req.params.unitId,
+      ]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Unit mobil tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Unit mobil berhasil diperbarui.' });
+  } catch (err) {
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(409).json({ success: false, error: 'Plat nomor sudah digunakan unit lain.' });
+    }
+    console.error('PUT /admin/car-units/:unitId error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui unit mobil.' });
+  }
+});
+
+router.delete('/car-units/:unitId', requirePermission('armada'), async (req, res) => {
+  try {
+    const result = await dbRun(`DELETE FROM car_units WHERE id = ?`, [req.params.unitId]);
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Unit mobil tidak ditemukan.' });
+    }
+    res.json({ success: true, message: 'Unit mobil berhasil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/car-units/:unitId error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus unit mobil.' });
+  }
+});
+
+// ==========================================
 // TRANSAKSI & BOOKING (Akses: booking)
 // ==========================================
 // View-only: armada boleh lihat list booking untuk Fleet Inventory.
@@ -2181,6 +2399,39 @@ router.post('/upload/motors', requirePermission('armada'), (req, res) => {
     } catch (uploadErr) {
       console.error('POST /admin/upload/motors error:', uploadErr.message);
       return res.status(500).json({ success: false, error: 'Gagal mengunggah gambar motor.' });
+    }
+  });
+});
+
+// Upload gambar untuk katalog mobil (akses: armada) → folder ImageKit: /cars
+router.post('/upload/cars', requirePermission('armada'), (req, res) => {
+  memoryUpload.single('image')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maksimal 5MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'Tidak ada file yang diunggah.' });
+    }
+
+    try {
+      const ext = getSafeExtension(req.file.originalname);
+      if (!ext) return res.status(400).json({ success: false, error: 'Tipe file tidak diizinkan.' });
+      const randomName = crypto.randomBytes(16).toString('hex');
+      const filename = `car-${randomName}${ext}`;
+
+      const result = await uploadBufferToStorage({
+        buffer: req.file.buffer,
+        filename,
+        folder: '/cars',
+      });
+
+      return res.json({ success: true, ...result });
+    } catch (uploadErr) {
+      console.error('POST /admin/upload/cars error:', uploadErr.message);
+      return res.status(500).json({ success: false, error: 'Gagal mengunggah gambar mobil.' });
     }
   });
 });
