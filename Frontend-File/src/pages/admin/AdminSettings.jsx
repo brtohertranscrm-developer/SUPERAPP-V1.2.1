@@ -34,7 +34,8 @@ const permissionPresets = [
   {
     key: 'staff_ops',
     label: 'Staff Operasional',
-    permissions: ['logistics', 'manning'],
+    // Staff ops butuh lihat Fleet Inventory (armada) tapi action manage dibatasi di backend (admin-only).
+    permissions: ['logistics', 'manning', 'armada'],
   },
   {
     key: 'finance',

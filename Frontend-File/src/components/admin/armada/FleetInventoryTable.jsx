@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, useContext } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, X, Check,
   AlertTriangle, Wrench, Calendar, Clock, Info,
   Bike, ChevronDown, Loader2, RefreshCw
 } from 'lucide-react';
 import { apiFetch } from '../../../utils/api';
+import { AuthContext } from '../../../context/AuthContext';
 
 // [FIX P8] Hapus UNITS dan INITIAL_BOOKINGS hardcoded
 // Data sekarang diambil dari API
@@ -340,6 +341,10 @@ function BookingModal({ cell, onClose, onSave, onDelete }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function FleetInventoryTable() {
+  const { user } = useContext(AuthContext) || {};
+  const isSuperAdmin = user?.role === 'superadmin' || user?.role === 'admin';
+  const canManage = isSuperAdmin; // Staff operasional: view-only
+
   const today = new Date();
   const [viewMode, setViewMode]           = useState('week');
   const [dayDateKey, setDayDateKey]       = useState(() => fmtDateKey(today)); // YYYY-MM-DD
@@ -559,6 +564,7 @@ export default function FleetInventoryTable() {
 
   // ── Cell click ──────────────────────────────────────────────────────────────
   const handleCellClick = (unit, date) => {
+    if (!canManage) return;
     const key = fmtKey(date, unit.id);
     setModalCell({
       key,
@@ -583,6 +589,7 @@ export default function FleetInventoryTable() {
   // - selain itu: tetap local overlay (booking manual)
   const handleSave = async (form) => {
     if (!modalCell) return;
+    if (!canManage) return;
 
     if (form.status === 'blocked') {
       try {
@@ -648,6 +655,7 @@ export default function FleetInventoryTable() {
 
   const handleDelete = async () => {
     if (!modalCell) return;
+    if (!canManage) return;
     const existing = bookings?.[modalCell.key];
     const blockId = existing?.status === 'blocked' ? existing?.block_id : null;
 
@@ -709,9 +717,9 @@ export default function FleetInventoryTable() {
     return (
       <td key={date.toISOString()} style={{ padding: '3px 4px', verticalAlign: 'middle' }}>
         <div
-          onClick={() => handleCellClick(unit, date)}
-          title={b ? `${b.name}${b.time ? ' · ' + b.time : ''}` : 'Kosong – klik untuk tambah booking'}
-          style={{ minHeight: isMobile ? 40 : 52, borderRadius: 6, padding: isMobile ? '4px 5px' : '5px 7px', cursor: 'pointer', background: isEmpty ? (isToday ? 'rgba(120,8,28,0.04)' : st.bg) : st.bg, border: isEmpty ? `1.5px dashed ${isToday ? '#78081C40' : '#e2e8f0'}` : '1.5px solid transparent', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'opacity 0.15s, transform 0.1s' }}
+          onClick={canManage ? () => handleCellClick(unit, date) : undefined}
+          title={b ? `${b.name}${b.time ? ' · ' + b.time : ''}` : (canManage ? 'Kosong – klik untuk tambah booking' : 'Kosong')}
+          style={{ minHeight: isMobile ? 40 : 52, borderRadius: 6, padding: isMobile ? '4px 5px' : '5px 7px', cursor: canManage ? 'pointer' : 'default', background: isEmpty ? (isToday ? 'rgba(120,8,28,0.04)' : st.bg) : st.bg, border: isEmpty ? `1.5px dashed ${isToday ? '#78081C40' : '#e2e8f0'}` : '1.5px solid transparent', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'opacity 0.15s, transform 0.1s' }}
           onMouseEnter={e => { e.currentTarget.style.opacity = '0.82'; e.currentTarget.style.transform = 'scale(1.03)'; }}
           onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; }}
         >
@@ -923,6 +931,7 @@ export default function FleetInventoryTable() {
     };
 
     const openNewRental = (unit, startMin = 9 * 60, endMin = 12 * 60) => {
+      if (!canManage) return;
       setRentalModal({
         unit,
         initial: {
@@ -933,6 +942,7 @@ export default function FleetInventoryTable() {
     };
 
     const openEditRental = (unit, block) => {
+      if (!canManage) return;
       const s = parseMaybeSqlDateTime(block?.start_at);
       const e = parseMaybeSqlDateTime(block?.end_at);
       const startMin = s ? Math.max(0, Math.min(1439, Math.round((s.getTime() - dayStart.getTime()) / 60000))) : 9 * 60;
@@ -951,6 +961,7 @@ export default function FleetInventoryTable() {
     };
 
     const handleTimelineClick = (unit, e) => {
+      if (!canManage) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
       const ratio = rect.width > 0 ? x / rect.width : 0;
@@ -1084,22 +1095,24 @@ export default function FleetInventoryTable() {
                     <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#64748b', fontWeight: 800 }}>{unit.plat}</span>
                     <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>{unit.type}</span>
                   </div>
-                  <div style={{ marginTop: 8 }}>
-                    <button
-                      onClick={() => openNewRental(unit)}
-                      style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 900, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      title="Tambah slot sewa manual (tanpa booking)"
-                    >
-                      <Plus size={14} /> Tambah slot
-                    </button>
-                  </div>
+	                  <div style={{ marginTop: 8 }}>
+	                    {canManage && (
+	                      <button
+	                        onClick={() => openNewRental(unit)}
+	                        style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 900, color: '#334155', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+	                        title="Tambah slot sewa manual (tanpa booking)"
+	                      >
+	                        <Plus size={14} /> Tambah slot
+	                      </button>
+	                    )}
+	                  </div>
                 </div>
 
-                <div
-                  style={{ flex: 1, position: 'relative', height: 46, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}
-                  onClick={(e) => handleTimelineClick(unit, e)}
-                  title="Klik timeline untuk buat slot sewa (snap 15 menit)"
-                >
+	                <div
+	                  style={{ flex: 1, position: 'relative', height: 46, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}
+	                  onClick={canManage ? (e) => handleTimelineClick(unit, e) : undefined}
+	                  title={canManage ? 'Klik timeline untuk buat slot sewa (snap 15 menit)' : 'View only'}
+	                >
                   {/* Hour grid */}
                   {Array.from({ length: 24 }).map((_, i) => (
                     <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(i / 24) * 100}%`, width: 1, background: i % 6 === 0 ? '#e2e8f0' : '#f1f5f9' }} />
@@ -1132,11 +1145,11 @@ export default function FleetInventoryTable() {
                       if (ev.meta?.block_type === 'rental_manual') {
                         const label = ev.meta?.customer_name ? String(ev.meta.customer_name).slice(0, 26) : 'Manual rental';
                         return (
-                          <div
-                            key={`rent-${idx}`}
-                            title={`${label}${ev.meta?.customer_phone ? ` · ${ev.meta.customer_phone}` : ''}${ev.meta?.notes ? `\n${ev.meta.notes}` : ''}`}
-                            onClick={(e) => { e.stopPropagation(); openEditRental(unit, ev.meta); }}
-                            style={{
+	                          <div
+	                            key={`rent-${idx}`}
+	                            title={`${label}${ev.meta?.customer_phone ? ` · ${ev.meta.customer_phone}` : ''}${ev.meta?.notes ? `\n${ev.meta.notes}` : ''}`}
+	                            onClick={canManage ? ((e) => { e.stopPropagation(); openEditRental(unit, ev.meta); }) : undefined}
+	                            style={{
                               position: 'absolute',
                               top: 8,
                               left: `${left}%`,
@@ -1154,9 +1167,9 @@ export default function FleetInventoryTable() {
                               whiteSpace: 'nowrap',
                               textOverflow: 'ellipsis',
                               boxShadow: '0 6px 14px rgba(15,23,42,0.10)',
-                              cursor: 'pointer',
-                            }}
-                          >
+	                              cursor: canManage ? 'pointer' : 'default',
+	                            }}
+	                          >
                             {label}
                           </div>
                         );

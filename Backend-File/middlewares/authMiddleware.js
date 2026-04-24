@@ -151,4 +151,49 @@ const requirePermission = (menuKey) => {
   };
 };
 
-module.exports = { verifyUser, verifyAdmin, requirePermission };
+// ==========================================
+// MIDDLEWARE: Cek Salah Satu Izin (OR)
+// ==========================================
+// Dipakai untuk fitur "view-only" lintas modul, mis. staff operasional butuh lihat data booking/armada
+// tanpa boleh mengubah data.
+const requireAnyPermission = (menuKeys = []) => {
+  const keys = Array.isArray(menuKeys) ? menuKeys.filter(Boolean) : [];
+  return (req, res, next) => {
+    if (req.user.role === 'superadmin' || req.user.role === 'admin') {
+      return next();
+    }
+
+    let userPermissions = [];
+    try {
+      userPermissions = typeof req.user.permissions === 'string'
+        ? JSON.parse(req.user.permissions)
+        : (req.user.permissions || []);
+    } catch {
+      userPermissions = [];
+    }
+
+    if (Array.isArray(userPermissions) && keys.some((k) => userPermissions.includes(k))) {
+      return next();
+    }
+
+    const label = keys.length ? keys.join('" atau "') : 'izin';
+    return res.status(403).json({
+      success: false,
+      error: `Akses ditolak. Anda tidak memiliki izin untuk fitur "${label}".`,
+    });
+  };
+};
+
+// ==========================================
+// MIDDLEWARE: Khusus Admin/Superadmin
+// ==========================================
+// Dipakai untuk action yang harus "manage" walaupun permission key-nya sama (contoh: armada view-only).
+const requireAdminRole = (req, res, next) => {
+  if (req.user?.role === 'superadmin' || req.user?.role === 'admin') return next();
+  return res.status(403).json({
+    success: false,
+    error: 'Akses ditolak. Hanya admin yang bisa melakukan tindakan ini.',
+  });
+};
+
+module.exports = { verifyUser, verifyAdmin, requirePermission, requireAnyPermission, requireAdminRole };

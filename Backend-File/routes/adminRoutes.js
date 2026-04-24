@@ -4,7 +4,7 @@ const os     = require('os');
 const express = require('express');
 const ImageKit = require('imagekit');
 const db = require('../db');
-const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
+const { verifyAdmin, requirePermission, requireAnyPermission, requireAdminRole } = require('../middlewares/authMiddleware');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -721,7 +721,7 @@ router.get('/units/available', requirePermission('booking'), async (req, res) =>
 // ==========================================
 // UNIT BLOCKS (Akses: booking)
 // ==========================================
-router.post('/units/blocks', requirePermission('booking'), async (req, res) => {
+router.post('/units/blocks', requireAdminRole, async (req, res) => {
   try {
     const unitId = parseInt(req.body?.unit_id, 10);
     const startAt = normalizeToSqliteDateTime(req.body?.start_at);
@@ -749,7 +749,8 @@ router.post('/units/blocks', requirePermission('booking'), async (req, res) => {
   }
 });
 
-router.get('/units/blocks', requirePermission('booking'), async (req, res) => {
+// View-only: staff operasional boleh lihat (armada), tapi hanya admin yang bisa create/edit/delete.
+router.get('/units/blocks', requireAnyPermission(['booking', 'armada']), async (req, res) => {
   try {
     const unitId = req.query.unit_id ? parseInt(req.query.unit_id, 10) : null;
     const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
@@ -787,7 +788,7 @@ router.get('/units/blocks', requirePermission('booking'), async (req, res) => {
   }
 });
 
-router.put('/units/blocks/:id', requirePermission('booking'), async (req, res) => {
+router.put('/units/blocks/:id', requireAdminRole, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ success: false, error: 'ID blokir tidak valid.' });
@@ -821,7 +822,7 @@ router.put('/units/blocks/:id', requirePermission('booking'), async (req, res) =
   }
 });
 
-router.delete('/units/blocks/:id', requirePermission('booking'), async (req, res) => {
+router.delete('/units/blocks/:id', requireAdminRole, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ success: false, error: 'ID blokir tidak valid.' });
@@ -1207,7 +1208,8 @@ router.delete('/units/:unitId', requirePermission('armada'), async (req, res) =>
 // ==========================================
 // TRANSAKSI & BOOKING (Akses: booking)
 // ==========================================
-router.get('/bookings', requirePermission('booking'), async (req, res) => {
+// View-only: armada boleh lihat list booking untuk Fleet Inventory.
+router.get('/bookings', requireAnyPermission(['booking', 'armada']), async (req, res) => {
   try {
     const itemType = req.query.item_type ? String(req.query.item_type).trim().toLowerCase() : null;
     const start = normalizeToSqliteDateTime(req.query.start || req.query.start_at || '');
