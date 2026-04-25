@@ -10,7 +10,7 @@ export default function MissionBanner({ onClick }) {
         <div>
           <h3 className="text-xl font-bold mb-1">Selesaikan Misi Pertamamu!</h3>
           <p className="text-blue-100 text-sm">
-            Pahami panduan sewa Brother Trans dan langsung klaim <span className="font-bold text-yellow-300">500 Miles Poin</span> untuk diskon sewa pertamamu.
+            Pahami panduan sewa Brother Trans dan langsung klaim <span className="font-bold text-yellow-300">50 Miles Poin</span> untuk diskon sewa pertamamu.
           </p>
         </div>
       </div>
