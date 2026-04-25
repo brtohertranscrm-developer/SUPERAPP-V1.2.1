@@ -1053,7 +1053,7 @@ router.post('/claim-tc-miles', async (req, res) => {
       `UPDATE users 
        SET miles = COALESCE(miles, 0) + ?,
            has_completed_tc_gamification = 1
-       WHERE id = ? AND has_completed_tc_gamification = 0`,
+       WHERE id = ? AND COALESCE(has_completed_tc_gamification, 0) = 0`,
       [MILES_REWARD, req.user.id]
     );
 
