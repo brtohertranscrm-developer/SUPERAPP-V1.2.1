@@ -79,6 +79,14 @@ const fmtTime = () =>
 // Escape karakter khusus MarkdownV2 Telegram — wajib untuk semua string dinamis
 const esc = (s) => String(s || '—').replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
 
+const bookingMeta = (booking) => {
+  const t = String(booking?.item_type || '').toLowerCase();
+  if (t === 'motor')  return { headerEmoji: '🏍️', typeLabel: 'Motor', itemEmoji: '🛵' };
+  if (t === 'car')    return { headerEmoji: '🚗', typeLabel: 'Mobil', itemEmoji: '🚗' };
+  if (t === 'locker') return { headerEmoji: '📦', typeLabel: 'Loker', itemEmoji: '📦' };
+  return { headerEmoji: '🆕', typeLabel: 'Booking', itemEmoji: '🧾' };
+};
+
 // Bungkus send agar caller tidak perlu try/catch
 const notify = (payload) =>
   sendMessage(payload).catch((e) => console.error('Telegram notify failed:', e.message));
@@ -88,21 +96,41 @@ const notify = (payload) =>
 // 1. BOOKING BARU
 // ═══════════════════════════════════════════════════════════════════════════════
 const notifyNewBooking = (booking, user) => {
-  const emoji     = booking?.item_type === 'motor' ? '🏍️' : '📦';
-  const typeLabel = booking?.item_type === 'motor' ? 'Motor' : 'Loker';
+  const meta = bookingMeta(booking);
+  const extraLines = [];
+
+  if (booking?.item_type === 'car' && booking?.plate_number) {
+    extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
+  }
+  if ((booking?.item_type === 'motor' || booking?.item_type === 'car') && booking?.trip_destination) {
+    extraLines.push(`🎯 Tujuan: ${esc(booking?.trip_destination)}`);
+  }
+  if ((booking?.item_type === 'motor' || booking?.item_type === 'car') && booking?.delivery_type && booking?.delivery_type !== 'self') {
+    const dType = booking?.delivery_type === 'station'
+      ? 'Ambil di stasiun'
+      : booking?.delivery_type === 'address'
+        ? 'Diantar ke alamat'
+        : String(booking?.delivery_type);
+    extraLines.push(`🚚 Pengantaran: ${esc(dType)}`);
+    if (booking?.delivery_address) extraLines.push(`📍 Alamat antar: ${esc(booking?.delivery_address)}`);
+    if (booking?.delivery_distance_km !== undefined && booking?.delivery_distance_km !== null && booking?.delivery_distance_km !== '') {
+      extraLines.push(`📏 Jarak: ${esc(Number(booking?.delivery_distance_km).toFixed(1))} km`);
+    }
+  }
 
   return notify({
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
     text: [
-      `${emoji} *PESANAN BARU — ${esc(typeLabel)}*`,
+      `${meta.headerEmoji} *PESANAN BARU — ${esc(meta.typeLabel)}*`,
       ``,
       `🔖 Order: \`${esc(booking?.order_id)}\``,
       `👤 Pelanggan: ${esc(user?.name)}`,
       `📱 WA: ${esc(user?.phone)}`,
-      `🛵 Item: ${esc(booking?.item_name)}`,
+      `${meta.itemEmoji} Item: ${esc(booking?.item_name)}`,
       `📍 Lokasi: ${esc(booking?.location)}`,
+      ...extraLines,
       ``,
       `📅 ${esc(fmtDate(booking?.start_date))} → ${esc(fmtDate(booking?.end_date))}`,
       `💰 Total: *${esc(fmtRp(booking?.total_price))}*`,
@@ -118,26 +146,35 @@ const notifyNewBooking = (booking, user) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 // 2. EXTEND BOOKING
 // ═══════════════════════════════════════════════════════════════════════════════
-const notifyExtendBooking = (booking, user, newEndDate, extraCost) => notify({
-  chat_id:    CHAT_ID,
-  parse_mode: 'MarkdownV2',
-  disable_web_page_preview: true,
-  text: [
-    `🔄 *EXTEND BOOKING*`,
-    ``,
-    `🔖 Order: \`${esc(booking?.order_id)}\``,
-    `👤 Pelanggan: ${esc(user?.name)}`,
-    `📱 WA: ${esc(user?.phone)}`,
-    `🛵 Item: ${esc(booking?.item_name)}`,
-    ``,
-    `📅 Selesai baru: *${esc(fmtDate(newEndDate))}*`,
-    `💰 Biaya tambahan: *${esc(fmtRp(extraCost))}*`,
-    `⚠️ Status bayar: UNPAID \\(perlu konfirmasi transfer\\)`,
-    ``,
-    `⏰ ${esc(fmtTime())}`,
-    `👉 [Buka Dashboard](${ADMIN_URL}/booking)`,
-  ].join('\n'),
-});
+const notifyExtendBooking = (booking, user, newEndDate, extraCost) => {
+  const meta = bookingMeta(booking);
+  const extraLines = [];
+  if (booking?.item_type === 'car' && booking?.plate_number) {
+    extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
+  }
+
+  return notify({
+    chat_id:    CHAT_ID,
+    parse_mode: 'MarkdownV2',
+    disable_web_page_preview: true,
+    text: [
+      `🔄 *EXTEND BOOKING*`,
+      ``,
+      `🔖 Order: \`${esc(booking?.order_id)}\``,
+      `👤 Pelanggan: ${esc(user?.name)}`,
+      `📱 WA: ${esc(user?.phone)}`,
+      `${meta.itemEmoji} Item: ${esc(booking?.item_name)}`,
+      ...extraLines,
+      ``,
+      `📅 Selesai baru: *${esc(fmtDate(newEndDate))}*`,
+      `💰 Biaya tambahan: *${esc(fmtRp(extraCost))}*`,
+      `⚠️ Status bayar: UNPAID \\(perlu konfirmasi transfer\\)`,
+      ``,
+      `⏰ ${esc(fmtTime())}`,
+      `👉 [Buka Dashboard](${ADMIN_URL}/booking)`,
+    ].join('\n'),
+  });
+};
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -175,6 +212,12 @@ const notifyKycPending = (user) => {
 // 4. PEMBAYARAN DIKONFIRMASI
 // ═══════════════════════════════════════════════════════════════════════════════
 const notifyPaymentConfirmed = (recon, booking, adminName) => {
+  const meta = bookingMeta(booking);
+  const extraLines = [];
+  if (booking?.item_type === 'car' && booking?.plate_number) {
+    extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
+  }
+
   const BANK_LABELS = {
     bca:     'BCA',
     mandiri: 'Mandiri',
@@ -195,7 +238,8 @@ const notifyPaymentConfirmed = (recon, booking, adminName) => {
       `🔖 Order: \`${esc(recon?.order_id)}\``,
       `👤 Pelanggan: ${esc(booking?.customer_name)}`,
       `📱 WA: ${esc(booking?.customer_phone)}`,
-      `🛵 Item: ${esc(booking?.item_name)}`,
+      `${meta.itemEmoji} Item: ${esc(booking?.item_name)}`,
+      ...extraLines,
       ``,
       `🏦 Bank: ${bankLabel}`,
       `💰 Nominal transfer: *${esc(fmtRp(recon?.transfer_amount))}*`,
@@ -253,26 +297,35 @@ const notifyGmapsReview = function(review, user) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // 6. BUKTI TRANSFER DIUNGGAH (user upload proof)
 // ═══════════════════════════════════════════════════════════════════════════════
-const notifyPaymentProofUploaded = (recon, booking, user) => notify({
-  chat_id:    CHAT_ID,
-  parse_mode: 'MarkdownV2',
-  disable_web_page_preview: true,
-  text: [
-    `💳 *BUKTI TRANSFER MASUK*`,
-    ``,
-    `🔖 Order: \`${esc(recon?.order_id)}\``,
-    `👤 Pelanggan: ${esc(user?.name || '\\-')}`,
-    `📱 WA: ${esc(user?.phone || '\\-')}`,
-    `🛵 Item: ${esc(booking?.item_name || '\\-')}`,
-    ``,
-    `🏦 Bank: ${esc(recon?.bank_name)}`,
-    `💰 Nominal: *${esc(fmtRp(recon?.transfer_amount))}*`,
-    `📅 Tgl Transfer: ${esc(recon?.transfer_date)}`,
-    ``,
-    `⏰ ${esc(fmtTime())}`,
-    `👉 [Verifikasi di Finance](${ADMIN_URL}/finance)`,
-  ].join('\n'),
-});
+const notifyPaymentProofUploaded = (recon, booking, user) => {
+  const meta = bookingMeta(booking);
+  const extraLines = [];
+  if (booking?.item_type === 'car' && booking?.plate_number) {
+    extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
+  }
+
+  return notify({
+    chat_id:    CHAT_ID,
+    parse_mode: 'MarkdownV2',
+    disable_web_page_preview: true,
+    text: [
+      `💳 *BUKTI TRANSFER MASUK*`,
+      ``,
+      `🔖 Order: \`${esc(recon?.order_id)}\``,
+      `👤 Pelanggan: ${esc(user?.name || '\\-')}`,
+      `📱 WA: ${esc(user?.phone || '\\-')}`,
+      `${meta.itemEmoji} Item: ${esc(booking?.item_name || '\\-')}`,
+      ...extraLines,
+      ``,
+      `🏦 Bank: ${esc(recon?.bank_name)}`,
+      `💰 Nominal: *${esc(fmtRp(recon?.transfer_amount))}*`,
+      `📅 Tgl Transfer: ${esc(recon?.transfer_date)}`,
+      ``,
+      `⏰ ${esc(fmtTime())}`,
+      `👉 [Verifikasi di Finance](${ADMIN_URL}/finance)`,
+    ].join('\n'),
+  });
+};
 
 module.exports = {
   notifyNewBooking,

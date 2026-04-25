@@ -180,7 +180,7 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
 
     // Ambil data booking + info pelanggan sekaligus (dipakai validasi & notif Telegram)
     const booking = await dbGet(
-      `SELECT b.total_price, b.item_name,
+      `SELECT b.total_price, b.item_type, b.item_name, b.plate_number,
               u.name as customer_name, u.phone as customer_phone
        FROM bookings b
        LEFT JOIN users u ON b.user_id = u.id

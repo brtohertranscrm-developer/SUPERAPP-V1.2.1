@@ -483,7 +483,7 @@ router.post('/users/payments/reconciliations', (req, res) => {
 
       // Notifikasi ke admin via Telegram (best-effort, tidak block response)
       try {
-        const bookingRow = await dbGet(`SELECT item_name FROM bookings WHERE order_id = ? LIMIT 1`, [orderId]);
+        const bookingRow = await dbGet(`SELECT item_type, item_name, plate_number FROM bookings WHERE order_id = ? LIMIT 1`, [orderId]);
         const userRow    = await dbGet(`SELECT name, phone FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
         notifyPaymentProofUploaded(
           { order_id: orderId, bank_name: bank, transfer_amount: amount, transfer_date: date },
@@ -929,8 +929,24 @@ router.post('/bookings', async (req, res) => {
 
     dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
       .then((userData) => notifyNewBooking(
-        { order_id, item_type, item_name: resolvedItemName, location, start_date, end_date,
-          total_price: finalPrice, payment_method: payMethod },
+        {
+          order_id,
+          item_type,
+          item_name: resolvedItemName,
+          location,
+          start_date,
+          end_date,
+          total_price: finalPrice,
+          payment_method: payMethod,
+          plate_number: assignedPlateNumber,
+          trip_scope: tripScopeNormalized,
+          trip_destination: tripDestinationNormalized,
+          delivery_type: delType,
+          delivery_address: delivery_address || null,
+          delivery_distance_km: deliveryDistanceKm,
+          delivery_method: deliveryMethod,
+          delivery_station_id: delivery_station_id || null,
+        },
         userData
       ))
       .catch((err) => console.error('[Telegram] booking notify error:', err.message));
@@ -1103,7 +1119,7 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
     }
 
     const booking = await dbGet(
-      `SELECT order_id, item_name, start_date, end_date, total_price, base_price, status 
+      `SELECT order_id, item_type, item_name, plate_number, start_date, end_date, total_price, base_price, status
        FROM bookings WHERE order_id = ? AND user_id = ?`,
       [orderId, req.user.id]
     );
