@@ -12,7 +12,9 @@ export const useUserDashboard = () => {
 
   const [dashboardData, setDashboardData]     = useState(null);
   const [isLoading, setIsLoading]             = useState(true);
-  const [kycStatus, setKycStatus]             = useState('unverified');
+  const [kycStatus, setKycStatus]             = useState(() =>
+    String(user?.kyc_status || 'unverified').toLowerCase()
+  );
   const [bannerUrl, setBannerUrl]             = useState(
     'https://images.unsplash.com/photo-1533105079780-92b9be482077?q=80&w=1600&auto=format&fit=crop'
   );
