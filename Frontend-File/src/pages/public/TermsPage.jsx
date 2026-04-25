@@ -1,5 +1,6 @@
 import React from 'react';
 import LegalPageShell from '../../components/public/legal/LegalPageShell';
+import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 const LAST_UPDATED_LABEL = '25 April 2026';
 
@@ -104,7 +105,17 @@ const SECTIONS = [
 
 export default function TermsPage() {
   return (
-    <LegalPageShell title="Syarat & Ketentuan" lastUpdatedLabel={LAST_UPDATED_LABEL} summaryItems={SUMMARY}>
+    <LegalPageShell
+      title="Syarat & Ketentuan"
+      lastUpdatedLabel={LAST_UPDATED_LABEL}
+      summaryItems={SUMMARY}
+      badges={['Transparan', 'Bisa tanya admin', 'Seperlunya']}
+      helpCta={{
+        href: buildWaLink(WA_CONTACTS.SUPPORT_ADMIN.phone_wa, 'Halo Admin Brother Trans, saya ada pertanyaan soal syarat & ketentuan.'),
+        label: 'Chat Admin (WA)',
+        description: 'Kalau ada yang kurang jelas, tanya saja.',
+      }}
+    >
       {SECTIONS.map((s) => (
         <details key={s.title} className="group rounded-2xl border border-slate-200 bg-white p-5 open:shadow-sm">
           <summary className="cursor-pointer list-none select-none flex items-center justify-between gap-4">
@@ -121,4 +132,3 @@ export default function TermsPage() {
     </LegalPageShell>
   );
 }
-

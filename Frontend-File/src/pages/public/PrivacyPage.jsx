@@ -1,5 +1,6 @@
 import React from 'react';
 import LegalPageShell from '../../components/public/legal/LegalPageShell';
+import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 const LAST_UPDATED_LABEL = '25 April 2026';
 
@@ -103,7 +104,17 @@ const SECTIONS = [
 
 export default function PrivacyPage() {
   return (
-    <LegalPageShell title="Kebijakan Privasi" lastUpdatedLabel={LAST_UPDATED_LABEL} summaryItems={SUMMARY}>
+    <LegalPageShell
+      title="Kebijakan Privasi"
+      lastUpdatedLabel={LAST_UPDATED_LABEL}
+      summaryItems={SUMMARY}
+      badges={['Tidak jual data', 'Tidak lacak realtime', 'Seperlunya']}
+      helpCta={{
+        href: buildWaLink(WA_CONTACTS.SUPPORT_ADMIN.phone_wa, 'Halo Admin Brother Trans, saya ada pertanyaan soal privasi.'),
+        label: 'Chat Admin (WA)',
+        description: 'Tanya soal data yang kami pakai & kenapa diperlukan.',
+      }}
+    >
       {SECTIONS.map((s) => (
         <details key={s.title} className="group rounded-2xl border border-slate-200 bg-white p-5 open:shadow-sm">
           <summary className="cursor-pointer list-none select-none flex items-center justify-between gap-4">
@@ -116,4 +127,3 @@ export default function PrivacyPage() {
     </LegalPageShell>
   );
 }
-
