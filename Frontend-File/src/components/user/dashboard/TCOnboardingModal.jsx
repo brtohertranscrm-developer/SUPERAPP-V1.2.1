@@ -90,7 +90,7 @@ export default function TCOnboardingModal({ onClose, onClaimSuccess }) {
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Misi Berhasil!</h2>
           <p className="text-gray-600">
             Kamu sekarang adalah <span className="font-bold text-blue-600">Smart Renter</span>. 
-            <br/> 500 Miles Poin telah ditambahkan ke dompetmu!
+            <br/> 50 Miles Poin telah ditambahkan ke dompetmu!
           </p>
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function TCOnboardingModal({ onClose, onClaimSuccess }) {
         <div className="p-5 bg-gray-50 border-t flex justify-between items-center">
           <span className="text-sm text-gray-500 font-medium">Langkah {currentStep + 1} / {tcSteps.length}</span>
           <button onClick={handleNext} disabled={isClaiming} className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-2.5 rounded-xl font-semibold transition-colors">
-            {isClaiming ? "Memproses..." : (currentStep === tcSteps.length - 1 ? "Klaim 500 Miles 🎁" : "Saya Mengerti 👍")}
+            {isClaiming ? "Memproses..." : (currentStep === tcSteps.length - 1 ? "Klaim 50 Miles 🎁" : "Saya Mengerti 👍")}
           </button>
         </div>
       </div>
