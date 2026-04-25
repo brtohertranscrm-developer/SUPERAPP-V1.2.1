@@ -174,7 +174,7 @@ export default function Dashboard() {
             />
 
             {/* Miles */}
-            <UserStats currentMiles={currentMiles} navigate={navigate} />
+            <UserStats currentMiles={currentMiles} navigate={navigate} user={user} />
 
             {/* Custom Order — Inter-City Banner */}
             <div

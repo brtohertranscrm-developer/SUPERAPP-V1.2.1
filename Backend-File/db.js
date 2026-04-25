@@ -776,6 +776,12 @@ db.serialize(() => {
   addColumnIfNotExists('unit_blocks', 'customer_phone', 'TEXT');
   addColumnIfNotExists('unit_blocks', 'notes',          'TEXT');
 
+  // Tier & season system
+  addColumnIfNotExists('users', 'user_tier',           "TEXT DEFAULT 'backpacker'");
+  addColumnIfNotExists('users', 'season_trip_count',   'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'season_miles_earned', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT (date('now'))");
+
   // ==========================================
   // 5. INDEXES
   // ==========================================

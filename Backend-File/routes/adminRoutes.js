@@ -12,6 +12,33 @@ const crypto = require('crypto');
 const { auditAdmin } = require('../middlewares/auditMiddleware');
 
 // ==========================================
+// TIER SYSTEM CONFIG
+// ==========================================
+const TIER_CONFIG = [
+  { id: 'backpacker',   minMiles: 0,    minTrips: 0  },
+  { id: 'explorer',     minMiles: 150,  minTrips: 3  },
+  { id: 'adventurer',   minMiles: 500,  minTrips: 8  },
+  { id: 'road_captain', minMiles: 1500, minTrips: 15 },
+  { id: 'legend',       minMiles: 4000, minTrips: 30 },
+];
+
+const TIER_MULTIPLIER = {
+  backpacker:   1.0,
+  explorer:     1.1,
+  adventurer:   1.2,
+  road_captain: 1.3,
+  legend:       1.5,
+};
+
+function calcTier(seasonMiles, seasonTrips) {
+  let tier = 'backpacker';
+  for (const t of TIER_CONFIG) {
+    if (seasonMiles >= t.minMiles && seasonTrips >= t.minTrips) tier = t.id;
+  }
+  return tier;
+}
+
+// ==========================================
 // HELPER: Promisify DB
 // ==========================================
 const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
@@ -1693,9 +1720,29 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
           [req.params.orderId]
         );
         if (booking) {
-          const earnedMiles = Math.floor(booking.total_price / 10000);
+          const user = await dbGet(
+            `SELECT user_tier, season_trip_count, season_miles_earned FROM users WHERE id = ?`,
+            [booking.user_id]
+          );
+          const currentTier  = user?.user_tier || 'backpacker';
+          const multiplier   = TIER_MULTIPLIER[currentTier] || 1.0;
+          const baseMiles    = Math.floor((booking.total_price || 0) / 1000);
+          const earnedMiles  = Math.floor(baseMiles * multiplier);
+
           if (earnedMiles > 0) {
-            await dbRun(`UPDATE users SET miles = miles + ? WHERE id = ?`, [earnedMiles, booking.user_id]);
+            const newSeasonMiles = (user?.season_miles_earned || 0) + earnedMiles;
+            const newSeasonTrips = (user?.season_trip_count  || 0) + 1;
+            const newTier        = calcTier(newSeasonMiles, newSeasonTrips);
+
+            await dbRun(
+              `UPDATE users SET
+                 miles               = miles + ?,
+                 season_miles_earned = ?,
+                 season_trip_count   = ?,
+                 user_tier           = ?
+               WHERE id = ?`,
+              [earnedMiles, newSeasonMiles, newSeasonTrips, newTier, booking.user_id]
+            );
           }
         }
       } catch (milesErr) {

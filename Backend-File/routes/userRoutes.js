@@ -119,9 +119,10 @@ router.use(verifyUser);
 router.get('/dashboard/me', async (req, res) => {
   try {
     const user = await dbGet(
-      `SELECT id, name, email, phone, kyc_status, kyc_code, miles, 
-              profile_picture, profile_banner, referral_code, role, location, 
-              has_completed_tc_gamification 
+      `SELECT id, name, email, phone, kyc_status, kyc_code, miles,
+              profile_picture, profile_banner, referral_code, role, location,
+              has_completed_tc_gamification,
+              user_tier, season_trip_count, season_miles_earned, season_start_date
        FROM users WHERE id = ?`,
       [req.user.id]
     );
@@ -991,7 +992,7 @@ router.put('/bookings/:orderId/extend', async (req, res) => {
 // ==========================================
 router.post('/claim-tc-miles', async (req, res) => {
   try {
-    const MILES_REWARD = 500;
+    const MILES_REWARD = 50;
 
     const result = await dbRun(
       `UPDATE users 
