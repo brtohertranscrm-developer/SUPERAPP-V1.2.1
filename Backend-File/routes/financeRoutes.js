@@ -1,4 +1,5 @@
 const { notifyPaymentConfirmed } = require('../utils/telegram');
+const { upsertLogisticsTasksForBooking } = require('../utils/logisticsAutoSync');
 const express = require('express');
 const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
@@ -223,6 +224,13 @@ router.put('/reconciliations/:id/match', requirePermission('finance'), async (re
        WHERE order_id = ?`,
       [transferAmount, transferAmount, recon.order_id]
     );
+
+    // AUTO-SYNC: create/update logistics tasks for this booking (paid)
+    try {
+      await upsertLogisticsTasksForBooking({ orderId: recon.order_id, createdBy: req.user?.id });
+    } catch (syncErr) {
+      console.error('⚠️  logistics auto-sync error:', syncErr.message);
+    }
 
     // ── TELEGRAM: Notifikasi pembayaran dikonfirmasi ───────────────────────────
     void Promise.resolve(notifyPaymentConfirmed(recon, booking, req.user.name))

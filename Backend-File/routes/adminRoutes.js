@@ -10,6 +10,7 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const { auditAdmin } = require('../middlewares/auditMiddleware');
+const { upsertLogisticsTasksForBooking, cancelLogisticsTasksForBooking } = require('../utils/logisticsAutoSync');
 
 // ==========================================
 // TIER SYSTEM CONFIG
@@ -1785,6 +1786,22 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
     params.push(req.params.orderId);
 
     await dbRun(`UPDATE bookings SET ${setClauses.join(', ')} WHERE order_id = ?`, params);
+
+    // AUTO-SYNC logistics tasks when payment is marked paid / booking cancelled
+    try {
+      const nextPay = payment_status ? String(payment_status).toLowerCase() : String(current.payment_status || '').toLowerCase();
+      const nextStatus = String(status || '').toLowerCase();
+      const itemType = String(current.item_type || '').toLowerCase();
+      if (['motor', 'car'].includes(itemType)) {
+        if (nextStatus === 'cancelled' || nextPay === 'unpaid') {
+          await cancelLogisticsTasksForBooking({ orderId: current.order_id });
+        } else if (nextPay === 'paid') {
+          await upsertLogisticsTasksForBooking({ orderId: current.order_id, createdBy: req.user?.id });
+        }
+      }
+    } catch (syncErr) {
+      console.error('⚠️  logistics auto-sync error:', syncErr.message);
+    }
 
     const completedStatuses = ['completed', 'selesai'];
     if (completedStatuses.includes(status.toLowerCase())) {
