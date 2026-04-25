@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Bike, FileText, TrendingUp, Users,
   Settings, LogOut, ClipboardList, Package, DollarSign,
   Calendar, Gift, Ticket, ShieldCheck, LifeBuoy, PackagePlus,
-  Truck, Handshake, CarFront,
+  Truck, Handshake, CarFront, Star,
 } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
@@ -46,10 +46,11 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
     {
       title: 'Sistem',
       items: [
-        { name: 'Data Pelanggan',  path: '/admin/users',      key: 'users',     icon: <Users size={20} /> },
-        { name: 'Verifikasi KYC',  path: '/admin/kyc',        key: 'users',     icon: <ShieldCheck size={20} /> },
-        { name: 'Tiket Bantuan',   path: '/admin/support',    key: 'settings',  icon: <LifeBuoy size={20} /> },
-        { name: 'Pengaturan',      path: '/admin/settings',   key: 'settings',  icon: <Settings size={20} /> },
+        { name: 'Data Pelanggan',  path: '/admin/users',        key: 'users',     icon: <Users size={20} /> },
+        { name: 'Verifikasi KYC',  path: '/admin/kyc',          key: 'users',     icon: <ShieldCheck size={20} /> },
+        { name: 'Review Google',   path: '/admin/gmaps-review', key: 'users',     icon: <Star size={20} /> },
+        { name: 'Tiket Bantuan',   path: '/admin/support',      key: 'settings',  icon: <LifeBuoy size={20} /> },
+        { name: 'Pengaturan',      path: '/admin/settings',     key: 'settings',  icon: <Settings size={20} /> },
       ],
     },
   ];

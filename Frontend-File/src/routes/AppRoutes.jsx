@@ -52,6 +52,7 @@ import AdminLogistics from '../pages/admin/AdminLogistics';
 import AdminPartners from '../pages/admin/AdminPartners';
 import AdminManning from '../pages/admin/AdminManning';
 import AdminStaffDashboard from '../pages/admin/AdminStaffDashboard';
+import AdminGmapsReview from '../pages/admin/AdminGmapsReview';
 import BodyScrollReset from '../components/common/BodyScrollReset';
 import { useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
@@ -128,7 +129,8 @@ const AppRoutes = () => {
           <Route path="logistics" element={<AdminLogistics />} />
           <Route path="staff" element={<AdminStaffDashboard />} />
           <Route path="manning" element={<AdminManning />} />
-          
+          <Route path="gmaps-review" element={<AdminGmapsReview />} />
+
         </Route>
 
         {/* CATCH-ALL ROUTE */}

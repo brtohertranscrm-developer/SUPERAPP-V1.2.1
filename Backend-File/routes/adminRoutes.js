@@ -2833,6 +2833,84 @@ router.post('/database/restore', (req, res) => {
   });
 });
 
+// ==========================================
+// GMAPS REVIEW — ADMIN
+// ==========================================
+
+// GET /api/admin/gmaps-reviews?status=pending|approved|rejected|all
+router.get('/gmaps-reviews', verifyAdmin, async (req, res) => {
+  try {
+    const status = req.query.status || 'pending';
+    const whereClause = status === 'all' ? '' : `WHERE gr.status = ?`;
+    const params = status === 'all' ? [] : [status];
+
+    const rows = await dbAll(
+      `SELECT gr.id, gr.user_id, gr.order_id, gr.screenshot_url,
+              gr.status, gr.reject_reason, gr.miles_awarded,
+              gr.submitted_at, gr.reviewed_at,
+              u.name AS user_name, u.phone AS user_phone
+       FROM gmaps_reviews gr
+       LEFT JOIN users u ON u.id = gr.user_id
+       ${whereClause}
+       ORDER BY gr.submitted_at DESC`,
+      params
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/gmaps-reviews error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data review.' });
+  }
+});
+
+// PUT /api/admin/gmaps-reviews/:id/approve
+router.put('/gmaps-reviews/:id/approve', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const MILES_REWARD = 50;
+
+    const review = await dbGet(`SELECT * FROM gmaps_reviews WHERE id = ?`, [id]);
+    if (!review) return res.status(404).json({ success: false, error: 'Review tidak ditemukan.' });
+    if (review.status !== 'pending') return res.status(400).json({ success: false, error: 'Review sudah diproses.' });
+
+    await dbRun(
+      `UPDATE gmaps_reviews SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now'), miles_awarded = ? WHERE id = ?`,
+      [req.user.id, MILES_REWARD, id]
+    );
+    await dbRun(
+      `UPDATE users SET miles = COALESCE(miles, 0) + ?, has_reviewed_gmaps = 1 WHERE id = ?`,
+      [MILES_REWARD, review.user_id]
+    );
+
+    res.json({ success: true, message: `Review disetujui. +${MILES_REWARD} Miles diberikan ke user.` });
+  } catch (err) {
+    console.error('PUT /admin/gmaps-reviews/:id/approve error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal approve review.' });
+  }
+});
+
+// PUT /api/admin/gmaps-reviews/:id/reject
+router.put('/gmaps-reviews/:id/reject', verifyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const review = await dbGet(`SELECT * FROM gmaps_reviews WHERE id = ?`, [id]);
+    if (!review) return res.status(404).json({ success: false, error: 'Review tidak ditemukan.' });
+    if (review.status !== 'pending') return res.status(400).json({ success: false, error: 'Review sudah diproses.' });
+
+    await dbRun(
+      `UPDATE gmaps_reviews SET status = 'rejected', reviewed_by = ?, reviewed_at = datetime('now'), reject_reason = ? WHERE id = ?`,
+      [req.user.id, reason || 'Screenshot tidak memenuhi syarat.', id]
+    );
+
+    res.json({ success: true, message: 'Review ditolak.' });
+  } catch (err) {
+    console.error('PUT /admin/gmaps-reviews/:id/reject error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal reject review.' });
+  }
+});
+
 // GET /api/admin/database/info — info DB saat ini
 router.get('/database/info', async (req, res) => {
   try {

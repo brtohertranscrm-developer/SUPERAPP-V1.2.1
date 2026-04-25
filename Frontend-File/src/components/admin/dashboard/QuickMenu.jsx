@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign, Calendar, ShieldCheck, Truck, Handshake } from 'lucide-react';
+import { Users, Bike, Package, ClipboardList, Ticket, LifeBuoy, FileText, TrendingUp, DollarSign, Calendar, ShieldCheck, Truck, Handshake, Star } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
 const QuickMenu = () => {
@@ -25,9 +25,10 @@ const QuickMenu = () => {
     { section: 'Promo & Konten', name: 'Konten Artikel', path: '/admin/artikel',    key: 'artikel',  icon: FileText,   color: 'text-cyan-600',   bg: 'bg-cyan-50' },
 
     // Sistem
-    { section: 'Sistem', name: 'Data Pelanggan', path: '/admin/users', key: 'users', icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
-    { section: 'Sistem', name: 'Verifikasi KYC', path: '/admin/kyc',   key: 'users', icon: ShieldCheck, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { section: 'Sistem', name: 'Tiket Bantuan',  path: '/admin/support',    key: 'settings',  icon: LifeBuoy,      color: 'text-slate-700',  bg: 'bg-slate-100' },
+    { section: 'Sistem', name: 'Data Pelanggan', path: '/admin/users',        key: 'users',    icon: Users,      color: 'text-purple-600', bg: 'bg-purple-50' },
+    { section: 'Sistem', name: 'Verifikasi KYC', path: '/admin/kyc',          key: 'users',    icon: ShieldCheck,color: 'text-amber-600',  bg: 'bg-amber-50' },
+    { section: 'Sistem', name: 'Review Google',  path: '/admin/gmaps-review', key: 'users',    icon: Star,       color: 'text-yellow-600', bg: 'bg-yellow-50' },
+    { section: 'Sistem', name: 'Tiket Bantuan',  path: '/admin/support',      key: 'settings', icon: LifeBuoy,   color: 'text-slate-700',  bg: 'bg-slate-100' },
   ];
 
   let userPermissions = [];
