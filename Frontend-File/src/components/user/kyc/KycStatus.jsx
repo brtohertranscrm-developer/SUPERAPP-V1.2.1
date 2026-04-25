@@ -33,7 +33,7 @@ const KycStatus = ({ status, verifyKycCode }) => {
   let config = {
     title: 'Verifikasi Identitas Diperlukan',
     desc: 'Untuk mencegah penipuan, kami memerlukan foto KTP & Selfie Anda. Silakan kirim via WhatsApp, lalu masukkan Kode Unik dari Admin di sini.',
-    color: 'from-orange-500 to-rose-500', // Warna peringatan (Pending)
+    color: 'from-slate-900 via-brand-primary to-brand-secondary', // Seragam dengan nuansa brand
     icon: <ShieldAlert size={24} className="text-white" />
   };
 

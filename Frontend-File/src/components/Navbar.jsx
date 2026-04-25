@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { UserCircle, LogOut, Menu, X, ChevronRight } from 'lucide-react';
 import { getAdminLandingPath } from '../utils/adminNavigation';
+import logoBrothersTrans from '../assets/brand/logo-brothers-trans.png';
 
 export default function Navbar() {
   const { user, logout } = useContext(AuthContext);
@@ -60,14 +61,15 @@ export default function Navbar() {
             {/* Logo Brother Trans */}
             <div 
               onClick={() => navigate('/')} 
-              className="flex-shrink-0 flex items-center gap-2 cursor-pointer group z-50"
+              className="flex-shrink-0 flex items-center gap-3 cursor-pointer group z-50"
             >
-              <div className="w-10 h-10 bg-brand-primary text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-sm group-hover:bg-brand-secondary transition-colors">
-                B
-              </div>
-              <span className="text-2xl font-extrabold text-brand-dark tracking-tight">
-                Brother<span className="text-brand-primary">Trans</span>
-              </span>
+              <img
+                src={logoBrothersTrans}
+                alt="Brothers Trans"
+                className="h-10 sm:h-11 w-auto object-contain"
+                loading="eager"
+                decoding="async"
+              />
             </div>
 
             {/* Menu Navigasi Tengah (Tampil HANYA di Desktop) */}
@@ -139,11 +141,15 @@ export default function Navbar() {
           
           {/* Header Mobile Menu */}
           <div className="flex justify-between items-center h-20 px-4 sm:px-6 border-b border-gray-100">
-             <div className="flex-shrink-0 flex items-center gap-2">
-              <div className="w-10 h-10 bg-brand-primary text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-sm">
-                B
-              </div>
-              <span className="text-2xl font-extrabold text-brand-dark tracking-tight">
+            <div className="flex-shrink-0 flex items-center gap-3">
+              <img
+                src={logoBrothersTrans}
+                alt="Brothers Trans"
+                className="h-10 w-auto object-contain"
+                loading="eager"
+                decoding="async"
+              />
+              <span className="text-lg font-black text-slate-800 tracking-tight">
                 Menu<span className="text-brand-primary">.</span>
               </span>
             </div>

@@ -58,7 +58,7 @@ const ReviewMissionBanner = ({ status, rejectReason, onClick }) => {
       onClick={onClick}
       className="w-full group text-left"
     >
-      <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-[2rem] p-5 sm:p-6 flex items-center gap-4 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-slate-900 via-brand-primary to-brand-secondary rounded-[2rem] p-5 sm:p-6 flex items-center gap-4 relative overflow-hidden">
         {/* Dekoratif bintang */}
         <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-10 pointer-events-none">
           <Star size={80} className="text-white fill-white" />
@@ -76,7 +76,7 @@ const ReviewMissionBanner = ({ status, rejectReason, onClick }) => {
           <p className="text-sm font-black text-white mb-0.5">
             Review kami di Google Maps
           </p>
-          <p className="text-xs text-amber-100 font-medium">
+          <p className="text-xs text-white/80 font-medium">
             Dapat <span className="font-black text-white">+50 Miles</span> setelah diverifikasi · Hanya 1×
           </p>
         </div>
