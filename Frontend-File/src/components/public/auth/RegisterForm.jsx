@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   User, Mail, Lock, Phone, ArrowRight, Loader2, AlertCircle,
-  Eye, EyeOff, Gift, CheckCircle2, XCircle, ShieldCheck
+  Eye, EyeOff, Gift, CheckCircle2, XCircle, ShieldCheck, ExternalLink
 } from 'lucide-react';
 const sanitize = (str = '') => str.replace(/[<>"'`]/g, '').slice(0, 500);
 const isValidEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
@@ -149,6 +149,49 @@ const ReferralInput = ({ value, onChange }) => {
 const FieldErr = ({ msg }) =>
   msg ? <p className="text-red-500 text-[11px] font-bold mt-1.5 ml-1">{msg}</p> : null;
 
+const LegalConsent = ({ checked, onChange, error }) => {
+  return (
+    <div className="pt-1">
+      <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-1 w-4 h-4 accent-rose-600"
+        />
+        <div className="min-w-0">
+          <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+            Saya sudah membaca dan menyetujui{' '}
+            <Link
+              to="/terms"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-slate-900 font-black underline underline-offset-2 hover:text-brand-primary inline-flex items-center gap-1"
+              title="Buka Syarat & Ketentuan"
+            >
+              Syarat & Ketentuan <ExternalLink size={12} />
+            </Link>{' '}
+            serta{' '}
+            <Link
+              to="/privacy"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-slate-900 font-black underline underline-offset-2 hover:text-brand-primary inline-flex items-center gap-1"
+              title="Buka Kebijakan Privasi"
+            >
+              Kebijakan Privasi <ExternalLink size={12} />
+            </Link>
+            .
+          </p>
+          {error ? <p className="text-red-500 text-[11px] font-bold mt-2">{error}</p> : null}
+        </div>
+      </label>
+    </div>
+  );
+};
+
 // --- Komponen utama -----------------------------------------------------------
 const RegisterForm = ({ isLoading, error, onSubmit }) => {
   const [formData, setFormData] = useState({
@@ -156,6 +199,7 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
   });
   const [fieldError, setFieldError] = useState({});
   const [submitted,  setSubmitted]  = useState(false);
+  const [acceptLegal, setAcceptLegal] = useState(false);
 
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
@@ -172,6 +216,7 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
     const ktp = String(formData.ktp_id || '').replace(/\D/g, '');
     if (ktp.length !== 16)                                 errs.ktp_id   = 'ID KTP (NIK) harus 16 digit angka.';
     if (!formData.password || formData.password.length < 6) errs.password = 'Password minimal 6 karakter.';
+    if (!acceptLegal)                                      errs.legal    = 'Centang persetujuan untuk melanjutkan.';
     setFieldError(errs);
     return Object.keys(errs).length === 0;
   };
@@ -294,18 +339,14 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
         {/* Referral */}
         <ReferralInput value={formData.referred_by} onChange={handleChange} />
 
-        {/* ToS note */}
-        <p className="text-[10px] text-slate-400 font-medium text-center px-2 leading-relaxed">
-          Dengan membuat akun, kamu menyetujui{' '}
-          <Link to="/terms" className="text-slate-600 font-black hover:text-brand-primary">
-            Syarat & Ketentuan
-          </Link>{' '}
-          dan{' '}
-          <Link to="/privacy" className="text-slate-600 font-black hover:text-brand-primary">
-            Kebijakan Privasi
-          </Link>
-          .
-        </p>
+        <LegalConsent
+          checked={acceptLegal}
+          onChange={(v) => {
+            setAcceptLegal(v);
+            if (fieldError.legal) setFieldError((p) => ({ ...p, legal: '' }));
+          }}
+          error={fieldError.legal}
+        />
 
         {/* Submit */}
         <button
