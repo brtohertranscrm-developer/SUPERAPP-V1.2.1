@@ -33,15 +33,10 @@ jobs:
             Backend-File/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/brother-backend/
 
       - name: Install & Restart Backend
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key_path: ~/.ssh/deploy_key
-          script: |
-            cd /var/www/brother-backend
-            npm install --omit=dev
-            pm2 restart brother-backend
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
+            "cd /var/www/brother-backend && npm install --omit=dev && pm2 restart brother-backend"
 
   deploy-frontend:
     name: Build & Deploy Frontend
