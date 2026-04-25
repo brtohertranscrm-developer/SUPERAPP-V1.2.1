@@ -782,6 +782,20 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'season_miles_earned', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT (date('now'))");
 
+  // User claimed promotions
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_promotions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT NOT NULL,
+      promo_id    INTEGER NOT NULL,
+      claimed_at  TEXT DEFAULT (datetime('now')),
+      status      TEXT DEFAULT 'active',
+      UNIQUE(user_id, promo_id),
+      FOREIGN KEY (user_id)  REFERENCES users(id),
+      FOREIGN KEY (promo_id) REFERENCES promotions(id)
+    )
+  `);
+
   // ==========================================
   // 5. INDEXES
   // ==========================================

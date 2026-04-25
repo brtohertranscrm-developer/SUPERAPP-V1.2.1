@@ -18,6 +18,7 @@ export const useUserDashboard = () => {
   );
   const [topTravellers, setTopTravellers]     = useState([]);
   const [partnerVouchers, setPartnerVouchers] = useState([]);
+  const [claimedPromos, setClaimedPromos]     = useState([]);
   // [FIX] Index untuk navigasi swipe antar booking aktif
   const [currentOrderIndex, setCurrentOrderIndex] = useState(0);
 
@@ -35,10 +36,11 @@ export const useUserDashboard = () => {
     try {
       const timestamp = Date.now();
 
-      const [resMe, resTop, resVouchers] = await Promise.all([
+      const [resMe, resTop, resVouchers, resPromos] = await Promise.all([
         fetch(`${API_URL}/api/dashboard/me?_t=${timestamp}`, { headers: getHeaders() }),
         fetch(`${API_URL}/api/dashboard/top-travellers?_t=${timestamp}`, { headers: getHeaders() }),
         fetch(`${API_URL}/api/users/partner-vouchers?_t=${timestamp}`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/users/promotions?_t=${timestamp}`, { headers: getHeaders() }),
       ]);
 
       if (resMe.status === 401 || resMe.status === 403) {
@@ -52,6 +54,7 @@ export const useUserDashboard = () => {
       const resultMe  = await resMe.json();
       const resultTop = await resTop.json();
       const resultVouchers = await resVouchers.json();
+      const resultPromos   = await resPromos.json();
 
       if (resultMe.success) {
         setDashboardData(resultMe.data);
@@ -72,6 +75,9 @@ export const useUserDashboard = () => {
 
       if (resultVouchers.success) {
         setPartnerVouchers(Array.isArray(resultVouchers.data) ? resultVouchers.data : []);
+      }
+      if (resultPromos.success) {
+        setClaimedPromos(Array.isArray(resultPromos.data) ? resultPromos.data : []);
       }
     } catch (error) {
       console.error('Gagal mengambil data dashboard:', error);
@@ -206,6 +212,7 @@ export const useUserDashboard = () => {
     setBannerUrl,
     topTravellers,
     partnerVouchers,
+    claimedPromos,
     user:               dashboardData?.user || user,
     // [FIX] activeOrders = semua booking aktif, activeOrder = booking yang sedang ditampilkan
     activeOrders,

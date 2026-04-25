@@ -323,6 +323,61 @@ router.post('/partners/:id/claim', async (req, res) => {
 });
 
 // ==========================================
+// PROMO CLAIM (USER)
+// ==========================================
+
+// POST /api/promotions/:id/claim — simpan klaim promo ke user_promotions
+router.post('/promotions/:id/claim', async (req, res) => {
+  try {
+    const promoId = req.params.id;
+
+    const promo = await dbGet(`SELECT * FROM promotions WHERE id = ? AND is_active = 1`, [promoId]);
+    if (!promo) return res.status(404).json({ success: false, error: 'Promo tidak ditemukan atau tidak aktif.' });
+
+    if (promo.usage_limit > 0 && promo.current_usage >= promo.usage_limit) {
+      return res.status(400).json({ success: false, error: 'Kuota promo ini sudah habis.' });
+    }
+
+    const existing = await dbGet(
+      `SELECT id FROM user_promotions WHERE user_id = ? AND promo_id = ?`,
+      [req.user.id, promoId]
+    );
+    if (existing) return res.status(400).json({ success: false, error: 'Kamu sudah mengklaim promo ini sebelumnya.' });
+
+    await dbRun(
+      `INSERT INTO user_promotions (user_id, promo_id) VALUES (?, ?)`,
+      [req.user.id, promoId]
+    );
+    await dbRun(`UPDATE promotions SET current_usage = current_usage + 1 WHERE id = ?`, [promoId]);
+
+    res.json({ success: true, message: 'Promo berhasil diklaim!', code: promo.code });
+  } catch (err) {
+    console.error('POST /promotions/:id/claim error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengklaim promo.' });
+  }
+});
+
+// GET /api/users/promotions — ambil daftar promo yang sudah diklaim user
+router.get('/users/promotions', async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT up.id, up.claimed_at, up.status,
+              p.id AS promo_id, p.title, p.code, p.desc, p.tag,
+              p.discount_percent, p.max_discount
+       FROM user_promotions up
+       JOIN promotions p ON p.id = up.promo_id
+       WHERE up.user_id = ?
+       ORDER BY up.claimed_at DESC`,
+      [req.user.id]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /users/promotions error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data promo.' });
+  }
+});
+
+// ==========================================
 // 3b. UPLOAD BUKTI TRANSFER (USER)
 // Buat entri payment_reconciliations berstatus pending
 // ==========================================

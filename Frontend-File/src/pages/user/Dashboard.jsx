@@ -23,7 +23,7 @@ const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 export default function Dashboard() {
   const {
     isLoading, kycStatus, bannerUrl, setBannerUrl, topTravellers,
-    partnerVouchers,
+    partnerVouchers, claimedPromos,
     user, activeOrder, activeOrders, currentOrderIndex, totalOrders,
     goToPrevOrder, goToNextOrder,
     saveProfile, updateBanner, navigate, verifyKycCode, handleExtend,
@@ -218,7 +218,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <UserPartnerVouchers vouchers={partnerVouchers} />
+            <UserPartnerVouchers vouchers={partnerVouchers} claimedPromos={claimedPromos} />
 
             {/* Ajak Teman */}
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[2rem] p-6 sm:p-8 text-white relative overflow-hidden flex flex-col sm:flex-row justify-between items-center sm:items-end shadow-sm gap-6">
@@ -450,9 +450,10 @@ export default function Dashboard() {
   );
 }
 
-function UserPartnerVouchers({ vouchers = [] }) {
+function UserPartnerVouchers({ vouchers = [], claimedPromos = [] }) {
   const activeVouchers = vouchers.filter((voucher) => voucher.status === 'claimed');
   const recentVouchers = vouchers.slice(0, 4);
+  const hasAny = recentVouchers.length > 0 || claimedPromos.length > 0;
 
   return (
     <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 shadow-sm border border-slate-100">
@@ -462,20 +463,41 @@ function UserPartnerVouchers({ vouchers = [] }) {
             <Ticket size={18} className="text-indigo-600" /> Promo Saya
           </h3>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-            Promo partnership yang sudah Anda klaim akan tampil di sini dan bisa ditunjukkan saat datang ke lokasi partner.
+            Voucher partner dan kode promo yang sudah kamu klaim.
           </p>
         </div>
         <div className="px-4 py-2 rounded-2xl bg-indigo-50 text-indigo-700 text-xs font-black">
-          Aktif {activeVouchers.length}
+          Aktif {activeVouchers.length + claimedPromos.length}
         </div>
       </div>
 
-      {recentVouchers.length === 0 ? (
+      {/* Claimed promo codes dari carousel */}
+      {claimedPromos.length > 0 && (
+        <div className="space-y-3 mb-4">
+          {claimedPromos.map((p) => (
+            <div key={p.id} className="rounded-[1.5rem] border border-rose-100 bg-rose-50 px-5 py-4 flex items-center justify-between gap-4">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-rose-500 bg-rose-100 px-2 py-0.5 rounded-full">{p.tag || 'Promo'}</span>
+                <p className="font-black text-slate-900 mt-1">{p.title}</p>
+                {p.discount_percent > 0 && (
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Diskon {p.discount_percent}%{p.max_discount > 0 ? ` maks Rp${p.max_discount.toLocaleString('id-ID')}` : ''}</p>
+                )}
+              </div>
+              <div className="shrink-0 bg-white border border-rose-200 rounded-xl px-4 py-2 text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode</p>
+                <p className="font-mono font-black text-slate-900 text-sm">{p.code}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!hasAny ? (
         <div className="rounded-[2rem] border border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center">
           <Ticket size={30} className="mx-auto text-slate-300 mb-3" />
           <p className="text-sm font-black text-slate-900">Belum ada promo yang diklaim</p>
           <p className="text-xs text-slate-500 font-medium mt-2">
-            Buka homepage, pilih promo partner, lalu klik klaim agar voucher masuk ke dashboard ini.
+            Buka homepage, pilih promo, lalu klik klaim agar promo masuk ke dashboard ini.
           </p>
         </div>
       ) : (
