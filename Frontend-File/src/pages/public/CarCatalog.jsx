@@ -62,7 +62,7 @@ export default function CarCatalog() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
                   {cars.map((car) => (
-                    <CarCard key={car.id} car={car} pickupCity={activeSearch.pickupCity} />
+                    <CarCard key={car.id} car={car} pickupCity={activeSearch.pickupCity} search={activeSearch} />
                   ))}
                 </div>
               )}
@@ -73,4 +73,3 @@ export default function CarCatalog() {
     </div>
   );
 }
-

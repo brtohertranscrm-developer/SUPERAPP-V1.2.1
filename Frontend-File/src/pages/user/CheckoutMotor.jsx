@@ -285,7 +285,7 @@ export default function CheckoutMotor() {
   // [FIX 4] State untuk info rekening dari API
   const [paymentInfo, setPaymentInfo]       = useState(null);
   const [remoteBreakdown, setRemoteBreakdown] = useState(null);
-  const [isBreakdownLoading, setIsBreakdownLoading] = useState(false);
+  const [_isBreakdownLoading, setIsBreakdownLoading] = useState(false);
 
   // Add-ons & Paket motor (upsell)
   const [motorAddons, setMotorAddons] = useState([]);
@@ -301,7 +301,7 @@ export default function CheckoutMotor() {
       return;
     }
     if (!user) {
-      sessionStorage.setItem('pending_checkout', JSON.stringify(bookingData));
+      sessionStorage.setItem('pending_checkout', JSON.stringify({ ...bookingData, checkout_path: '/checkout-motor' }));
       navigate('/login', { replace: true });
     }
   }, [bookingData, user, navigate]);

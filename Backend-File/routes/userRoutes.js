@@ -23,6 +23,29 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); });
 });
 
+// Normalize datetime strings for overlap checks (keep consistent with admin/public queries)
+const dtExpr = (col) => `CASE
+  WHEN trim(COALESCE(${col}, '')) LIKE '%Z' THEN datetime(${col}, 'localtime')
+  ELSE datetime(replace(substr(COALESCE(${col}, ''), 1, 19), 'T', ' '))
+END`;
+
+const normalizeToSqliteDateTime = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+  return raw.slice(0, 19).replace('T', ' ');
+};
+
+const normalizeCityKey = (city) => {
+  const v = String(city || '').trim().toLowerCase();
+  if (v.includes('solo') || v.includes('balapan')) return 'solo';
+  return 'yogyakarta';
+};
+
 const buildPartnerVoucherCode = (partnerId) => {
   const prefix = `PRT${String(partnerId).padStart(3, '0')}`;
   const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -564,7 +587,7 @@ router.post('/support/tickets', async (req, res) => {
 });
 
 // ==========================================
-// 5. CREATE BOOKING MOTOR
+// 5. CREATE BOOKING (MOTOR / LOKER / MOBIL)
 // ==========================================
 router.post('/bookings', async (req, res) => {
   try {
@@ -575,14 +598,15 @@ router.post('/bookings', async (req, res) => {
       duration_hours, price_notes, payment_method,
       addon_items,
       delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng,
-      trip_scope, trip_destination
+      trip_scope, trip_destination,
+      car_id
     } = req.body || {};
 
     if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
       return res.status(400).json({ success: false, error: 'Data booking tidak lengkap.' });
     }
 
-    if (!['motor', 'locker'].includes(item_type)) {
+    if (!['motor', 'locker', 'car'].includes(item_type)) {
       return res.status(400).json({ success: false, error: 'Tipe item tidak valid.' });
     }
 
@@ -593,6 +617,10 @@ router.post('/bookings', async (req, res) => {
 
     let refPrice = null;
     let rentalBreakdown = null;
+    let resolvedItemName = item_name;
+    let assignedUnitId = null;
+    let assignedPlateNumber = null;
+
     if (item_type === 'motor') {
       const motor = await dbGet(
         `SELECT base_price, price_12h FROM motors WHERE name = ? LIMIT 1`,
@@ -624,6 +652,24 @@ router.post('/bookings', async (req, res) => {
         [location]
       );
       if (locker) refPrice = locker.base_price;
+    } else if (item_type === 'car') {
+      const carId = parseInt(car_id, 10) || null;
+      const car = carId
+        ? await dbGet(`SELECT id, name, display_name, base_price FROM cars WHERE id = ? LIMIT 1`, [carId])
+        : await dbGet(
+          `SELECT id, name, display_name, base_price
+           FROM cars
+           WHERE lower(name) = lower(?)
+              OR lower(COALESCE(display_name, '')) = lower(?)
+           LIMIT 1`,
+          [item_name, item_name]
+        );
+
+      if (!car) {
+        return res.status(400).json({ success: false, error: 'Mobil tidak ditemukan.' });
+      }
+      resolvedItemName = car.display_name || car.name;
+      refPrice = car.base_price;
     }
 
     if (refPrice !== null) {
@@ -755,9 +801,78 @@ router.post('/bookings', async (req, res) => {
 	      return res.status(400).json({ success: false, error: 'Tujuan perjalanan wajib diisi.' });
 	    }
 
-    // Atomic: booking + addon lines
-    await dbRun('BEGIN');
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
+    const startNorm = normalizeToSqliteDateTime(start_date);
+    const endNorm = normalizeToSqliteDateTime(end_date);
+    const bufPlus = bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes';
+    const bufMinus = bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes';
+
+    // Atomic: booking + addon lines (+ car unit assign)
+    await dbRun(item_type === 'car' ? 'BEGIN IMMEDIATE' : 'BEGIN');
     try {
+      // Auto-assign unit for car booking (to prevent double-booking)
+      if (item_type === 'car') {
+        const carId = parseInt(car_id, 10) || null;
+        if (!carId) {
+          const e = new Error('car_id wajib diisi untuk booking mobil.');
+          e.statusCode = 400;
+          throw e;
+        }
+        if (!startNorm || !endNorm) {
+          const e = new Error('Tanggal booking tidak valid.');
+          e.statusCode = 400;
+          throw e;
+        }
+
+        const pickupKey = normalizeCityKey(location);
+        const preferLike = pickupKey === 'solo' ? '%solo%' : '%yogya%';
+
+        const unit = await dbGet(
+          `
+          SELECT cu.id, cu.plate_number, cu.current_location
+          FROM car_units cu
+          WHERE cu.car_id = ?
+            AND cu.status = 'RDY'
+            AND cu.id NOT IN (
+              SELECT b.unit_id
+              FROM bookings b
+              WHERE b.item_type = 'car'
+                AND b.unit_id IS NOT NULL
+                AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+            )
+            AND cu.id NOT IN (
+              SELECT cub.car_unit_id
+              FROM car_unit_blocks cub
+              WHERE datetime(cub.start_at) < datetime(?, ?)
+                AND datetime(cub.end_at)   > datetime(?, ?)
+            )
+          ORDER BY
+            CASE WHEN lower(COALESCE(cu.current_location, '')) LIKE ? THEN 0 ELSE 1 END,
+            cu.id ASC
+          LIMIT 1
+          `,
+          [
+            carId,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            preferLike,
+          ]
+        );
+
+        if (!unit) {
+          const e = new Error('Mobil sedang tidak tersedia untuk rentang tanggal tersebut.');
+          e.statusCode = 409;
+          throw e;
+        }
+
+        assignedUnitId = unit.id;
+        assignedPlateNumber = unit.plate_number || null;
+      }
+
       await dbRun(
         `INSERT INTO bookings (
            order_id, user_id, item_type, item_name, location,
@@ -765,11 +880,12 @@ router.post('/bookings', async (req, res) => {
            trip_scope, trip_destination,
            start_date, end_date, 
            base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
-           paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes
+           paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
+           unit_id, plate_number
          ) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?, ?, ?)`,
         [
-          order_id, req.user.id, item_type, item_name, location,
+          order_id, req.user.id, item_type, resolvedItemName, location,
           delType || null,
           delivery_station_id || null,
           delivery_address || null,
@@ -781,7 +897,8 @@ router.post('/bookings', async (req, res) => {
           tripDestinationNormalized,
           start_date, end_date, 
           bPrice, dAmount, pCode, sFee, aFee, delFee,
-          0, finalPrice, payMethod, billableHours, computedPriceNotes
+          0, finalPrice, payMethod, billableHours, computedPriceNotes,
+          assignedUnitId, assignedPlateNumber
         ]
       );
 
@@ -812,7 +929,7 @@ router.post('/bookings', async (req, res) => {
 
     dbGet(`SELECT name, phone FROM users WHERE id = ?`, [req.user.id])
       .then((userData) => notifyNewBooking(
-        { order_id, item_type, item_name, location, start_date, end_date,
+        { order_id, item_type, item_name: resolvedItemName, location, start_date, end_date,
           total_price: finalPrice, payment_method: payMethod },
         userData
       ))
@@ -821,6 +938,10 @@ router.post('/bookings', async (req, res) => {
     res.status(201).json({ success: true, message: 'Booking berhasil dibuat.', order_id });
 
   } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) {
+      return res.status(status).json({ success: false, error: err.message || 'Gagal membuat booking.' });
+    }
     console.error('POST /bookings error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal membuat booking.' });
   }

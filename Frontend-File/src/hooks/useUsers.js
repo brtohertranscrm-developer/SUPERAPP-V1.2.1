@@ -117,9 +117,37 @@ export const useUsers = () => {
     }
   };
 
+  const deleteUser = async (id, name) => {
+    const displayName = name || 'user ini';
+    const confirmText =
+      `Yakin ingin HAPUS DATA pelanggan ${displayName}?\n\n` +
+      `Aksi ini akan menganonimkan data (nama/email/phone/KTP/akun login) dan tidak bisa dibatalkan.`;
+
+    if (!window.confirm(confirmText)) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        alert('Gagal menghapus data pelanggan: ' + (data.error || res.status));
+        return;
+      }
+
+      alert(data.message || 'Data pelanggan berhasil dihapus.');
+      fetchUsers();
+    } catch (err) {
+      console.error('Delete user error:', err);
+      alert('Koneksi ke server gagal.');
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  return { users, isLoading, updateKyc, generateCode, refetch: fetchUsers };
+  return { users, isLoading, updateKyc, generateCode, deleteUser, refetch: fetchUsers };
 };

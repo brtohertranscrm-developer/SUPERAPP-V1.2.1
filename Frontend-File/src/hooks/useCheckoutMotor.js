@@ -24,7 +24,7 @@ export const useCheckoutMotor = () => {
   // Proteksi Belum Login
   useEffect(() => {
     if (!user && bookingData) {
-      sessionStorage.setItem('pending_checkout', JSON.stringify(bookingData));
+      sessionStorage.setItem('pending_checkout', JSON.stringify({ ...bookingData, checkout_path: '/checkout-motor' }));
       alert('Silakan login terlebih dahulu untuk melanjutkan pesanan.');
       navigate('/login');
     }
@@ -85,7 +85,7 @@ export const useCheckoutMotor = () => {
         alert('Gagal memproses pesanan: ' + data.error);
         setIsLoading(false);
       }
-    } catch (error) {
+    } catch {
       alert('Koneksi ke server gagal.');
       setIsLoading(false);
     }

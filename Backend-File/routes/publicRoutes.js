@@ -94,6 +94,7 @@ router.get('/motors', async (req, res) => {
                    FROM bookings b
                    JOIN motor_units mu_booked ON mu_booked.id = b.unit_id
                    WHERE b.unit_id IS NOT NULL
+                     AND b.item_type = 'motor'
                      AND mu_booked.motor_id = m.id
                      AND mu_booked.status = 'RDY'
                      AND b.status NOT IN ('cancelled', 'completed', 'selesai')
@@ -190,14 +191,14 @@ router.get('/motors', async (req, res) => {
 
 // ==========================================
 // CARS - Daftar Mobil (Public Catalog)
-// Note: Saat ini availability dihitung dari unit RDY - car_unit_blocks (manual block).
-// Booking overlap untuk mobil akan kita tambahkan di step berikutnya ketika alur booking mobil sudah dibuat.
+// Availability dihitung dari unit RDY dikurangi booking overlap + car_unit_blocks (manual block).
 // ==========================================
 router.get('/cars', async (req, res) => {
   try {
     const startDate = normalizeToSqliteDateTime(req.query.start_date || req.query.start || '');
     const endDate = normalizeToSqliteDateTime(req.query.end_date || req.query.end || '');
     const hasRange = !!startDate && !!endDate;
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
 
     const cars = hasRange
       ? await dbAll(
@@ -210,18 +211,58 @@ router.get('/cars', async (req, res) => {
                    AND cu.status = 'RDY'
                ) as total_rdy_units,
                (
-                 SELECT COUNT(DISTINCT cub.car_unit_id)
-                 FROM car_unit_blocks cub
-                 JOIN car_units cu_blocked ON cu_blocked.id = cub.car_unit_id
-                 WHERE cu_blocked.car_id = c.id
-                   AND cu_blocked.status = 'RDY'
-                   AND datetime(cub.start_at) < datetime(?)
-                   AND datetime(cub.end_at)   > datetime(?)
-               ) as reserved_unit_count
+                 SELECT COUNT(*)
+                 FROM (
+                   SELECT b.unit_id AS unit_id
+                   FROM bookings b
+                   JOIN car_units cu_booked ON cu_booked.id = b.unit_id
+                   WHERE b.item_type = 'car'
+                     AND b.unit_id IS NOT NULL
+                     AND cu_booked.car_id = c.id
+                     AND cu_booked.status = 'RDY'
+                     AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                     AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                     AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+                   UNION
+                   SELECT cub.car_unit_id AS unit_id
+                   FROM car_unit_blocks cub
+                   JOIN car_units cu_blocked ON cu_blocked.id = cub.car_unit_id
+                   WHERE cu_blocked.car_id = c.id
+                     AND cu_blocked.status = 'RDY'
+                     AND datetime(cub.start_at) < datetime(?, ?)
+                     AND datetime(cub.end_at)   > datetime(?, ?)
+                 ) reserved_units
+               ) as reserved_unit_count,
+               (
+                 SELECT COUNT(*)
+                 FROM bookings b2
+                 WHERE b2.item_type = 'car'
+                   AND b2.unit_id IS NULL
+                   AND b2.status NOT IN ('cancelled', 'completed', 'selesai')
+                   AND ${dtExpr('b2.start_date')} < datetime(?, ?)
+                   AND ${dtExpr('b2.end_date')}   > datetime(?, ?)
+                   AND (
+                     lower(COALESCE(b2.item_name, '')) = lower(COALESCE(c.display_name, ''))
+                     OR lower(COALESCE(b2.item_name, '')) = lower(COALESCE(c.name, ''))
+                   )
+               ) as pending_unassigned_booking_count
         FROM cars c
         ORDER BY c.base_price ASC
         `,
-        [endDate, startDate]
+        [
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+        ]
       )
       : await dbAll(
         `
@@ -258,14 +299,33 @@ router.get('/cars', async (req, res) => {
         WHERE cu.car_id = ?
           AND cu.status = 'RDY'
           AND cu.id NOT IN (
+            SELECT b.unit_id
+            FROM bookings b
+            WHERE b.item_type = 'car'
+              AND b.unit_id IS NOT NULL
+              AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+              AND ${dtExpr('b.start_date')} < datetime(?, ?)
+              AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+          )
+          AND cu.id NOT IN (
             SELECT cub.car_unit_id
             FROM car_unit_blocks cub
-            WHERE datetime(cub.start_at) < datetime(?)
-              AND datetime(cub.end_at)   > datetime(?)
+            WHERE datetime(cub.start_at) < datetime(?, ?)
+              AND datetime(cub.end_at)   > datetime(?, ?)
           )
         GROUP BY lower(COALESCE(cu.current_location, ''))
         `,
-        [carId, endDate, startDate]
+        [
+          carId,
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+          endDate,
+          bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes',
+          startDate,
+          bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes',
+        ]
       );
     };
 
@@ -273,7 +333,8 @@ router.get('/cars', async (req, res) => {
     for (const c of cars) {
       const totalRdy = Number(c.total_rdy_units) || 0;
       const reserved = Number(c.reserved_unit_count) || 0;
-      const stock = hasRange ? Math.max(0, totalRdy - reserved) : totalRdy;
+      const pendingUnassigned = Number(c.pending_unassigned_booking_count) || 0;
+      const stock = hasRange ? Math.max(0, totalRdy - reserved - pendingUnassigned) : totalRdy;
 
       const rows = await getCountsByLocation(c.id);
       const byLocation = {};
@@ -287,6 +348,7 @@ router.get('/cars', async (req, res) => {
         stock,
         total_rdy_units: totalRdy,
         reserved_unit_count: reserved,
+        pending_unassigned_booking_count: pendingUnassigned,
         availability_by_location: byLocation,
       });
     }

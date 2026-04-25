@@ -192,6 +192,7 @@ const hasUnitConflict = async ({ unitId, orderId, startDate, endDate, bufferMinu
     SELECT order_id
     FROM bookings
     WHERE unit_id = ?
+      AND item_type = 'motor'
       AND order_id != ?
       AND status NOT IN ('cancelled', 'completed', 'selesai')
       AND ${dtExpr('start_date')} < datetime(?, ?)
@@ -631,6 +632,78 @@ router.put('/kyc/:id', requirePermission('users'), async (req, res) => {
 });
 
 // ==========================================
+// USERS: DELETE / ANONYMIZE (Akses: users)
+// Catatan: Karena foreign_keys=ON dan banyak tabel mereferensikan users(id),
+// "hapus" dilakukan sebagai anonimisasi + pemutusan akses login.
+// ==========================================
+router.delete('/users/:id', requirePermission('users'), async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ success: false, error: 'User ID tidak valid.' });
+
+    const user = await dbGet(`SELECT id, role, email FROM users WHERE id = ?`, [id]);
+    if (!user) return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
+    if (user.role !== 'user') {
+      return res.status(403).json({ success: false, error: 'Hanya akun pelanggan yang bisa dihapus.' });
+    }
+
+    const deletedDomain = '@brothertrans.invalid';
+    const isAlreadyAnonymized = String(user.email || '').toLowerCase().endsWith(deletedDomain);
+    if (isAlreadyAnonymized) {
+      return res.json({ success: true, mode: 'already_anonymized', message: 'Data pelanggan sudah terhapus.' });
+    }
+
+    const tag = crypto.createHash('sha256').update(id).digest('hex').slice(0, 12);
+    const newEmail = `deleted+${tag}${deletedDomain}`;
+
+    const randPhone = crypto.randomInt
+      ? String(crypto.randomInt(0, 1_000_000_000_000)).padStart(12, '0')
+      : String(parseInt(crypto.randomBytes(6).toString('hex'), 16) % 1_000_000_000_000).padStart(12, '0');
+    const newPhone = `000${randPhone}`.slice(0, 14);
+
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+    await dbRun(
+      `
+      UPDATE users
+      SET
+        name = ?,
+        email = ?,
+        phone = ?,
+        password = ?,
+        ktp_id = NULL,
+        kyc_status = 'unverified',
+        kyc_code = NULL,
+        referral_code = NULL,
+        referred_by = NULL,
+        reset_token = NULL,
+        reset_token_expiry = NULL,
+        bank_account = NULL,
+        bank_name = NULL,
+        profile_picture = NULL,
+        profile_banner = NULL,
+        login_attempts = 0,
+        locked_until = NULL,
+        last_login = NULL
+      WHERE id = ?
+      `,
+      ['Deleted User', newEmail, newPhone, hashedPassword, id]
+    );
+
+    // Cleanup data yang sifatnya sensitif (IP/user_agent/token hash) dan tidak dibutuhkan untuk operasional
+    await dbRun(`DELETE FROM login_logs WHERE user_id = ?`, [id]);
+    await dbRun(`DELETE FROM token_blacklist WHERE user_id = ?`, [id]);
+    await dbRun(`DELETE FROM promo_usage WHERE user_id = ?`, [id]);
+
+    res.json({ success: true, mode: 'anonymized', message: 'Data pelanggan berhasil dihapus (dianonimkan).' });
+  } catch (err) {
+    console.error('DELETE /admin/users/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus data pelanggan.' });
+  }
+});
+
+// ==========================================
 // MOTOR UNITS — ALL (untuk FleetInventoryTable)
 // [FIX P8] Endpoint baru — ambil semua unit beserta nama motor & kategori
 // ==========================================
@@ -721,13 +794,14 @@ router.get('/units/available', requirePermission('booking'), async (req, res) =>
       WHERE mu.status != 'OUT'
         ${motorWhere}
         AND mu.id NOT IN (
-          SELECT b.unit_id
-          FROM bookings b
-          WHERE b.unit_id IS NOT NULL
-            AND b.status NOT IN ('cancelled', 'completed', 'selesai')
-            AND ${dtExpr('b.start_date')} < datetime(?, ?)
-            AND ${dtExpr('b.end_date')}   > datetime(?, ?)
-        )
+      SELECT b.unit_id
+      FROM bookings b
+      WHERE b.unit_id IS NOT NULL
+        AND b.item_type = 'motor'
+        AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+        AND ${dtExpr('b.start_date')} < datetime(?, ?)
+        AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+    )
         AND mu.id NOT IN (
           SELECT ub.unit_id
           FROM unit_blocks ub
@@ -1465,7 +1539,7 @@ router.get('/bookings', requireAnyPermission(['booking', 'armada', 'logistics'])
     const where = [];
     const params = [];
 
-    if (itemType && ['motor', 'locker'].includes(itemType)) {
+    if (itemType && ['motor', 'locker', 'car'].includes(itemType)) {
       where.push(`lower(COALESCE(b.item_type, '')) = ?`);
       params.push(itemType);
     }

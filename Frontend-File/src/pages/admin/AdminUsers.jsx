@@ -5,7 +5,7 @@ import UsersToolbar from '../../components/admin/users/UsersToolbar';
 import UsersTable from '../../components/admin/users/UsersTable';
 
 export default function AdminUsers() {
-  const { users, isLoading, updateKyc, generateCode } = useUsers();
+  const { users, isLoading, updateKyc, generateCode, deleteUser } = useUsers();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterKyc,  setFilterKyc]  = useState('Semua');
 
@@ -48,6 +48,7 @@ export default function AdminUsers() {
         isLoading={isLoading}
         onUpdateKyc={updateKyc}
         onGenerateCode={generateCode}
+        onDeleteUser={deleteUser}
       />
 
     </div>

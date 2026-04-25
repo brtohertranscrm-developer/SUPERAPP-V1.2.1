@@ -3,6 +3,7 @@ import {
   ShieldCheck, ShieldAlert, Shield,
   CheckCircle, XCircle, Loader2,
   Mail, Phone, Key, ChevronDown, ChevronUp,
+  Trash2,
 } from 'lucide-react';
 
 // KYC status yang valid sesuai backend:
@@ -31,7 +32,7 @@ const KYC_CONFIG = {
   },
 };
 
-const UsersTable = ({ users, isLoading, onUpdateKyc, onGenerateCode }) => {
+const UsersTable = ({ users, isLoading, onUpdateKyc, onGenerateCode, onDeleteUser }) => {
   const [expandedUserId, setExpandedUserId] = useState(null);
 
   const toggleExpand = (userId) => {
@@ -63,6 +64,7 @@ const UsersTable = ({ users, isLoading, onUpdateKyc, onGenerateCode }) => {
         const kycCfg = KYC_CONFIG[kyc] || KYC_CONFIG.unverified;
         const KycIcon = kycCfg.Icon;
         const isExpanded = expandedUserId === user.id;
+        const isDeleted = String(user.email || '').toLowerCase().endsWith('@brothertrans.invalid');
 
         return (
           <div
@@ -183,6 +185,25 @@ const UsersTable = ({ users, isLoading, onUpdateKyc, onGenerateCode }) => {
                       {kyc === 'verified' ? 'Bekukan' : 'Tolak'}
                     </button>
                   )}
+
+                  {/* Delete Data (Anonymize) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (typeof onDeleteUser === 'function') onDeleteUser(user.id, user.name);
+                    }}
+                    disabled={isDeleted || typeof onDeleteUser !== 'function'}
+                    className={[
+                      'flex-1 basis-full sm:basis-0 justify-center py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center gap-1.5',
+                      isDeleted || typeof onDeleteUser !== 'function'
+                        ? 'bg-white border border-slate-200 text-slate-300 cursor-not-allowed'
+                        : 'bg-white border border-rose-200 text-rose-600 hover:bg-rose-50',
+                    ].join(' ')}
+                    title={isDeleted ? 'Data pelanggan sudah dihapus (dianonimkan).' : 'Hapus data pelanggan (dianonimkan).'}
+                  >
+                    <Trash2 size={13} />
+                    {isDeleted ? 'Terhapus' : 'Hapus Data'}
+                  </button>
 
                 </div>
               </div>

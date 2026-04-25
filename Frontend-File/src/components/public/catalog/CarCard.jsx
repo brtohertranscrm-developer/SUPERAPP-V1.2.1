@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CarFront, MapPin, Users, Zap } from 'lucide-react';
 
 const rupiah = (v) => {
@@ -10,7 +11,8 @@ const rupiah = (v) => {
   }
 };
 
-export default function CarCard({ car, pickupCity }) {
+export default function CarCard({ car, pickupCity, search }) {
+  const navigate = useNavigate();
   const title = car?.display_name || car?.name || 'Mobil';
   const seats = Number(car?.seats) || 4;
   const transmission = String(car?.transmission || 'AT').toUpperCase();
@@ -82,7 +84,31 @@ export default function CarCard({ car, pickupCity }) {
         <button
           type="button"
           className="mt-4 w-full px-6 py-4 rounded-2xl bg-slate-900 text-white font-black hover:bg-slate-800 transition"
-          onClick={() => alert('Next step: halaman checkout mobil akan kita buat setelah alur booking mobil siap.')}
+          onClick={() => {
+            const startDate = search?.startDate;
+            const endDate = search?.endDate;
+            if (!startDate || !endDate) {
+              alert('Tentukan tanggal pickup & return dulu ya.');
+              return;
+            }
+            const startTime = search?.startTime || '09:00';
+            const endTime = search?.endTime || '19:00';
+            const startDateTime = `${startDate}T${startTime}:00`;
+            const endDateTime = `${endDate}T${endTime}:00`;
+
+            navigate('/checkout-mobil', {
+              state: {
+                checkout_path: '/checkout-mobil',
+                item_type: 'car',
+                carId: car?.id,
+                carName: title,
+                basePrice: car?.base_price,
+                pickupCity,
+                startDate: startDateTime,
+                endDate: endDateTime,
+              }
+            });
+          }}
         >
           Pilih Mobil Ini
         </button>
@@ -90,4 +116,3 @@ export default function CarCard({ car, pickupCity }) {
     </div>
   );
 }
-

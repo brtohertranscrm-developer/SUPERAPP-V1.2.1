@@ -1,5 +1,5 @@
 import { useState, useContext, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { API_BASE_URL } from '../utils/api';
 import { getAdminLandingPath } from '../utils/adminNavigation';
@@ -62,6 +62,7 @@ const rateLimiter = {
 // --- Hook utama ---------------------------------------------------------------
 export const useAuthForm = () => {
   const navigate  = useNavigate();
+  const location  = useLocation();
   const { login } = useContext(AuthContext) || {};
 
   const [isLoading,    setIsLoading]    = useState(false);
@@ -141,10 +142,29 @@ export const useAuthForm = () => {
         } else if (role === 'subadmin') {
           navigate(getAdminLandingPath(result.user));
         } else {
-          // Cek pending checkout
+          // Cek pending checkout (motor/loker/mobil) atau redirect origin
           const pending = sessionStorage.getItem('pending_checkout');
-          if (pending) { sessionStorage.removeItem('pending_checkout'); navigate('/checkout-motor'); }
-          else navigate('/dashboard');
+          if (pending) {
+            sessionStorage.removeItem('pending_checkout');
+            try {
+              const parsed = JSON.parse(pending);
+              const path =
+                parsed?.checkout_path ||
+                (parsed?.item_type === 'car' ? '/checkout-mobil'
+                  : parsed?.item_type === 'locker' ? '/checkout-loker'
+                    : '/checkout-motor');
+              navigate(path, { state: parsed, replace: true });
+            } catch {
+              navigate('/checkout-motor', { replace: true });
+            }
+          } else if (location?.state?.from) {
+            const from = location.state.from;
+            const nextState = { ...(location.state || {}) };
+            delete nextState.from;
+            navigate(from, { state: nextState, replace: true });
+          } else {
+            navigate('/dashboard');
+          }
         }
       } else {
         rateLimiter.increment();
