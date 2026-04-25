@@ -100,8 +100,17 @@ export const useUserDashboard = () => {
     }
 
     fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 10_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchDashboardData, 5_000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchDashboardData();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [authToken, navigate]);
   
   // ── Navigasi booking ────────────────────────────────────────────────────────
