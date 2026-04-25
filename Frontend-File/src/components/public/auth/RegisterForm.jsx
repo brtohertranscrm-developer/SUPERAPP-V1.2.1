@@ -296,9 +296,15 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
 
         {/* ToS note */}
         <p className="text-[10px] text-slate-400 font-medium text-center px-2 leading-relaxed">
-          Dengan mendaftar, Anda menyetujui{' '}
-          <span className="text-slate-600 font-bold">Syarat & Ketentuan</span>{' '}
-          serta <span className="text-slate-600 font-bold">Kebijakan Privasi</span> Brother Trans.
+          Dengan membuat akun, kamu menyetujui{' '}
+          <Link to="/terms" className="text-slate-600 font-black hover:text-brand-primary">
+            Syarat & Ketentuan
+          </Link>{' '}
+          dan{' '}
+          <Link to="/privacy" className="text-slate-600 font-black hover:text-brand-primary">
+            Kebijakan Privasi
+          </Link>
+          .
         </p>
 
         {/* Submit */}

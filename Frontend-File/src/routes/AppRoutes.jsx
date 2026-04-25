@@ -17,6 +17,8 @@ import ArticleDetail from '../pages/public/ArticleDetail';
 import LoginPage from '../pages/public/LoginPage';
 import RegisterPage from '../pages/public/RegisterPage';
 import ResetPasswordPage from '../pages/public/ResetPasswordPage';
+import TermsPage from '../pages/public/TermsPage';
+import PrivacyPage from '../pages/public/PrivacyPage';
 
 // 3. USER PAGES (PROTECTED)
 import Dashboard from '../pages/user/Dashboard';
@@ -91,6 +93,8 @@ const AppRoutes = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           
           {/* User Routes */}
           <Route path="/dashboard" element={<Dashboard />} />

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 export default function Footer() {
   return (
     <footer className="bg-white border-t border-gray-100 mt-auto">
@@ -14,6 +16,12 @@ export default function Footer() {
           <p className="text-sm text-gray-500">
             &copy; {new Date().getFullYear()} Brother Trans. Hak Cipta Dilindungi.
           </p>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center justify-center md:justify-end gap-4 text-xs font-bold text-slate-400">
+          <Link to="/terms" className="hover:text-slate-900">Syarat & Ketentuan</Link>
+          <span className="text-slate-200">•</span>
+          <Link to="/privacy" className="hover:text-slate-900">Kebijakan Privasi</Link>
         </div>
       </div>
     </footer>

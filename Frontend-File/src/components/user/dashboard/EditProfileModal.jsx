@@ -1,5 +1,6 @@
 import React from 'react';
 import { Edit3, Loader2, User, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function EditProfileModal({
   isOpen,
@@ -101,9 +102,14 @@ export default function EditProfileModal({
           >
             {isSavingProfile ? <Loader2 className="animate-spin" size={18} /> : 'Simpan Perubahan'}
           </button>
+
+          <div className="mt-4 text-center text-[10px] text-slate-400 font-bold">
+            <Link to="/terms" className="hover:text-slate-900">Syarat & Ketentuan</Link>
+            <span className="mx-2 text-slate-300">•</span>
+            <Link to="/privacy" className="hover:text-slate-900">Kebijakan Privasi</Link>
+          </div>
         </form>
       </div>
     </div>
   );
 }
-
