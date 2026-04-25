@@ -173,6 +173,18 @@ const LoginForm = ({ isLoading, error, lockSeconds, onSubmit, onForgotClick }) =
         <span>Koneksi terenkripsi SSL. Data Anda aman.</span>
       </div>
 
+      <div className="mt-2 text-center text-[10px] text-slate-400 font-medium px-2 leading-relaxed">
+        Dengan menggunakan aplikasi ini, kamu menyetujui{' '}
+        <Link to="/terms" className="text-slate-600 font-black hover:text-brand-primary">
+          Syarat & Ketentuan
+        </Link>{' '}
+        dan{' '}
+        <Link to="/privacy" className="text-slate-600 font-black hover:text-brand-primary">
+          Kebijakan Privasi
+        </Link>
+        .
+      </div>
+
       {/* -- Register link -- */}
       <div className="mt-6 text-center text-sm font-bold text-slate-400 pt-6 border-t border-slate-100">
         Belum punya akun?{' '}
