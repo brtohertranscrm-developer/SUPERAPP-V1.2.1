@@ -6,6 +6,7 @@ import ProcessingOverlay from '../../components/user/checkout/motor/ProcessingOv
 import CheckoutAsideCar from '../../components/user/checkout/car/CheckoutAsideCar';
 import { CHECKOUT_CAR_STEPS } from '../../components/user/checkout/car/checkoutCarConstants';
 import DetailStep from '../../components/user/checkout/car/steps/DetailStep';
+import HandoverStep from '../../components/user/checkout/car/steps/HandoverStep';
 import PaymentStep from '../../components/user/checkout/car/steps/PaymentStep';
 import { useCheckoutCarFlow } from '../../hooks/useCheckoutCarFlow';
 
@@ -32,6 +33,32 @@ export default function CheckoutCar() {
     isSubmitting,
     submitError,
     isKycVerified,
+    pickupLocation,
+    handoverMethod,
+    setHandoverMethod,
+    deliveryTarget,
+    setDeliveryTarget,
+    stations,
+    stationId,
+    setStationId,
+    selectedStation,
+    deliveryAddress,
+    setDeliveryAddress,
+    mapsInput,
+    setMapsInput,
+    parsedLatLng,
+    deliveryQuote,
+    deliveryError,
+    setDeliveryError,
+    isDeliveryLoading,
+    requestDeliveryQuote,
+    deliveryFee,
+    tripScope,
+    setTripScope,
+    tripDestination,
+    setTripDestination,
+    tripDestinationError,
+    setTripDestinationError,
     handleCheckout,
   } = flow;
 
@@ -42,6 +69,22 @@ export default function CheckoutCar() {
 
   const goPrevStep = () => setCheckoutStep(stepKeys[Math.max(0, currentStepIdx - 1)]);
   const goNextStep = () => setCheckoutStep(stepKeys[Math.min(stepKeys.length - 1, currentStepIdx + 1)]);
+
+  const handleNextStep = () => {
+    if (checkoutStep === 'handover') {
+      const dest = String(tripDestination || '').trim();
+      if (!dest) {
+        setTripDestinationError('Tujuan pemakaian wajib diisi.');
+        return;
+      }
+
+      if (handoverMethod === 'delivery' && deliveryTarget === 'address' && !parsedLatLng) {
+        setDeliveryError('Tempel link Google Maps atau koordinat (lat,lng) untuk alamat pengantaran.');
+        return;
+      }
+    }
+    goNextStep();
+  };
 
   return (
     <div className="bg-slate-50 min-h-screen pt-20 pb-24 font-sans text-slate-900 animate-fade-in-up">
@@ -64,6 +107,37 @@ export default function CheckoutCar() {
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           <div className={`flex-1 space-y-5 min-w-0 ${!isKycVerified ? 'opacity-40 pointer-events-none select-none' : ''}`}>
             {checkoutStep === 'detail' && <DetailStep bookingData={bookingData} computed={computed} />}
+
+            {checkoutStep === 'handover' && (
+              <HandoverStep
+                pickupLocation={pickupLocation}
+                handoverMethod={handoverMethod}
+                setHandoverMethod={setHandoverMethod}
+                deliveryTarget={deliveryTarget}
+                setDeliveryTarget={setDeliveryTarget}
+                stations={stations}
+                stationId={stationId}
+                setStationId={setStationId}
+                selectedStation={selectedStation}
+                isDeliveryLoading={isDeliveryLoading}
+                deliveryFee={deliveryFee}
+                deliveryAddress={deliveryAddress}
+                setDeliveryAddress={setDeliveryAddress}
+                mapsInput={mapsInput}
+                setMapsInput={setMapsInput}
+                parsedLatLng={parsedLatLng}
+                deliveryQuote={deliveryQuote}
+                deliveryError={deliveryError}
+                setDeliveryError={setDeliveryError}
+                requestDeliveryQuote={requestDeliveryQuote}
+                tripScope={tripScope}
+                setTripScope={setTripScope}
+                tripDestination={tripDestination}
+                setTripDestination={setTripDestination}
+                tripDestinationError={tripDestinationError}
+                setTripDestinationError={setTripDestinationError}
+              />
+            )}
 
             {checkoutStep === 'payment' && (
               <PaymentStep
@@ -99,7 +173,7 @@ export default function CheckoutCar() {
                 </div>
                 <button
                   type="button"
-                  onClick={goNextStep}
+                  onClick={handleNextStep}
                   disabled={isLastStep}
                   className="px-4 py-2.5 rounded-xl bg-slate-900 text-white font-black text-sm hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -130,6 +204,7 @@ export default function CheckoutCar() {
             safeDiscount={safeDiscount}
             appliedPromo={appliedPromo}
             grandTotal={grandTotal}
+            deliveryFee={deliveryFee}
             submitError={submitError}
             isKycVerified={isKycVerified}
             handleCheckout={handleCheckout}
@@ -140,4 +215,3 @@ export default function CheckoutCar() {
     </div>
   );
 }
-

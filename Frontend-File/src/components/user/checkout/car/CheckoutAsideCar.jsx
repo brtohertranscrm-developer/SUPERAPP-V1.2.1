@@ -9,12 +9,14 @@ export default function CheckoutAsideCar({
   safeDiscount,
   appliedPromo,
   grandTotal,
+  deliveryFee,
   submitError,
   isKycVerified,
   handleCheckout,
   isSubmitting,
 }) {
   const beforeDiscount = Number(computed?.beforeDiscount) || 0;
+  const safeDeliveryFee = Math.max(0, Number(deliveryFee) || 0);
   return (
     <div className="hidden lg:block w-full lg:w-[360px] shrink-0 sticky top-24">
       {checkoutStep === 'payment' ? (
@@ -34,6 +36,12 @@ export default function CheckoutAsideCar({
               <span>Biaya layanan & aplikasi</span>
               <span>{fmtRp(computed?.serviceFee)}</span>
             </div>
+            {safeDeliveryFee > 0 ? (
+              <div className="flex justify-between text-sm font-bold text-slate-600">
+                <span>Biaya pengantaran</span>
+                <span>{fmtRp(safeDeliveryFee)}</span>
+              </div>
+            ) : null}
             {safeDiscount > 0 && appliedPromo && (
               <div className="flex justify-between text-sm font-bold text-emerald-700">
                 <span>Diskon promo ({appliedPromo.code})</span>
@@ -110,4 +118,3 @@ export default function CheckoutAsideCar({
     </div>
   );
 }
-

@@ -767,7 +767,7 @@ router.post('/bookings', async (req, res) => {
     let deliveryMethod = null;
     const delType = delivery_type ? String(delivery_type) : null;
 
-    if (item_type === 'motor' && delType && delType !== 'self') {
+    if ((item_type === 'motor' || item_type === 'car') && delType && delType !== 'self') {
       const q = await quoteDelivery({
         city: location,
         target: delType === 'station'
@@ -797,8 +797,8 @@ router.post('/bookings', async (req, res) => {
 	    const tripDestinationNormalized = trip_destination
 	      ? String(trip_destination).trim().slice(0, 140)
 	      : null;
-	    if (item_type === 'motor' && !tripDestinationNormalized) {
-	      return res.status(400).json({ success: false, error: 'Tujuan perjalanan wajib diisi.' });
+	    if ((item_type === 'motor' || item_type === 'car') && !tripDestinationNormalized) {
+	      return res.status(400).json({ success: false, error: 'Tujuan pemakaian wajib diisi.' });
 	    }
 
     const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
