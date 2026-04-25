@@ -13,7 +13,6 @@ import { useCheckoutMotorFlow } from '../../hooks/useCheckoutMotorFlow';
 export default function CheckoutMotor() {
   const flow = useCheckoutMotorFlow();
   if (!flow.isReady) return null;
-
   const {
     user,
     navigate,

@@ -870,7 +870,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'user_tier',           "TEXT DEFAULT 'backpacker'");
   addColumnIfNotExists('users', 'season_trip_count',   'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'season_miles_earned', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT (date('now'))");
+  addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT NULL");
 
   // Miles rewards — future-proof columns
   addColumnIfNotExists('miles_rewards', 'discount_amount', 'INTEGER NOT NULL DEFAULT 0');

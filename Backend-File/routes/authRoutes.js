@@ -76,7 +76,7 @@ try {
   ipKeyGenerator = rl.ipKeyGenerator || null;
 } catch {
   console.warn('⚠️  express-rate-limit belum terinstall. Jalankan: npm install express-rate-limit');
-  rateLimit     = (opts) => (req, res, next) => next();
+  rateLimit     = (_opts) => (req, res, next) => next();
   ipKeyGenerator = null;
 }
 

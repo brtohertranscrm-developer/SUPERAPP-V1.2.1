@@ -4,7 +4,6 @@
  */
 
 const express = require('express');
-const crypto  = require('crypto');
 const db      = require('../db');
 const { calculateLockerPrice, MIN_HOURS } = require('../utils/lockerPricing');
 const { verifyUser } = require('../middlewares/authMiddleware'); 

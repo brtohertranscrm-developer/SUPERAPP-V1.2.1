@@ -119,31 +119,6 @@ const uploadUserRecon = multer({
   },
 });
 
-const dbTransaction = (queries) => new Promise((resolve, reject) => {
-  db.serialize(() => {
-    db.run('BEGIN TRANSACTION', (err) => {
-      if (err) return reject(err);
-
-      const runNext = (index) => {
-        if (index >= queries.length) {
-          db.run('COMMIT', (err) => err ? reject(err) : resolve());
-          return;
-        }
-        const { sql, params } = queries[index];
-        db.run(sql, params, (err) => {
-          if (err) {
-            db.run('ROLLBACK', () => reject(err));
-            return;
-          }
-          runNext(index + 1);
-        });
-      };
-
-      runNext(0);
-    });
-  });
-});
-
 // Semua route butuh login
 router.use(verifyUser);
 
@@ -816,7 +791,7 @@ router.post('/users/payments/reconciliations', (req, res) => {
           bookingRow,
           userRow,
         );
-      } catch (_) { /* silent — jangan gagalkan response karena notif gagal */ }
+      } catch { /* silent — jangan gagalkan response karena notif gagal */ }
 
       res.status(201).json({
         success: true,
@@ -919,8 +894,8 @@ router.post('/bookings', async (req, res) => {
   try {
     const { 
       order_id, item_type, item_name, location, start_date, end_date, total_price,
-      base_price, discount_amount, promo_code, service_fee, addon_fee, delivery_fee,
-      basePrice, discountAmount, promoCode, serviceFee, addonFee, deliveryFee,
+      base_price, discount_amount, promo_code, service_fee, addon_fee: _addon_fee, delivery_fee,
+      basePrice, discountAmount, promoCode, serviceFee, addonFee: _addonFee, deliveryFee,
       duration_hours, price_notes, payment_method,
       addon_items,
       delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng,
@@ -1415,7 +1390,7 @@ router.post('/bookings', async (req, res) => {
 
       await dbRun('COMMIT');
     } catch (e) {
-      try { await dbRun('ROLLBACK'); } catch {}
+      try { await dbRun('ROLLBACK'); } catch { /* ignore rollback errors */ }
       throw e;
     }
 

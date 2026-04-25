@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useContext, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Package, Lock, ArrowLeft, Loader2, CheckCircle } from 'lucide-react';
 import { useLockerCatalog, useLockerAddons, useLockerCheckout } from '../../hooks/useLockerCatalog';
@@ -13,6 +13,41 @@ const STEPS = [
   { key: 'bayar',   label: 'Konfirmasi' }
 ];
 
+const STEP_KEYS = STEPS.map((s) => s.key);
+
+const StepIndicator = ({ step }) => (
+  <div className="mb-8">
+    <div className="flex items-center justify-center">
+      <div className="flex items-center w-full max-w-xl flex-nowrap">
+        {STEPS.map((s, i) => {
+          const currentIdx = STEP_KEYS.indexOf(step);
+          const isDone = i < currentIdx;
+          const isCurrent = i === currentIdx;
+          return (
+            <React.Fragment key={s.key}>
+              {i > 0 && <div className={`h-px flex-1 mx-2 ${isDone ? 'bg-blue-500' : 'bg-slate-200'}`} />}
+              <div
+                className={`flex items-center gap-2 text-xs font-bold transition-all shrink-0 ${
+                  isCurrent ? 'text-blue-600' : isDone ? 'text-emerald-500' : 'text-slate-400'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                    isDone ? 'bg-emerald-500 text-white' : isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                  }`}
+                >
+                  {isDone ? '✓' : i + 1}
+                </div>
+                <span className="hidden sm:inline whitespace-nowrap">{s.label}</span>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+);
+
 const CheckoutLocker = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -24,26 +59,23 @@ const CheckoutLocker = () => {
   // LOGIKA LOGIN YANG LEBIH AMAN:
   const isLoggedIn = !!(authContext?.user) || !!(localStorage.getItem('token') || localStorage.getItem('admin_token'));
 
-  const preselectedId = location.state?.lockerId || searchParams.get('id');
-  const [step, setStep] = useState(preselectedId ? 'durasi' : 'pilih');
-  const [selectedLocker, setSelectedLocker] = useState(null);
+  const preselectedId = location.state?.lockerId ?? searchParams.get('id');
+  const preselectedLockerId = preselectedId != null ? Number.parseInt(String(preselectedId), 10) : null;
+  const [step, setStep] = useState(preselectedLockerId ? 'durasi' : 'pilih');
+  const [selectedLockerId, setSelectedLockerId] = useState(preselectedLockerId);
   const [isSuccess, setIsSuccess] = useState(false);
   const [orderId, setOrderId] = useState(null);
 
   const { lockers, isLoading: lockerLoading } = useLockerCatalog();
   const { addons, isLoading: addonsLoading } = useLockerAddons();
+  const selectedLocker = useMemo(
+    () => lockers.find((l) => l.id === selectedLockerId) ?? null,
+    [lockers, selectedLockerId]
+  );
   const checkout = useLockerCheckout(selectedLocker);
 
-  // Auto-pilih loker dari query param
-  useEffect(() => {
-    if (preselectedId && lockers.length > 0) {
-      const found = lockers.find(l => l.id === parseInt(preselectedId));
-      if (found) { setSelectedLocker(found); setStep('durasi'); }
-    }
-  }, [preselectedId, lockers]);
-
   const handleSelectLocker = (locker) => {
-    setSelectedLocker(locker);
+    setSelectedLockerId(locker?.id ?? null);
     setStep('durasi');
   };
 
@@ -111,43 +143,6 @@ const CheckoutLocker = () => {
     );
   }
 
-  // ==========================================
-  // STEP INDICATORS
-  // ==========================================
-  const StepIndicator = () => (
-    <div className="mb-8">
-      <div className="flex items-center justify-center">
-        <div className="flex items-center w-full max-w-xl flex-nowrap">
-          {STEPS.map((s, i) => {
-            const stepKeys = STEPS.map((x) => x.key);
-            const currentIdx = stepKeys.indexOf(step);
-            const isDone = i < currentIdx;
-            const isCurrent = i === currentIdx;
-            return (
-              <React.Fragment key={s.key}>
-                {i > 0 && <div className={`h-px flex-1 mx-2 ${isDone ? 'bg-blue-500' : 'bg-slate-200'}`} />}
-                <div
-                  className={`flex items-center gap-2 text-xs font-bold transition-all shrink-0 ${
-                    isCurrent ? 'text-blue-600' : isDone ? 'text-emerald-500' : 'text-slate-400'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                      isDone ? 'bg-emerald-500 text-white' : isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
-                    }`}
-                  >
-                    {isDone ? '✓' : i + 1}
-                  </div>
-                  <span className="hidden sm:inline whitespace-nowrap">{s.label}</span>
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-screen-lg mx-auto px-4 py-8">
@@ -160,7 +155,30 @@ const CheckoutLocker = () => {
           <ArrowLeft size={16} /> {step === 'pilih' ? 'Kembali ke Katalog' : 'Kembali'}
         </button>
 
-        <StepIndicator />
+        <StepIndicator step={step} />
+
+        {/* Edge case: preselectedId invalid / data belum kebaca */}
+        {(step === 'durasi' || step === 'bayar') && selectedLockerId && !selectedLocker && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+            {lockerLoading ? (
+              <div className="flex items-center gap-2 text-slate-500 font-bold">
+                <Loader2 size={16} className="animate-spin" /> Memuat detail loker...
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-sm font-black text-slate-800">Loker tidak ditemukan</div>
+                <div className="text-xs text-slate-500">ID loker: <span className="font-mono">{selectedLockerId}</span></div>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedLockerId(null); setStep('pilih'); }}
+                  className="px-4 py-2 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  Pilih loker
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ==================== STEP 1: PILIH LOKER ==================== */}
         {step === 'pilih' && (

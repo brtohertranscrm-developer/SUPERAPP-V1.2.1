@@ -16,7 +16,6 @@
  *   - Booking sample dengan status completed (untuk laporan)
  */
 
-const path = require('path');
 const db = require('./db');
 const { randomUUID: uuidv4 } = require('crypto'); // bawaan Node.js, tidak perlu install
 

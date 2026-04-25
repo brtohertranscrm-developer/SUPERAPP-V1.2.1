@@ -129,7 +129,7 @@ const memoryUpload = multer({
 const ensureUploadsDir = () => {
   try {
     if (!fs.existsSync('uploads')) fs.mkdirSync('uploads', { recursive: true });
-  } catch (e) {
+  } catch {
     // Will be handled by caller as a failed upload.
   }
 };

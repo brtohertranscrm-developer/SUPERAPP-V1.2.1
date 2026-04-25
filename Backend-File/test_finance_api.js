@@ -85,8 +85,6 @@ const runTests = async () => {
   // ==========================================
   console.log('\n📋 1. Rekonsiliasi Pembayaran');
 
-  let reconId;
-
   await test('GET /reconciliations — berhasil fetch list', async () => {
     const res = await request('GET', '/api/admin/finance/reconciliations');
     assert(res.status === 200, `Status: ${res.status}`);
@@ -125,7 +123,6 @@ const runTests = async () => {
         req.end();
       });
       assert(res.status === 201 || res.status === 200, `Unexpected status: ${res.status} — ${JSON.stringify(res.body)}`);
-      if (res.body.id) reconId = res.body.id;
     });
 
     await test('POST /reconciliations — order_id tidak ada harus 404', async () => {

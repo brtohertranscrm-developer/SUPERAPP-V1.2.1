@@ -25,10 +25,6 @@ const dbAll = (sql, params = []) => new Promise((resolve, reject) =>
   db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []))
 );
 
-const dbRun = (sql, params = []) => new Promise((resolve, reject) =>
-  db.run(sql, params, function(err) { err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes }); })
-);
-
 // [FIX 2] Helper transaksi — jalankan array query dalam satu atomic transaction
 // Jika salah satu query gagal, semua di-rollback
 const runTransaction = (queries) => new Promise((resolve, reject) => {

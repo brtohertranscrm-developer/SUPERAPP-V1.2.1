@@ -73,7 +73,7 @@ const sendMessage = (payload) => new Promise((resolve) => {
       try {
         const r = JSON.parse(raw);
         if (!r.ok) console.error('⚠️  Telegram API error:', r.description);
-      } catch (_) {}
+      } catch { /* ignore non-JSON telegram responses */ }
       resolve(null);
     });
   });

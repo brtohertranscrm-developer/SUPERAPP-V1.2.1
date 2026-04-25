@@ -134,19 +134,6 @@ export default function AdminStaffDashboard() {
     [deliveryTasks, returnTasks]
   );
 
-  const pendingTasks = useMemo(
-    () => allTasks.filter((t) => String(t?.status || '').toLowerCase() === 'scheduled'),
-    [allTasks]
-  );
-
-  // Tugas yang di-assign ke crew yang sedang login
-  const myTasks = useMemo(
-    () => myName
-      ? allTasks.filter((t) => String(t?.assigned_to_name || '') === myName)
-      : [],
-    [allTasks, myName]
-  );
-
   // Tampilkan tugas sendiri di atas, sisanya setelahnya
   const sortedTasks = useMemo(() => {
     if (!myName || !search.trim()) {
