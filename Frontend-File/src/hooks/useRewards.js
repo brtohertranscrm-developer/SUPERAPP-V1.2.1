@@ -15,7 +15,11 @@ export const useRewards = () => {
   const [vouchers, setVouchers] = useState([]);
   const [isLoadingVouchers, setIsLoadingVouchers] = useState(false);
 
-  // Fetch Saldo Miles Real dari Database
+  // Modal state
+  const [confirmReward, setConfirmReward] = useState(null);   // reward yg sedang dikonfirmasi
+  const [successVoucher, setSuccessVoucher] = useState(null); // voucher yg baru dibuat
+  const [newVoucherCode, setNewVoucherCode] = useState('');   // highlight di list
+
   useEffect(() => {
     if (!authToken) {
       setIsLoading(false);
@@ -27,8 +31,8 @@ export const useRewards = () => {
       try {
         const result = await apiFetch('/api/dashboard/me');
         if (result?.success) setCurrentMiles(result?.data?.user?.miles || 0);
-      } catch (error) {
-        console.error('Gagal fetch miles');
+      } catch {
+        // silent
       } finally {
         setIsLoading(false);
       }
@@ -36,7 +40,6 @@ export const useRewards = () => {
     fetchMiles();
   }, [authToken, navigate]);
 
-  // Fetch katalog rewards + voucher list
   useEffect(() => {
     const fetchRewards = async () => {
       try {
@@ -73,11 +76,16 @@ export const useRewards = () => {
     } catch {}
   }, []);
 
-  // Fungsi Tukar Reward
-  const handleRedeem = async (reward) => {
+  // Step 1: user klik "Tukar" → tampilkan modal konfirmasi
+  const handleRedeem = (reward) => {
     if (!reward?.id) return;
-    const cost = reward?.miles_cost ?? reward?.cost ?? 0;
-    if (!window.confirm(`Tukar ${cost} Miles untuk "${reward.title}"?`)) return;
+    setConfirmReward(reward);
+  };
+
+  // Step 2: user konfirmasi di modal → proses ke server
+  const handleConfirmRedeem = useCallback(async () => {
+    const reward = confirmReward;
+    if (!reward?.id) return;
 
     setIsRedeeming(true);
     try {
@@ -94,37 +102,46 @@ export const useRewards = () => {
       if (result.success) {
         setCurrentMiles(result.newMiles);
         await fetchVouchers();
-        
-        // Update LocalStorage agar sinkron
+
         const stored = JSON.parse(localStorage.getItem('user'));
         if (stored) {
           localStorage.setItem('user', JSON.stringify({ ...stored, miles: result.newMiles }));
         }
 
         const code = result.voucher_code ? String(result.voucher_code) : '';
+        setConfirmReward(null);
+
+        // Tampilkan success modal dengan data voucher lengkap
+        setSuccessVoucher({
+          voucher_code: code,
+          title: reward.title,
+          discount_percent: reward.discount_percent,
+          max_discount: reward.max_discount,
+          expires_at: result.expires_at || null,
+        });
+        setNewVoucherCode(code);
+
+        // Auto-copy ke clipboard (silent)
         if (code) {
-          try {
-            await navigator.clipboard.writeText(code);
-            alert(`Voucher berhasil dibuat: ${code}\n\nKode sudah disalin. Kamu bisa pasang di checkout via "Kode Promo".`);
-          } catch {
-            alert(`Voucher berhasil dibuat: ${code}\n\nSalin kode ini dan pasang di checkout via "Kode Promo".`);
-          }
-        } else {
-          alert(result.message || 'Berhasil menukar Miles.');
+          navigator.clipboard.writeText(code).catch(() => {});
         }
       } else {
-        alert(result.error || 'Gagal menukar miles.');
+        setConfirmReward(null);
+        // Tampilkan error via state bukan alert
+        setRedeemError(result.error || 'Gagal menukar miles.');
       }
-    } catch (error) {
-      alert('Gagal terhubung ke server');
+    } catch {
+      setConfirmReward(null);
+      setRedeemError('Gagal terhubung ke server.');
     } finally {
       setIsRedeeming(false);
     }
-  };
+  }, [confirmReward, fetchVouchers]);
+
+  const [redeemError, setRedeemError] = useState('');
 
   const handleCancelVoucher = useCallback(async (voucherCode) => {
     if (!voucherCode) return;
-    if (!window.confirm('Batalkan voucher ini dan refund Miles? (hanya bisa dalam 5 menit dan jika belum dipakai)')) return;
     try {
       const result = await apiFetch(`/api/miles/vouchers/${encodeURIComponent(voucherCode)}/cancel`, {
         method: 'POST',
@@ -135,16 +152,22 @@ export const useRewards = () => {
         const stored = JSON.parse(localStorage.getItem('user'));
         if (stored) localStorage.setItem('user', JSON.stringify({ ...stored, miles: result.newMiles }));
         await fetchVouchers();
-        alert(result.message || 'Voucher dibatalkan.');
+        return { success: true, message: result.message };
       } else {
-        alert(result?.error || 'Gagal membatalkan voucher.');
+        return { success: false, message: result?.error || 'Gagal membatalkan voucher.' };
       }
     } catch (e) {
-      alert(e?.message || 'Gagal membatalkan voucher.');
+      return { success: false, message: e?.message || 'Gagal membatalkan voucher.' };
     } finally {
       void refreshMiles();
     }
   }, [fetchVouchers, refreshMiles]);
+
+  const dismissSuccessVoucher = useCallback(() => {
+    setSuccessVoucher(null);
+  }, []);
+
+  const dismissError = useCallback(() => setRedeemError(''), []);
 
   return {
     navigate,
@@ -155,6 +178,14 @@ export const useRewards = () => {
     vouchers,
     isLoadingVouchers,
     handleRedeem,
+    handleConfirmRedeem,
     handleCancelVoucher,
+    confirmReward,
+    setConfirmReward,
+    successVoucher,
+    dismissSuccessVoucher,
+    newVoucherCode,
+    redeemError,
+    dismissError,
   };
 };

@@ -382,6 +382,7 @@ router.post('/miles/redeem', async (req, res) => {
       );
 
       const updated = await dbGet(`SELECT miles FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
+      const createdVoucher = await dbGet(`SELECT expires_at FROM miles_vouchers WHERE id = ? LIMIT 1`, [voucherId]);
 
       await dbRun('COMMIT');
       return res.json({
@@ -389,6 +390,7 @@ router.post('/miles/redeem', async (req, res) => {
         message: 'Berhasil menukar Miles. Voucher masuk ke menu "Voucher Saya".',
         voucher_code: voucherCode,
         newMiles: Number(updated?.miles) || 0,
+        expires_at: createdVoucher?.expires_at || null,
       });
     } catch (e) {
       try { await dbRun('ROLLBACK'); } catch {}
