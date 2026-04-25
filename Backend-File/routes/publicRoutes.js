@@ -614,9 +614,78 @@ router.post('/promotions/validate', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Kode promo wajib diisi.' });
     }
 
+    const normalizedCode = code.trim().toUpperCase();
+
+    // ── Miles Voucher (akun-bound) ───────────────────────────────────────────
+    // Jika code termasuk miles_vouchers, wajib login dan harus milik user tsb.
+    try {
+      const voucher = await dbGet(
+        `SELECT v.id, v.user_id, v.status, v.expires_at,
+                r.discount_percent, r.max_discount
+         FROM miles_vouchers v
+         JOIN miles_rewards r ON r.id = v.reward_id
+         WHERE v.voucher_code = ?
+           AND r.is_active = 1
+         LIMIT 1`,
+        [normalizedCode]
+      );
+
+      if (voucher) {
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) {
+          return res.status(401).json({ success: false, error: 'Login diperlukan untuk memakai voucher ini.' });
+        }
+
+        let userId = null;
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          userId = decoded?.id || null;
+        } catch {
+          return res.status(401).json({ success: false, error: 'Sesi login tidak valid. Silakan login ulang.' });
+        }
+
+        if (!userId || voucher.user_id !== userId) {
+          return res.status(403).json({ success: false, error: 'Voucher ini tidak bisa digunakan oleh akun kamu.' });
+        }
+
+        if (voucher.status !== 'active') {
+          return res.status(400).json({ success: false, error: 'Voucher sudah tidak aktif.' });
+        }
+
+        if (voucher.expires_at) {
+          const expired = await dbGet(
+            `SELECT 1 as ok WHERE datetime(?) <= datetime('now')`,
+            [voucher.expires_at]
+          );
+          if (expired) {
+            db.run(
+              `UPDATE miles_vouchers SET status = 'expired' WHERE id = ? AND status = 'active'`,
+              [voucher.id]
+            );
+            return res.status(400).json({ success: false, error: 'Voucher sudah kedaluwarsa.' });
+          }
+        }
+
+        return res.json({
+          success: true,
+          data: {
+            id:               `miles:${voucher.id}`,
+            code:             normalizedCode,
+            discount_percent: voucher.discount_percent,
+            max_discount:     voucher.max_discount,
+            source:           'miles',
+          },
+        });
+      }
+    } catch (_) {
+      // jika query voucher error, lanjut ke promo biasa
+    }
+
     const promo = await dbGet(
       `SELECT * FROM promotions WHERE code = ? AND is_active = 1`,
-      [code.trim().toUpperCase()]
+      [normalizedCode]
     );
 
     if (!promo) {
@@ -657,6 +726,7 @@ router.post('/promotions/validate', async (req, res) => {
         code:             promo.code,
         discount_percent: promo.discount_percent,
         max_discount:     promo.max_discount,
+        source:           'promo',
       },
     });
   } catch (err) {
@@ -675,9 +745,62 @@ router.post('/promotions/increment', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Kode promo wajib diisi.' });
     }
 
+    const normalizedCode = code.trim().toUpperCase();
+
+    // ── Miles Voucher: mark as used (akun-bound) ─────────────────────────────
+    try {
+      const authHeader = req.headers['authorization'] || '';
+      const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+      let userId = null;
+      if (token) {
+        try {
+          const jwt = require('jsonwebtoken');
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          userId = decoded?.id || null;
+        } catch {
+          userId = null;
+        }
+      }
+
+      const voucher = await dbGet(
+        `SELECT id, user_id, status
+         FROM miles_vouchers
+         WHERE voucher_code = ?
+         LIMIT 1`,
+        [normalizedCode]
+      );
+
+      if (voucher) {
+        if (!userId) return res.status(401).json({ success: false, error: 'Login diperlukan.' });
+        if (voucher.user_id !== userId) {
+          return res.status(403).json({ success: false, error: 'Voucher ini bukan milik akun kamu.' });
+        }
+
+        if (voucher.status === 'used') {
+          return res.json({ success: true, message: 'Voucher sudah ditandai terpakai.' });
+        }
+        if (voucher.status !== 'active') {
+          return res.status(400).json({ success: false, error: 'Voucher sudah tidak aktif.' });
+        }
+
+        db.run(
+          `UPDATE miles_vouchers
+           SET status = 'used',
+               used_at = datetime('now'),
+               used_order_id = COALESCE(used_order_id, ?)
+           WHERE id = ? AND status = 'active'`,
+          [order_id || null, voucher.id]
+        );
+
+        return res.json({ success: true, message: 'Voucher berhasil dicatat.' });
+      }
+    } catch (_) {
+      // ignore — lanjut promo biasa
+    }
+
     const promo = await dbGet(
       `SELECT id, usage_limit, current_usage FROM promotions WHERE code = ?`,
-      [code.trim().toUpperCase()]
+      [normalizedCode]
     );
 
     if (!promo) {

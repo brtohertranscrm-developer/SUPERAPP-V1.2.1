@@ -52,6 +52,18 @@ const buildPartnerVoucherCode = (partnerId) => {
   return `${prefix}-${Date.now().toString().slice(-6)}-${rand}`;
 };
 
+const buildMilesVoucherCode = () => {
+  const prefix = 'BTM';
+  const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
+  return `${prefix}-${Date.now().toString().slice(-6)}-${rand}`;
+};
+
+const parseAllowedItemTypes = (csv) =>
+  String(csv || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
 // ==========================================
 // Upload Bukti Transfer (User)
 // ==========================================
@@ -215,6 +227,262 @@ router.get('/dashboard/top-travellers', async (req, res) => {
   } catch (err) {
     console.error('GET /top-travellers error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data top travellers.' });
+  }
+});
+
+// ==========================================
+// 3b. MILES REWARDS (User)
+// Tukar Miles → Voucher internal (terikat akun)
+// ==========================================
+router.get('/miles/rewards', async (req, res) => {
+  try {
+    const rows = await dbAll(
+      `SELECT id, title, reward_type, miles_cost, discount_percent, max_discount,
+              min_order_amount, allowed_item_types, valid_days
+       FROM miles_rewards
+       WHERE is_active = 1
+       ORDER BY miles_cost ASC, id ASC`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /miles/rewards error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil katalog rewards.' });
+  }
+});
+
+router.get('/miles/vouchers', async (req, res) => {
+  try {
+    // Auto-expire vouchers yang sudah lewat waktu (best-effort)
+    await dbRun(
+      `UPDATE miles_vouchers
+       SET status = 'expired'
+       WHERE user_id = ?
+         AND status = 'active'
+         AND expires_at IS NOT NULL
+         AND datetime(expires_at) <= datetime('now')`,
+      [req.user.id]
+    ).catch(() => {});
+
+    const rows = await dbAll(
+      `SELECT v.id, v.voucher_code, v.status, v.created_at, v.expires_at, v.used_at, v.used_order_id, v.cancelled_at,
+              r.title, r.reward_type, r.discount_percent, r.max_discount, r.min_order_amount, r.allowed_item_types
+       FROM miles_vouchers v
+       JOIN miles_rewards r ON r.id = v.reward_id
+       WHERE v.user_id = ?
+       ORDER BY
+         CASE v.status
+           WHEN 'active' THEN 0
+           WHEN 'used' THEN 1
+           WHEN 'expired' THEN 2
+           WHEN 'cancelled' THEN 3
+           ELSE 9
+         END,
+         datetime(v.created_at) DESC`,
+      [req.user.id]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /miles/vouchers error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil voucher Miles.' });
+  }
+});
+
+router.post('/miles/redeem', async (req, res) => {
+  try {
+    const rewardId = parseInt(req.body?.reward_id, 10);
+    const idemKeyRaw = req.body?.idempotency_key;
+    const idempotencyKey = idemKeyRaw ? String(idemKeyRaw).trim().slice(0, 80) : null;
+    if (!rewardId) return res.status(400).json({ success: false, error: 'reward_id wajib diisi.' });
+
+    // Fast path: retry dengan idempotency_key → balikan voucher yang sama
+    if (idempotencyKey) {
+      const existing = await dbGet(
+        `SELECT v.voucher_code, u.miles as current_miles
+         FROM miles_vouchers v
+         JOIN users u ON u.id = v.user_id
+         WHERE v.user_id = ? AND v.idempotency_key = ?
+         LIMIT 1`,
+        [req.user.id, idempotencyKey]
+      );
+      if (existing) {
+        return res.json({
+          success: true,
+          message: 'Penukaran sudah diproses.',
+          voucher_code: existing.voucher_code,
+          newMiles: Number(existing.current_miles) || 0,
+          idempotent: true,
+        });
+      }
+    }
+
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+      const reward = await dbGet(
+        `SELECT id, title, miles_cost, valid_days, is_active
+         FROM miles_rewards
+         WHERE id = ?
+         LIMIT 1`,
+        [rewardId]
+      );
+      if (!reward || Number(reward.is_active) !== 1) {
+        const e = new Error('Reward tidak ditemukan atau sudah tidak aktif.');
+        e.statusCode = 404;
+        throw e;
+      }
+      const cost = Math.abs(Number(reward.miles_cost) || 0);
+      if (cost <= 0) {
+        const e = new Error('Reward belum bisa ditukar.');
+        e.statusCode = 400;
+        throw e;
+      }
+
+      const userRow = await dbGet(`SELECT miles FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
+      const currentMiles = Number(userRow?.miles) || 0;
+      if (currentMiles < cost) {
+        const e = new Error('Miles kamu tidak cukup untuk menukar reward ini.');
+        e.statusCode = 400;
+        throw e;
+      }
+
+      let voucherCode = null;
+      let voucherId = null;
+      for (let i = 0; i < 6; i++) {
+        const candidate = buildMilesVoucherCode();
+        try {
+          const expiresAt = Number(reward.valid_days) > 0
+            ? new Date(Date.now() + Number(reward.valid_days) * 24 * 60 * 60 * 1000).toISOString()
+            : null;
+
+          const ins = await dbRun(
+            `INSERT INTO miles_vouchers (voucher_code, user_id, reward_id, expires_at, idempotency_key)
+             VALUES (?, ?, ?, ?, ?)`,
+            [candidate, req.user.id, reward.id, expiresAt, idempotencyKey]
+          );
+          voucherCode = candidate;
+          voucherId = ins.lastID;
+          break;
+        } catch (insErr) {
+          if (String(insErr?.message || '').toLowerCase().includes('unique')) continue;
+          throw insErr;
+        }
+      }
+
+      if (!voucherCode) {
+        const e = new Error('Gagal membuat voucher. Silakan coba lagi.');
+        e.statusCode = 500;
+        throw e;
+      }
+
+      await dbRun(`UPDATE users SET miles = COALESCE(miles, 0) - ? WHERE id = ?`, [cost, req.user.id]);
+      await dbRun(
+        `INSERT INTO miles_ledger (user_id, type, amount, ref_type, ref_id, note)
+         VALUES (?, 'redeem', ?, 'miles_voucher', ?, ?)`,
+        [req.user.id, -cost, String(voucherId), `Redeem: ${reward.title}`]
+      );
+
+      const updated = await dbGet(`SELECT miles FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
+
+      await dbRun('COMMIT');
+      return res.json({
+        success: true,
+        message: 'Berhasil menukar Miles. Voucher masuk ke menu "Voucher Saya".',
+        voucher_code: voucherCode,
+        newMiles: Number(updated?.miles) || 0,
+      });
+    } catch (e) {
+      try { await dbRun('ROLLBACK'); } catch {}
+      throw e;
+    }
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /miles/redeem error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menukar Miles.' });
+  }
+});
+
+router.post('/miles/vouchers/:code/cancel', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    if (!code) return res.status(400).json({ success: false, error: 'Kode voucher tidak valid.' });
+    const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 140) : null;
+
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+      const row = await dbGet(
+        `SELECT v.id, v.status, v.created_at, v.expires_at, r.miles_cost, r.title
+         FROM miles_vouchers v
+         JOIN miles_rewards r ON r.id = v.reward_id
+         WHERE v.user_id = ? AND v.voucher_code = ?
+         LIMIT 1`,
+        [req.user.id, code]
+      );
+      if (!row) {
+        const e = new Error('Voucher tidak ditemukan.');
+        e.statusCode = 404;
+        throw e;
+      }
+      if (row.status !== 'active') {
+        const e = new Error('Voucher sudah tidak bisa dibatalkan.');
+        e.statusCode = 400;
+        throw e;
+      }
+
+      const withinWindow = await dbGet(
+        `SELECT 1 as ok
+         WHERE datetime(?) >= datetime('now', '-5 minutes')`,
+        [row.created_at]
+      );
+      if (!withinWindow) {
+        const e = new Error('Batas waktu pembatalan sudah lewat (maks 5 menit). Hubungi admin jika perlu bantuan.');
+        e.statusCode = 400;
+        throw e;
+      }
+
+      if (row.expires_at) {
+        const expired = await dbGet(`SELECT 1 as ok WHERE datetime(?) <= datetime('now')`, [row.expires_at]);
+        if (expired) {
+          await dbRun(
+            `UPDATE miles_vouchers SET status = 'expired' WHERE id = ? AND status = 'active'`,
+            [row.id]
+          );
+          const e = new Error('Voucher sudah kedaluwarsa.');
+          e.statusCode = 400;
+          throw e;
+        }
+      }
+
+      const cost = Math.abs(Number(row.miles_cost) || 0);
+      await dbRun(
+        `UPDATE miles_vouchers
+         SET status = 'cancelled', cancelled_at = datetime('now'), cancel_reason = ?
+         WHERE id = ? AND status = 'active'`,
+        [reason, row.id]
+      );
+      await dbRun(`UPDATE users SET miles = COALESCE(miles, 0) + ? WHERE id = ?`, [cost, req.user.id]);
+      await dbRun(
+        `INSERT INTO miles_ledger (user_id, type, amount, ref_type, ref_id, note)
+         VALUES (?, 'refund', ?, 'miles_voucher', ?, ?)`,
+        [req.user.id, cost, String(row.id), `Cancel voucher: ${row.title}`]
+      );
+
+      const updated = await dbGet(`SELECT miles FROM users WHERE id = ? LIMIT 1`, [req.user.id]);
+      await dbRun('COMMIT');
+      res.json({
+        success: true,
+        message: 'Voucher dibatalkan. Miles sudah dikembalikan.',
+        newMiles: Number(updated?.miles) || 0,
+      });
+    } catch (e) {
+      try { await dbRun('ROLLBACK'); } catch {}
+      throw e;
+    }
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /miles/vouchers/:code/cancel error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal membatalkan voucher.' });
   }
 });
 
@@ -710,10 +978,55 @@ router.post('/bookings', async (req, res) => {
     }
 
     const bPrice  = rentalBreakdown?.baseTotal || parseInt(base_price || basePrice) || finalPrice; 
-    const dAmount = parseInt(discount_amount || discountAmount) || 0;
+    let dAmount = parseInt(discount_amount || discountAmount) || 0;
     const sFee    = parseInt(service_fee || serviceFee) || 0;
-    const pCode   = promo_code || promoCode || null;
+    const pCodeRaw = promo_code || promoCode || null;
+    const pCode = pCodeRaw ? String(pCodeRaw).trim().toUpperCase() : null;
     const billableHours = rentalBreakdown?.billableHours || parseInt(duration_hours) || 0;
+
+    // Miles voucher (akun-bound) — hitung diskon di server agar anti manipulasi.
+    // Promo biasa (promotions table) tetap mengikuti flow lama.
+    let milesVoucher = null;
+    if (pCode) {
+      const v = await dbGet(
+        `SELECT v.id, v.user_id, v.status, v.expires_at,
+                r.discount_percent, r.max_discount, r.allowed_item_types
+         FROM miles_vouchers v
+         JOIN miles_rewards r ON r.id = v.reward_id
+         WHERE v.voucher_code = ?
+           AND r.is_active = 1
+         LIMIT 1`,
+        [pCode]
+      ).catch(() => null);
+
+      if (v) {
+        if (v.user_id !== req.user.id) {
+          return res.status(403).json({ success: false, error: 'Voucher ini tidak bisa digunakan oleh akun kamu.' });
+        }
+        if (v.status !== 'active') {
+          return res.status(400).json({ success: false, error: 'Voucher sudah tidak aktif.' });
+        }
+        if (v.expires_at) {
+          const expired = await dbGet(`SELECT 1 as ok WHERE datetime(?) <= datetime('now')`, [v.expires_at]);
+          if (expired) {
+            db.run(`UPDATE miles_vouchers SET status = 'expired' WHERE id = ? AND status = 'active'`, [v.id]);
+            return res.status(400).json({ success: false, error: 'Voucher sudah kedaluwarsa.' });
+          }
+        }
+
+        const allowed = parseAllowedItemTypes(v.allowed_item_types);
+        if (allowed.length > 0 && !allowed.includes(String(item_type || '').toLowerCase())) {
+          return res.status(400).json({ success: false, error: 'Voucher ini tidak berlaku untuk jenis booking ini.' });
+        }
+
+        const pct = Math.max(0, Math.min(100, parseInt(v.discount_percent, 10) || 0));
+        const max = Math.max(0, parseInt(v.max_discount, 10) || 0);
+        const raw = Math.floor((Number(bPrice) * pct) / 100);
+        const capped = max > 0 ? Math.min(raw, max) : raw;
+        dAmount = Math.max(0, Math.min(Number(bPrice) || 0, capped));
+        milesVoucher = { id: v.id, code: pCode };
+      }
+    }
 
     // Add-ons motor: compute on server (source of truth)
     // Untuk sementara, addon_fee dari client diabaikan (anti-manipulasi).
@@ -901,6 +1214,21 @@ router.post('/bookings', async (req, res) => {
           assignedUnitId, assignedPlateNumber
         ]
       );
+
+      // Miles voucher: consume (mark used) in the same transaction as booking
+      if (milesVoucher) {
+        const used = await dbRun(
+          `UPDATE miles_vouchers
+           SET status = 'used', used_at = datetime('now'), used_order_id = ?
+           WHERE id = ? AND user_id = ? AND status = 'active'`,
+          [order_id, milesVoucher.id, req.user.id]
+        );
+        if (!used || used.changes === 0) {
+          const e = new Error('Voucher gagal digunakan. Silakan coba lagi.');
+          e.statusCode = 409;
+          throw e;
+        }
+      }
 
       if (item_type === 'motor' && addonLines.length > 0) {
         for (const line of addonLines) {

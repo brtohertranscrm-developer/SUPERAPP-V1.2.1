@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-
-const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
+import { apiFetch } from '../../utils/api';
 
 export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
   const [appliedPromo, setAppliedPromo] = useState(null);
@@ -19,14 +18,12 @@ export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
     async (code) => {
       setIsCheckingPromo(true);
       try {
-        const res = await fetch(`${API_URL}/api/promotions/validate`, {
+        const result = await apiFetch('/api/promotions/validate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         });
-        const result = await res.json();
 
-        if (result.success && result.data) {
+        if (result?.success && result?.data) {
           const promo = result.data;
           const rawDiscount = Math.floor(
             (Number(subTotal) * (promo.discount_percent || 0)) / 100
@@ -41,10 +38,10 @@ export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
         }
         return {
           success: false,
-          error: result.error || 'Kode promo tidak valid.',
+          error: result?.error || 'Kode promo tidak valid.',
         };
-      } catch {
-        return { success: false, error: 'Gagal terhubung ke server.' };
+      } catch (e) {
+        return { success: false, error: e?.message || 'Gagal terhubung ke server.' };
       } finally {
         setIsCheckingPromo(false);
       }
@@ -65,4 +62,3 @@ export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
     handleRemovePromo,
   };
 };
-

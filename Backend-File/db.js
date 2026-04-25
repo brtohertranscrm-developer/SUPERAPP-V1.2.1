@@ -530,6 +530,81 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_partner_vouchers_user_status ON partner_vouchers(user_id, status, claimed_at DESC)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_partner_vouchers_partner_status ON partner_vouchers(partner_id, status, claimed_at DESC)`);
 
+  // --- MILES REWARDS (Tukar Miles → Voucher internal) ---
+  // reward_type:
+  //   - 'discount' (diskon % dengan max_discount)
+  // allowed_item_types: CSV seperti "motor,car,locker" (kosong = semua)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS miles_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      reward_type TEXT NOT NULL DEFAULT 'discount',
+      miles_cost INTEGER NOT NULL DEFAULT 0,
+      discount_percent INTEGER NOT NULL DEFAULT 0,
+      max_discount INTEGER NOT NULL DEFAULT 0,
+      min_order_amount INTEGER NOT NULL DEFAULT 0,
+      allowed_item_types TEXT,
+      valid_days INTEGER NOT NULL DEFAULT 30,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_miles_rewards_active_cost ON miles_rewards(is_active, miles_cost)`);
+
+  // --- MILES VOUCHERS (kode voucher terikat user) ---
+  // status:
+  //   - 'active' | 'used' | 'cancelled' | 'expired'
+  db.run(`
+    CREATE TABLE IF NOT EXISTS miles_vouchers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_code TEXT UNIQUE NOT NULL,
+      user_id TEXT NOT NULL,
+      reward_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT DEFAULT (datetime('now')),
+      expires_at TEXT,
+      used_at TEXT,
+      used_order_id TEXT,
+      cancelled_at TEXT,
+      cancel_reason TEXT,
+      idempotency_key TEXT,
+      UNIQUE(user_id, idempotency_key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (reward_id) REFERENCES miles_rewards(id) ON DELETE CASCADE
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_miles_vouchers_user_status ON miles_vouchers(user_id, status, created_at DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_miles_vouchers_code ON miles_vouchers(voucher_code)`);
+
+  // --- MILES LEDGER (audit + refund) ---
+  // type: 'earn' | 'redeem' | 'refund' | 'adjust'
+  db.run(`
+    CREATE TABLE IF NOT EXISTS miles_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      ref_type TEXT,
+      ref_id TEXT,
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      created_by TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_miles_ledger_user_time ON miles_ledger(user_id, created_at DESC)`);
+
+  // Seed default miles rewards (aman diulang)
+  db.run(
+    `INSERT OR IGNORE INTO miles_rewards
+      (id, title, reward_type, miles_cost, discount_percent, max_discount, min_order_amount, allowed_item_types, valid_days, is_active)
+     VALUES
+      (1, 'Voucher Diskon 10% (Max Rp 25.000)', 'discount', 300, 10, 25000, 0, 'motor,car,locker', 30, 1),
+      (2, 'Voucher Diskon 15% (Max Rp 50.000)', 'discount', 700, 15, 50000, 0, 'motor,car,locker', 30, 1),
+      (3, 'Voucher Diskon 20% (Max Rp 75.000)', 'discount', 1200, 20, 75000, 0, 'motor,car,locker', 30, 1)
+    `
+  );
+
   // --- ARTICLES ---
   db.run(`
     CREATE TABLE IF NOT EXISTS articles (

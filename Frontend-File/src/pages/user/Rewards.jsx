@@ -3,6 +3,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useRewards } from '../../hooks/useRewards';
 import MilesCard from '../../components/user/rewards/MilesCard';
 import RedeemCatalog from '../../components/user/rewards/RedeemCatalog';
+import MyVouchers from '../../components/user/rewards/MyVouchers';
 
 export default function Rewards() {
   const {
@@ -10,7 +11,11 @@ export default function Rewards() {
     currentMiles,
     isLoading,
     isRedeeming,
-    handleRedeem
+    rewards,
+    vouchers,
+    isLoadingVouchers,
+    handleRedeem,
+    handleCancelVoucher,
   } = useRewards();
 
   if (isLoading) {
@@ -38,9 +43,16 @@ export default function Rewards() {
 
         {/* List Rewards */}
         <RedeemCatalog 
+          rewards={rewards}
           currentMiles={currentMiles} 
           isRedeeming={isRedeeming} 
           onRedeem={handleRedeem} 
+        />
+
+        <MyVouchers
+          vouchers={vouchers}
+          isLoading={isLoadingVouchers}
+          onCancel={handleCancelVoucher}
         />
 
       </div>
