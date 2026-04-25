@@ -25,13 +25,16 @@ export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
 
         if (result?.success && result?.data) {
           const promo = result.data;
-          const rawDiscount = Math.floor(
-            (Number(subTotal) * (promo.discount_percent || 0)) / 100
-          );
-          const capped =
-            promo.max_discount > 0
-              ? Math.min(rawDiscount, promo.max_discount)
-              : rawDiscount;
+          const rewardType = String(promo.reward_type || promo.type || '').toLowerCase();
+          const fixedAmount = Number(promo.discount_amount) || 0;
+          const base = Number(subTotal) || 0;
+          const rawDiscount = rewardType === 'fixed'
+            ? Math.max(0, fixedAmount)
+            : Math.floor((base * (promo.discount_percent || 0)) / 100);
+          const cap = rewardType === 'fixed'
+            ? rawDiscount
+            : (promo.max_discount > 0 ? Math.min(rawDiscount, promo.max_discount) : rawDiscount);
+          const capped = Math.min(cap, Number(beforeDiscount) || base);
           setAppliedPromo(promo);
           setDiscountAmount(capped);
           return { success: true };

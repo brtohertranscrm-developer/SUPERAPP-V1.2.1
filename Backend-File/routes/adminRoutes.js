@@ -2149,6 +2149,215 @@ router.delete('/promos/:id', requirePermission('pricing'), async (req, res) => {
 });
 
 // ==========================================
+// MILES REWARDS MANAGEMENT (Akses: pricing)
+// ==========================================
+router.get('/miles-rewards', requirePermission('pricing'), async (req, res) => {
+  try {
+    const rows = await dbAll(`SELECT * FROM miles_rewards ORDER BY is_active DESC, miles_cost ASC, id DESC`);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('GET /admin/miles-rewards error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil Miles rewards.' });
+  }
+});
+
+router.post('/miles-rewards', requirePermission('pricing'), async (req, res) => {
+  try {
+    const {
+      title,
+      reward_type,
+      miles_cost,
+      discount_percent,
+      max_discount,
+      discount_amount,
+      min_order_amount,
+      allowed_item_types,
+      valid_days,
+      desc,
+      rule_json,
+      is_active,
+    } = req.body || {};
+
+    const t = String(title || '').trim();
+    if (!t) return res.status(400).json({ success: false, error: 'Judul reward wajib diisi.' });
+
+    const type = String(reward_type || 'percent').trim().toLowerCase();
+    if (!['percent', 'fixed'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'reward_type harus "percent" atau "fixed".' });
+    }
+
+    const cost = Math.max(0, parseInt(miles_cost, 10) || 0);
+    if (cost <= 0) return res.status(400).json({ success: false, error: 'Miles cost harus > 0.' });
+
+    let pct = 0;
+    let max = 0;
+    let amt = 0;
+    if (type === 'fixed') {
+      amt = Math.max(0, parseInt(discount_amount, 10) || 0);
+      if (amt <= 0) return res.status(400).json({ success: false, error: 'discount_amount harus > 0 untuk reward fixed.' });
+    } else {
+      pct = parseInt(discount_percent, 10);
+      if (Number.isNaN(pct) || pct < 1 || pct > 100) {
+        return res.status(400).json({ success: false, error: 'discount_percent harus 1-100.' });
+      }
+      max = Math.max(0, parseInt(max_discount, 10) || 0);
+    }
+
+    const minOrder = Math.max(0, parseInt(min_order_amount, 10) || 0);
+    const days = Math.max(1, Math.min(365, parseInt(valid_days, 10) || 30));
+
+    const types =
+      Array.isArray(allowed_item_types)
+        ? allowed_item_types.map((x) => String(x).trim().toLowerCase()).filter(Boolean).join(',')
+        : (allowed_item_types ? String(allowed_item_types).trim().toLowerCase() : null);
+
+    let ruleJson = null;
+    if (rule_json !== undefined && rule_json !== null && String(rule_json).trim() !== '') {
+      try {
+        ruleJson = typeof rule_json === 'string' ? JSON.stringify(JSON.parse(rule_json)) : JSON.stringify(rule_json);
+      } catch {
+        return res.status(400).json({ success: false, error: 'rule_json harus JSON yang valid.' });
+      }
+    }
+
+    const result = await dbRun(
+      `INSERT INTO miles_rewards
+        (title, reward_type, miles_cost, discount_percent, max_discount, discount_amount, min_order_amount, allowed_item_types, valid_days, desc, rule_json, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        t,
+        type,
+        cost,
+        pct,
+        max,
+        amt,
+        minOrder,
+        types,
+        days,
+        desc ? String(desc).trim().slice(0, 500) : null,
+        ruleJson,
+        is_active ? 1 : 0,
+      ]
+    );
+
+    const created = await dbGet(`SELECT * FROM miles_rewards WHERE id = ?`, [result.lastID]);
+    res.status(201).json({ success: true, message: 'Miles reward berhasil ditambahkan.', data: created });
+  } catch (err) {
+    console.error('POST /admin/miles-rewards error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menambahkan Miles reward.' });
+  }
+});
+
+router.put('/miles-rewards/:id', requirePermission('pricing'), async (req, res) => {
+  try {
+    const existing = await dbGet(`SELECT * FROM miles_rewards WHERE id = ?`, [req.params.id]);
+    if (!existing) return res.status(404).json({ success: false, error: 'Miles reward tidak ditemukan.' });
+
+    const patch = req.body || {};
+    const title = patch.title !== undefined ? String(patch.title || '').trim() : String(existing.title || '').trim();
+    if (!title) return res.status(400).json({ success: false, error: 'Judul reward wajib diisi.' });
+
+    const type = patch.reward_type !== undefined ? String(patch.reward_type || '').trim().toLowerCase() : String(existing.reward_type || 'percent').toLowerCase();
+    if (!['percent', 'fixed'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'reward_type harus "percent" atau "fixed".' });
+    }
+
+    const cost = patch.miles_cost !== undefined ? Math.max(0, parseInt(patch.miles_cost, 10) || 0) : (parseInt(existing.miles_cost, 10) || 0);
+    if (cost <= 0) return res.status(400).json({ success: false, error: 'Miles cost harus > 0.' });
+
+    let pct = patch.discount_percent !== undefined ? parseInt(patch.discount_percent, 10) : (parseInt(existing.discount_percent, 10) || 0);
+    let max = patch.max_discount !== undefined ? Math.max(0, parseInt(patch.max_discount, 10) || 0) : (parseInt(existing.max_discount, 10) || 0);
+    let amt = patch.discount_amount !== undefined ? Math.max(0, parseInt(patch.discount_amount, 10) || 0) : (parseInt(existing.discount_amount, 10) || 0);
+
+    if (type === 'fixed') {
+      pct = 0;
+      max = 0;
+      if (amt <= 0) return res.status(400).json({ success: false, error: 'discount_amount harus > 0 untuk reward fixed.' });
+    } else {
+      amt = 0;
+      if (Number.isNaN(pct) || pct < 1 || pct > 100) {
+        return res.status(400).json({ success: false, error: 'discount_percent harus 1-100.' });
+      }
+    }
+
+    const minOrder = patch.min_order_amount !== undefined
+      ? Math.max(0, parseInt(patch.min_order_amount, 10) || 0)
+      : (parseInt(existing.min_order_amount, 10) || 0);
+    const days = patch.valid_days !== undefined
+      ? Math.max(1, Math.min(365, parseInt(patch.valid_days, 10) || 30))
+      : (parseInt(existing.valid_days, 10) || 30);
+
+    const types =
+      patch.allowed_item_types !== undefined
+        ? (Array.isArray(patch.allowed_item_types)
+          ? patch.allowed_item_types.map((x) => String(x).trim().toLowerCase()).filter(Boolean).join(',')
+          : (patch.allowed_item_types ? String(patch.allowed_item_types).trim().toLowerCase() : null))
+        : (existing.allowed_item_types || null);
+
+    let ruleJson = patch.rule_json !== undefined ? patch.rule_json : existing.rule_json;
+    if (patch.rule_json !== undefined) {
+      if (patch.rule_json === null || String(patch.rule_json).trim() === '') {
+        ruleJson = null;
+      } else {
+        try {
+          ruleJson = typeof patch.rule_json === 'string' ? JSON.stringify(JSON.parse(patch.rule_json)) : JSON.stringify(patch.rule_json);
+        } catch {
+          return res.status(400).json({ success: false, error: 'rule_json harus JSON yang valid.' });
+        }
+      }
+    }
+
+    const desc = patch.desc !== undefined
+      ? (patch.desc ? String(patch.desc).trim().slice(0, 500) : null)
+      : (existing.desc || null);
+
+    const isActive = patch.is_active !== undefined ? (patch.is_active ? 1 : 0) : (existing.is_active ? 1 : 0);
+
+    await dbRun(
+      `UPDATE miles_rewards
+       SET title = ?, reward_type = ?, miles_cost = ?, discount_percent = ?, max_discount = ?, discount_amount = ?,
+           min_order_amount = ?, allowed_item_types = ?, valid_days = ?, desc = ?, rule_json = ?, is_active = ?
+       WHERE id = ?`,
+      [title, type, cost, pct, max, amt, minOrder, types, days, desc, ruleJson, isActive, req.params.id]
+    );
+
+    const updated = await dbGet(`SELECT * FROM miles_rewards WHERE id = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Miles reward berhasil diperbarui.', data: updated });
+  } catch (err) {
+    console.error('PUT /admin/miles-rewards/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui Miles reward.' });
+  }
+});
+
+router.put('/miles-rewards/:id/toggle', requirePermission('pricing'), async (req, res) => {
+  try {
+    const { is_active } = req.body || {};
+    await dbRun(`UPDATE miles_rewards SET is_active = ? WHERE id = ?`, [is_active ? 1 : 0, req.params.id]);
+    res.json({ success: true, message: 'Status Miles reward berhasil diupdate.' });
+  } catch (err) {
+    console.error('PUT /admin/miles-rewards/:id/toggle error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengubah status Miles reward.' });
+  }
+});
+
+router.delete('/miles-rewards/:id', requirePermission('pricing'), async (req, res) => {
+  try {
+    const used = await dbGet(`SELECT 1 as ok FROM miles_vouchers WHERE reward_id = ? LIMIT 1`, [req.params.id]);
+    if (used) {
+      return res.status(400).json({
+        success: false,
+        error: 'Reward sudah pernah ditukarkan. Demi audit, reward tidak bisa dihapus; silakan nonaktifkan saja.',
+      });
+    }
+    await dbRun(`DELETE FROM miles_rewards WHERE id = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Miles reward berhasil dihapus.' });
+  } catch (err) {
+    console.error('DELETE /admin/miles-rewards/:id error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menghapus Miles reward.' });
+  }
+});
+
+// ==========================================
 // PARTNERSHIPS MANAGEMENT (Akses: partners)
 // ==========================================
 router.get('/partners', requirePermission('partners'), async (req, res) => {

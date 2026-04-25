@@ -538,12 +538,15 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS miles_rewards (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
-      reward_type TEXT NOT NULL DEFAULT 'discount',
+      reward_type TEXT NOT NULL DEFAULT 'percent',
       miles_cost INTEGER NOT NULL DEFAULT 0,
       discount_percent INTEGER NOT NULL DEFAULT 0,
       max_discount INTEGER NOT NULL DEFAULT 0,
+      discount_amount INTEGER NOT NULL DEFAULT 0,
       min_order_amount INTEGER NOT NULL DEFAULT 0,
+      desc TEXT,
       allowed_item_types TEXT,
+      rule_json TEXT,
       valid_days INTEGER NOT NULL DEFAULT 30,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT DEFAULT (datetime('now'))
@@ -593,17 +596,6 @@ db.serialize(() => {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_miles_ledger_user_time ON miles_ledger(user_id, created_at DESC)`);
-
-  // Seed default miles rewards (aman diulang)
-  db.run(
-    `INSERT OR IGNORE INTO miles_rewards
-      (id, title, reward_type, miles_cost, discount_percent, max_discount, min_order_amount, allowed_item_types, valid_days, is_active)
-     VALUES
-      (1, 'Voucher Diskon 10% (Max Rp 25.000)', 'discount', 300, 10, 25000, 0, 'motor,car,locker', 30, 1),
-      (2, 'Voucher Diskon 15% (Max Rp 50.000)', 'discount', 700, 15, 50000, 0, 'motor,car,locker', 30, 1),
-      (3, 'Voucher Diskon 20% (Max Rp 75.000)', 'discount', 1200, 20, 75000, 0, 'motor,car,locker', 30, 1)
-    `
-  );
 
   // --- ARTICLES ---
   db.run(`
@@ -856,6 +848,22 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'season_trip_count',   'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'season_miles_earned', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT (date('now'))");
+
+  // Miles rewards — future-proof columns
+  addColumnIfNotExists('miles_rewards', 'discount_amount', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfNotExists('miles_rewards', 'desc', 'TEXT');
+  addColumnIfNotExists('miles_rewards', 'rule_json', 'TEXT');
+
+  // Seed default miles rewards (aman diulang) — diletakkan setelah migrasi kolom
+  db.run(
+    `INSERT OR IGNORE INTO miles_rewards
+      (id, title, reward_type, miles_cost, discount_percent, max_discount, discount_amount, min_order_amount, allowed_item_types, valid_days, is_active)
+     VALUES
+      (1, 'Voucher Diskon 10% (Max Rp 25.000)', 'percent', 300, 10, 25000, 0, 0, 'motor,car,locker', 30, 1),
+      (2, 'Voucher Diskon 15% (Max Rp 50.000)', 'percent', 700, 15, 50000, 0, 0, 'motor,car,locker', 30, 1),
+      (3, 'Voucher Diskon 20% (Max Rp 75.000)', 'percent', 1200, 20, 75000, 0, 0, 'motor,car,locker', 30, 1)
+    `
+  );
 
   // User claimed promotions
   db.run(`

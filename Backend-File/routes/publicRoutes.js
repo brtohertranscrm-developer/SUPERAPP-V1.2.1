@@ -621,7 +621,7 @@ router.post('/promotions/validate', async (req, res) => {
     try {
       const voucher = await dbGet(
         `SELECT v.id, v.user_id, v.status, v.expires_at,
-                r.discount_percent, r.max_discount
+                r.reward_type, r.discount_percent, r.max_discount, r.discount_amount
          FROM miles_vouchers v
          JOIN miles_rewards r ON r.id = v.reward_id
          WHERE v.voucher_code = ?
@@ -673,8 +673,10 @@ router.post('/promotions/validate', async (req, res) => {
           data: {
             id:               `miles:${voucher.id}`,
             code:             normalizedCode,
+            reward_type:      voucher.reward_type,
             discount_percent: voucher.discount_percent,
             max_discount:     voucher.max_discount,
+            discount_amount:  voucher.discount_amount,
             source:           'miles',
           },
         });

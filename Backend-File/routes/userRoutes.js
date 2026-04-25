@@ -237,8 +237,8 @@ router.get('/dashboard/top-travellers', async (req, res) => {
 router.get('/miles/rewards', async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT id, title, reward_type, miles_cost, discount_percent, max_discount,
-              min_order_amount, allowed_item_types, valid_days
+      `SELECT id, title, reward_type, miles_cost, discount_percent, max_discount, discount_amount,
+              min_order_amount, allowed_item_types, valid_days, desc
        FROM miles_rewards
        WHERE is_active = 1
        ORDER BY miles_cost ASC, id ASC`
@@ -265,7 +265,7 @@ router.get('/miles/vouchers', async (req, res) => {
 
     const rows = await dbAll(
       `SELECT v.id, v.voucher_code, v.status, v.created_at, v.expires_at, v.used_at, v.used_order_id, v.cancelled_at,
-              r.title, r.reward_type, r.discount_percent, r.max_discount, r.min_order_amount, r.allowed_item_types
+              r.title, r.reward_type, r.discount_percent, r.max_discount, r.discount_amount, r.min_order_amount, r.allowed_item_types
        FROM miles_vouchers v
        JOIN miles_rewards r ON r.id = v.reward_id
        WHERE v.user_id = ?
@@ -990,7 +990,7 @@ router.post('/bookings', async (req, res) => {
     if (pCode) {
       const v = await dbGet(
         `SELECT v.id, v.user_id, v.status, v.expires_at,
-                r.discount_percent, r.max_discount, r.allowed_item_types
+                r.reward_type, r.discount_percent, r.max_discount, r.discount_amount, r.allowed_item_types
          FROM miles_vouchers v
          JOIN miles_rewards r ON r.id = v.reward_id
          WHERE v.voucher_code = ?
@@ -1019,11 +1019,17 @@ router.post('/bookings', async (req, res) => {
           return res.status(400).json({ success: false, error: 'Voucher ini tidak berlaku untuk jenis booking ini.' });
         }
 
-        const pct = Math.max(0, Math.min(100, parseInt(v.discount_percent, 10) || 0));
-        const max = Math.max(0, parseInt(v.max_discount, 10) || 0);
-        const raw = Math.floor((Number(bPrice) * pct) / 100);
-        const capped = max > 0 ? Math.min(raw, max) : raw;
-        dAmount = Math.max(0, Math.min(Number(bPrice) || 0, capped));
+        const rewardType = String(v.reward_type || 'percent').toLowerCase();
+        if (rewardType === 'fixed') {
+          const amt = Math.max(0, parseInt(v.discount_amount, 10) || 0);
+          dAmount = Math.max(0, Math.min(Number(bPrice) || 0, amt));
+        } else {
+          const pct = Math.max(0, Math.min(100, parseInt(v.discount_percent, 10) || 0));
+          const max = Math.max(0, parseInt(v.max_discount, 10) || 0);
+          const raw = Math.floor((Number(bPrice) * pct) / 100);
+          const capped = max > 0 ? Math.min(raw, max) : raw;
+          dAmount = Math.max(0, Math.min(Number(bPrice) || 0, capped));
+        }
         milesVoucher = { id: v.id, code: pCode };
       }
     }
