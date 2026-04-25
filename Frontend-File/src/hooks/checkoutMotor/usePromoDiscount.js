@@ -28,6 +28,13 @@ export const usePromoDiscount = ({ subTotal, beforeDiscount }) => {
           const rewardType = String(promo.reward_type || promo.type || '').toLowerCase();
           const fixedAmount = Number(promo.discount_amount) || 0;
           const base = Number(subTotal) || 0;
+          const minOrder = Number(promo.min_order_amount) || 0;
+          if (minOrder > 0 && base < minOrder) {
+            return {
+              success: false,
+              error: `Minimum transaksi untuk voucher ini adalah Rp ${minOrder.toLocaleString('id-ID')}.`,
+            };
+          }
           const rawDiscount = rewardType === 'fixed'
             ? Math.max(0, fixedAmount)
             : Math.floor((base * (promo.discount_percent || 0)) / 100);

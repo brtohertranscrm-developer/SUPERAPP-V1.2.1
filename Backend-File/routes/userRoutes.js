@@ -990,7 +990,7 @@ router.post('/bookings', async (req, res) => {
     if (pCode) {
       const v = await dbGet(
         `SELECT v.id, v.user_id, v.status, v.expires_at,
-                r.reward_type, r.discount_percent, r.max_discount, r.discount_amount, r.allowed_item_types
+                r.reward_type, r.discount_percent, r.max_discount, r.discount_amount, r.min_order_amount, r.allowed_item_types
          FROM miles_vouchers v
          JOIN miles_rewards r ON r.id = v.reward_id
          WHERE v.voucher_code = ?
@@ -1017,6 +1017,14 @@ router.post('/bookings', async (req, res) => {
         const allowed = parseAllowedItemTypes(v.allowed_item_types);
         if (allowed.length > 0 && !allowed.includes(String(item_type || '').toLowerCase())) {
           return res.status(400).json({ success: false, error: 'Voucher ini tidak berlaku untuk jenis booking ini.' });
+        }
+
+        const minOrder = Math.max(0, parseInt(v.min_order_amount, 10) || 0);
+        if (minOrder > 0 && Number(bPrice) < minOrder) {
+          return res.status(400).json({
+            success: false,
+            error: `Minimum transaksi untuk voucher ini adalah Rp ${minOrder.toLocaleString('id-ID')}.`,
+          });
         }
 
         const rewardType = String(v.reward_type || 'percent').toLowerCase();

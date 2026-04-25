@@ -19,7 +19,7 @@ const typesLabel = (csv) => {
   return types.map((t) => (t === 'car' ? 'Mobil' : t === 'motor' ? 'Motor' : t === 'locker' ? 'Loker' : t)).join(', ');
 };
 
-export default function MilesRewardsList({ rewards = [], isLoading, onEdit, onDelete, onToggle }) {
+export default function MilesRewardsList({ rewards = [], isLoading, onEdit, onDelete, onToggle, previewBase = 0 }) {
   if (isLoading) {
     return (
       <div className="bg-white border border-slate-100 rounded-2xl p-6 text-slate-500 text-sm font-medium">
@@ -45,6 +45,20 @@ export default function MilesRewardsList({ rewards = [], isLoading, onEdit, onDe
           type === 'fixed'
             ? `${fmtRp(r.discount_amount)}`
             : `${Number(r.discount_percent) || 0}% · Max ${fmtRp(r.max_discount)}`;
+
+        const base = Math.max(0, Number(previewBase) || 0);
+        const minOrder = Math.max(0, Number(r.min_order_amount) || 0);
+        const meetsMin = base >= minOrder;
+        const rawPreviewDiscount =
+          type === 'fixed'
+            ? Math.max(0, Number(r.discount_amount) || 0)
+            : Math.floor((base * (Number(r.discount_percent) || 0)) / 100);
+        const cappedPreviewDiscount =
+          type === 'fixed'
+            ? rawPreviewDiscount
+            : ((Number(r.max_discount) || 0) > 0 ? Math.min(rawPreviewDiscount, Number(r.max_discount) || 0) : rawPreviewDiscount);
+        const previewDiscount = meetsMin ? Math.min(base, Math.max(0, cappedPreviewDiscount)) : 0;
+        const previewPay = Math.max(0, base - previewDiscount);
         return (
           <div key={r.id} className="bg-white border border-slate-100 rounded-[1.75rem] p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
@@ -67,6 +81,23 @@ export default function MilesRewardsList({ rewards = [], isLoading, onEdit, onDe
                 <p className="mt-1 text-xs text-slate-500 font-medium">
                   Berlaku: {typesLabel(r.allowed_item_types)} · Exp: {Number(r.valid_days || 30)} hari
                 </p>
+                <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Simulasi (Subtotal Rp)</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                    <span className="text-sm font-black text-slate-900">{fmtRp(base)}</span>
+                    <span className={`text-xs font-black ${previewDiscount > 0 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                      Potongan: {fmtRp(previewDiscount)}
+                    </span>
+                    <span className="text-xs font-black text-slate-700">
+                      Bayar: {fmtRp(previewPay)}
+                    </span>
+                  </div>
+                  {!meetsMin && minOrder > 0 && (
+                    <p className="mt-1 text-[11px] font-bold text-amber-700">
+                      Tidak memenuhi minimum order {fmtRp(minOrder)} → potongan 0
+                    </p>
+                  )}
+                </div>
                 {r.desc && (
                   <p className="mt-2 text-xs text-slate-500 font-medium leading-relaxed">
                     {String(r.desc).slice(0, 160)}
@@ -110,4 +141,3 @@ export default function MilesRewardsList({ rewards = [], isLoading, onEdit, onDe
     </div>
   );
 }
-
