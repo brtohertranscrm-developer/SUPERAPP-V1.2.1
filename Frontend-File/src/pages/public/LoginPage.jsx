@@ -48,6 +48,8 @@ export default function LoginPage() {
   // ── Pesan sukses dari halaman register ─────────────────────────────────────
   const registeredSuccess = location.state?.registered;
   const registeredEmail   = location.state?.email;
+  const verifiedSuccess   = location.state?.verified;
+  const verifiedEmail     = location.state?.email;
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative overflow-hidden font-sans text-slate-900">
@@ -73,6 +75,21 @@ export default function LoginPage() {
               {registeredEmail && (
                 <p className="text-green-700 text-xs font-medium mt-0.5">
                   Silakan login dengan email <span className="font-bold">{registeredEmail}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Banner sukses verifikasi email ── */}
+        {verifiedSuccess && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-start gap-3">
+            <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-black text-emerald-800 text-sm">Email berhasil diverifikasi!</p>
+              {verifiedEmail && (
+                <p className="text-emerald-700 text-xs font-medium mt-0.5">
+                  Sekarang kamu bisa login dengan email <span className="font-bold">{verifiedEmail}</span>
                 </p>
               )}
             </div>

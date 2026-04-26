@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { apiFetch } from '../utils/api';
 import { SERVICE_FEE } from '../components/user/checkout/car/checkoutCarConstants';
 import { calcDays } from '../components/user/checkout/car/checkoutCarUtils';
 import { usePaymentInfo } from './checkoutMotor/usePaymentInfo';
@@ -9,7 +10,7 @@ import { useDeliveryQuote } from './checkoutMotor/useDeliveryQuote';
 import { useSubmitCarBooking } from './checkoutCar/useSubmitCarBooking';
 
 export const useCheckoutCarFlow = () => {
-  const { user } = useContext(AuthContext) || {};
+  const { user, updateKycStatus } = useContext(AuthContext) || {};
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -36,6 +37,22 @@ export const useCheckoutCarFlow = () => {
       navigate('/login', { replace: true });
     }
   }, [bookingData, user, navigate]);
+
+  // Refresh ringan agar status KYC tidak stale setelah admin verifikasi
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        const resultMe = await apiFetch('/api/dashboard/me');
+        const fresh = String(resultMe?.data?.user?.kyc_status || '').toLowerCase();
+        const current = String(user?.kyc_status || '').toLowerCase();
+        if (!mounted) return;
+        if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
+      } catch {}
+    };
+    if (user) void run();
+    return () => { mounted = false; };
+  }, [user, updateKycStatus]);
 
   const computed = useMemo(() => {
     const days = calcDays(bookingData?.startDate, bookingData?.endDate);

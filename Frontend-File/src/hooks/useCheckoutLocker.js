@@ -1,11 +1,13 @@
 import { useState, useContext, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { apiFetch } from '../utils/api';
 
 export const useCheckoutLocker = () => {
   // Ambil konteks dengan fallback yang lebih aman
   const authContext = useContext(AuthContext);
   const user = authContext?.user || null; 
+  const updateKycStatus = authContext?.updateKycStatus;
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,7 +60,23 @@ export const useCheckoutLocker = () => {
   }, [user, navigate, location.pathname, passedData]);
 
   // Perbaikan penulisan key dari database/context (kyc_status)
-  const isKycApproved = user?.kyc_status === 'approved';
+  const isKycApproved = user?.kyc_status === 'verified';
+
+  // Refresh ringan agar status KYC tidak stale setelah admin verifikasi
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => {
+      try {
+        const resultMe = await apiFetch('/api/dashboard/me');
+        const fresh = String(resultMe?.data?.user?.kyc_status || '').toLowerCase();
+        const current = String(user?.kyc_status || '').toLowerCase();
+        if (!mounted) return;
+        if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
+      } catch {}
+    };
+    if (user) void run();
+    return () => { mounted = false; };
+  }, [user, updateKycStatus]);
 
   const handlePayment = () => {
     setIsProcessing(true);
