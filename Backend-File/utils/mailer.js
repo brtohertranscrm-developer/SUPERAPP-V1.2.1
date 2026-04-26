@@ -194,6 +194,85 @@ Jika kamu tidak meminta reset password, abaikan email ini.
   return sendMail({ to: toEmail, subject, html, text });
 };
 
+// ─── Template: Email OTP Verification ─────────────────────────────────────────
+const sendEmailOtp = async (toEmail, otpCode) => {
+  const subject = 'Kode Verifikasi Email - Brothers Trans';
+  const safeCode = String(otpCode || '').trim();
+
+  const html = `
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:#0f172a;padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:900;letter-spacing:-0.5px;">
+                Brothers Trans
+              </h1>
+              <p style="margin:6px 0 0;color:#94a3b8;font-size:13px;">Verifikasi Email</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:40px;">
+              <h2 style="margin:0 0 12px;color:#0f172a;font-size:18px;font-weight:900;">
+                Kode OTP Kamu
+              </h2>
+              <p style="margin:0 0 18px;color:#475569;font-size:14px;line-height:1.6;">
+                Masukkan kode berikut di halaman verifikasi untuk mengaktifkan akunmu.
+                Kode ini berlaku selama <strong>10 menit</strong>.
+              </p>
+
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;text-align:center;">
+                <div style="font-size:28px;font-weight:900;letter-spacing:6px;color:#0f172a;">
+                  ${safeCode}
+                </div>
+              </div>
+
+              <p style="margin:18px 0 0;color:#64748b;font-size:12px;line-height:1.6;">
+                Jika kamu tidak merasa membuat akun Brothers Trans, abaikan email ini.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="background:#f8fafc;padding:24px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="margin:0;color:#94a3b8;font-size:11px;">
+                © ${new Date().getFullYear()} Brothers Trans · Jogja & Solo
+              </p>
+              <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;">
+                Email ini dikirim otomatis, mohon tidak membalas.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+
+  const text = `
+Kode Verifikasi Email - Brothers Trans
+
+Kode OTP kamu: ${safeCode}
+Berlaku 10 menit.
+
+Jika kamu tidak membuat akun, abaikan email ini.
+  `.trim();
+
+  return sendMail({ to: toEmail, subject, html, text });
+};
+
 // ─── Test koneksi — panggil saat server start ─────────────────────────────────
 const testConnection = async () => {
   if (!isEnabled()) {
@@ -225,6 +304,7 @@ const testConnection = async () => {
 
 module.exports = {
   sendResetPasswordEmail,
+  sendEmailOtp,
   testConnection,
   isEnabled,
 };

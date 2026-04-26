@@ -167,6 +167,10 @@ export const useAuthForm = () => {
           }
         }
       } else {
+        if (result?.needs_email_verification) {
+          navigate('/verify-email', { state: { email }, replace: true });
+          return;
+        }
         rateLimiter.increment();
         if (rateLimiter.isLocked()) {
           startCountdown();
@@ -229,7 +233,11 @@ export const useAuthForm = () => {
       });
 
       if (result.success) {
-        navigate('/login', { state: { registered: true, email } });
+        if (result?.email_otp_required) {
+          navigate('/verify-email', { state: { email }, replace: true });
+        } else {
+          navigate('/login', { state: { registered: true, email } });
+        }
         return true;
       } else {
         setError(result.error || 'Terjadi kesalahan saat registrasi.');

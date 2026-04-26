@@ -17,7 +17,7 @@ const jwt      = require('jsonwebtoken');
 const crypto   = require('crypto');
 const db       = require('../db');
 const REFERRAL_CONFIG = require('../utils/referralConfig');
-const { sendResetPasswordEmail } = require('../utils/mailer'); // [FIX P7]
+const { sendResetPasswordEmail, sendEmailOtp, isEnabled: isMailerEnabled } = require('../utils/mailer'); // [FIX P7]
 require('dotenv').config();
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -36,6 +36,25 @@ if (!JWT_SECRET) {
   console.error('❌ FATAL: JWT_SECRET belum di-set di .env. Server akan exit.');
   process.exit(1);
 }
+
+// ─── Email OTP config ────────────────────────────────────────────────────────
+const EMAIL_OTP_REQUIRED =
+  String(process.env.EMAIL_OTP_REQUIRED || '').trim() === '1'
+    ? true
+    : !!isMailerEnabled();
+const OTP_TTL_SEC = 10 * 60;
+const OTP_RESEND_MIN_SEC = 60;
+const OTP_MAX_SEND_PER_HOUR = 5;
+const OTP_MAX_ATTEMPTS = 6;
+const OTP_SECRET = process.env.EMAIL_OTP_SECRET || JWT_SECRET;
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+const randomOtpCode = () => String(Math.floor(100000 + Math.random() * 900000));
+const otpHash = ({ userId, email, code }) =>
+  crypto
+    .createHash('sha256')
+    .update(`${OTP_SECRET}:${String(userId)}:${String(email).toLowerCase()}:${String(code)}`)
+    .digest('hex');
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 let rateLimit, ipKeyGenerator;
@@ -80,6 +99,12 @@ const registerLimiter = rateLimit(baseRateOpts({
   message:  { success: false, error: 'Terlalu banyak percobaan registrasi. Coba lagi dalam 1 jam.' },
 }));
 
+const emailOtpLimiter = rateLimit(baseRateOpts({
+  windowMs: 10 * 60 * 1000,
+  max:      10,
+  message:  { success: false, error: 'Terlalu banyak permintaan OTP. Coba lagi beberapa menit.' },
+}));
+
 // ─── DB Helpers ───────────────────────────────────────────────────────────────
 const dbGet = (sql, params = []) =>
   new Promise((resolve, reject) =>
@@ -92,6 +117,85 @@ const dbRun = (sql, params = []) =>
       err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes });
     })
   );
+
+const upsertEmailOtp = async ({ userId, email }) => {
+  const t = nowSec();
+  const code = randomOtpCode();
+  const hash = otpHash({ userId, email, code });
+  const exp = t + OTP_TTL_SEC;
+
+  const row = await dbGet(`SELECT * FROM email_otps WHERE user_id = ? LIMIT 1`, [userId]).catch(() => null);
+  let sentHourStart = row?.sent_hour_start_sec ? Number(row.sent_hour_start_sec) : null;
+  let sentCountHour = row?.sent_count_hour ? Number(row.sent_count_hour) : 0;
+  const lastSent = row?.last_sent_at_sec ? Number(row.last_sent_at_sec) : 0;
+
+  if (!sentHourStart || t - sentHourStart >= 3600) {
+    sentHourStart = t;
+    sentCountHour = 0;
+  }
+  if (lastSent && t - lastSent < OTP_RESEND_MIN_SEC) {
+    const wait = OTP_RESEND_MIN_SEC - (t - lastSent);
+    const e = new Error(`Tunggu ${wait} detik sebelum kirim ulang OTP.`);
+    e.statusCode = 429;
+    throw e;
+  }
+  if (sentCountHour >= OTP_MAX_SEND_PER_HOUR) {
+    const e = new Error('Batas kirim OTP tercapai. Coba lagi nanti.');
+    e.statusCode = 429;
+    throw e;
+  }
+
+  if (row) {
+    await dbRun(
+      `UPDATE email_otps
+       SET email = ?, code_hash = ?, expires_at_sec = ?, attempts = 0,
+           sent_hour_start_sec = ?, sent_count_hour = ?, last_sent_at_sec = ?, verified_at_sec = NULL
+       WHERE user_id = ?`,
+      [email, hash, exp, sentHourStart, sentCountHour + 1, t, userId]
+    );
+  } else {
+    await dbRun(
+      `INSERT INTO email_otps
+        (user_id, email, code_hash, expires_at_sec, attempts, sent_hour_start_sec, sent_count_hour, last_sent_at_sec)
+       VALUES (?, ?, ?, ?, 0, ?, 1, ?)`,
+      [userId, email, hash, exp, t, t]
+    );
+  }
+
+  return { code, expires_at_sec: exp };
+};
+
+const verifyEmailOtp = async ({ userId, email, code }) => {
+  const row = await dbGet(`SELECT * FROM email_otps WHERE user_id = ? LIMIT 1`, [userId]);
+  const t = nowSec();
+  if (!row) {
+    const e = new Error('OTP tidak ditemukan. Silakan kirim ulang.');
+    e.statusCode = 400;
+    throw e;
+  }
+  if (row.verified_at_sec) return { ok: true, already: true };
+  if (Number(row.expires_at_sec) <= t) {
+    const e = new Error('OTP sudah kedaluwarsa. Silakan kirim ulang.');
+    e.statusCode = 400;
+    throw e;
+  }
+  const attempts = Number(row.attempts) || 0;
+  if (attempts >= OTP_MAX_ATTEMPTS) {
+    const e = new Error('Terlalu banyak percobaan OTP. Silakan kirim ulang.');
+    e.statusCode = 429;
+    throw e;
+  }
+  const hash = otpHash({ userId, email, code });
+  if (hash !== row.code_hash) {
+    await dbRun(`UPDATE email_otps SET attempts = attempts + 1 WHERE user_id = ?`, [userId]);
+    const e = new Error('Kode OTP salah.');
+    e.statusCode = 400;
+    throw e;
+  }
+  await dbRun(`UPDATE email_otps SET verified_at_sec = ? WHERE user_id = ?`, [t, userId]);
+  await dbRun(`UPDATE users SET email_verified = 1 WHERE id = ?`, [userId]);
+  return { ok: true };
+};
 
 // ─── Input Sanitizer ──────────────────────────────────────────────────────────
 const sanitize = (str) => {
@@ -271,6 +375,13 @@ module.exports.isTokenBlacklisted = isTokenBlacklisted;
 // ═══════════════════════════════════════════════════════════════════════════════
 router.post('/register', registerLimiter, async (req, res) => {
   try {
+    if (EMAIL_OTP_REQUIRED && !isMailerEnabled()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Verifikasi email (OTP) belum aktif. Silakan hubungi admin.',
+      });
+    }
+
     const raw = req.body || {};
 
     const name       = sanitize(raw.name       || '');
@@ -327,9 +438,9 @@ router.post('/register', registerLimiter, async (req, res) => {
     const referralCode   = generateReferralCode();
 
     await dbRun(
-      `INSERT INTO users (id, name, email, phone, ktp_id, password, join_date, referral_code, referred_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [userId, name, email, phone, ktp_id, hashedPassword, joinDate, referralCode, referredBy]
+      `INSERT INTO users (id, name, email, phone, ktp_id, password, join_date, referral_code, referred_by, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, name, email, phone, ktp_id, hashedPassword, joinDate, referralCode, referredBy, 0]
     );
 
     let referralBonus = 0;
@@ -370,15 +481,115 @@ router.post('/register', registerLimiter, async (req, res) => {
       }
     }
 
+    // Kirim OTP email (best-effort tetapi untuk login wajib)
+    if (EMAIL_OTP_REQUIRED) {
+      const otp = await upsertEmailOtp({ userId, email });
+      const sent = await sendEmailOtp(email, otp.code);
+      if (!sent?.success) {
+        console.error('⚠️  Email OTP send failed:', sent?.reason || 'unknown');
+        // Jangan biarkan user terjebak akun tidak bisa login tanpa OTP
+        await dbRun(`DELETE FROM users WHERE id = ?`, [userId]).catch(() => {});
+        await dbRun(`DELETE FROM email_otps WHERE user_id = ?`, [userId]).catch(() => {});
+        return res.status(503).json({
+          success: false,
+          error: 'Gagal mengirim OTP email. Coba lagi beberapa menit.',
+        });
+      }
+    } else {
+      // Kalau OTP tidak diwajibkan, set verified agar tidak menghambat login.
+      await dbRun(`UPDATE users SET email_verified = 1 WHERE id = ?`, [userId]).catch(() => {});
+    }
+
     return res.status(201).json({
-      success:        true,
-      message:        'Registrasi berhasil. Silakan login.',
+      success: true,
+      message: EMAIL_OTP_REQUIRED
+        ? 'Registrasi berhasil. Cek email untuk kode OTP.'
+        : 'Registrasi berhasil. Silakan login.',
       referral_bonus: referralBonus,
+      email_otp_required: EMAIL_OTP_REQUIRED,
     });
 
   } catch (error) {
     console.error('POST /register error:', error.message);
     return res.status(500).json({ success: false, error: 'Gagal melakukan registrasi.' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1b. EMAIL OTP (Verify before login)
+// POST /api/auth/email-otp/request  — kirim / kirim ulang OTP
+// POST /api/auth/email-otp/verify   — verifikasi OTP
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/email-otp/request', emailOtpLimiter, async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const email = sanitize(raw.email || '').toLowerCase();
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: 'Format email tidak valid.' });
+    }
+    if (!EMAIL_OTP_REQUIRED) {
+      return res.json({ success: true, message: 'OTP email tidak diwajibkan.' });
+    }
+    if (!isMailerEnabled()) {
+      return res.status(503).json({ success: false, error: 'Verifikasi email (OTP) belum aktif. Silakan hubungi admin.' });
+    }
+
+    const user = await dbGet(`SELECT id, email_verified FROM users WHERE email = ? LIMIT 1`, [email]);
+    if (!user) {
+      // anti enumeration
+      return res.json({ success: true, message: 'Jika email terdaftar, OTP akan dikirim.' });
+    }
+    const isVerified = Number(user.email_verified ?? 1) === 1;
+    if (isVerified) {
+      return res.json({ success: true, message: 'Email sudah terverifikasi.' });
+    }
+
+    const otp = await upsertEmailOtp({ userId: user.id, email });
+    const sent = await sendEmailOtp(email, otp.code);
+    if (!sent?.success) {
+      return res.status(503).json({ success: false, error: 'Gagal mengirim OTP. Coba lagi beberapa menit.' });
+    }
+
+    res.json({ success: true, message: 'OTP sudah dikirim. Silakan cek inbox/spam.' });
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /email-otp/request error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengirim OTP.' });
+  }
+});
+
+router.post('/email-otp/verify', emailOtpLimiter, async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const email = sanitize(raw.email || '').toLowerCase();
+    const code = String(raw.code || '').trim();
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: 'Format email tidak valid.' });
+    }
+    if (!/^[0-9]{6}$/.test(code)) {
+      return res.status(400).json({ success: false, error: 'Kode OTP harus 6 digit angka.' });
+    }
+    if (!EMAIL_OTP_REQUIRED) {
+      return res.json({ success: true, message: 'OTP email tidak diwajibkan.' });
+    }
+
+    const user = await dbGet(`SELECT id, email_verified FROM users WHERE email = ? LIMIT 1`, [email]);
+    if (!user) return res.status(400).json({ success: false, error: 'Kode OTP salah.' });
+
+    const isVerified = Number(user.email_verified ?? 1) === 1;
+    if (isVerified) {
+      return res.json({ success: true, message: 'Email sudah terverifikasi. Silakan login.' });
+    }
+
+    await verifyEmailOtp({ userId: user.id, email, code });
+
+    res.json({ success: true, message: 'Email berhasil diverifikasi. Silakan login.' });
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /email-otp/verify error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memverifikasi OTP.' });
   }
 });
 
@@ -407,7 +618,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     const user = await dbGet(
       `SELECT id, name, email, password, role, permissions, miles, kyc_status,
               profile_picture, profile_banner, referral_code, phone, join_date,
-              login_attempts, locked_until, last_login
+              login_attempts, locked_until, last_login, email_verified
        FROM users WHERE email = ?`,
       [email]
     );
@@ -447,6 +658,17 @@ router.post('/login', loginLimiter, async (req, res) => {
         error:   remaining > 0
           ? `Email atau password salah. (${remaining} percobaan tersisa sebelum akun dikunci)`
           : 'Email atau password salah.',
+      });
+    }
+
+    // Enforce email OTP before login (only for users with email_verified=0)
+    const isVerified = Number(user.email_verified ?? 1) === 1;
+    if (EMAIL_OTP_REQUIRED && user.role === 'user' && !isVerified) {
+      return res.status(403).json({
+        success: false,
+        error: 'Email belum diverifikasi. Masukkan kode OTP yang dikirim ke email kamu.',
+        needs_email_verification: true,
+        email,
       });
     }
 

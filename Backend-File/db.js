@@ -731,6 +731,26 @@ db.serialize(() => {
     )
   `);
 
+  // --- EMAIL OTP (verifikasi email sebelum login) ---
+  // Satu OTP aktif per user (kode di-hash, TTL, attempts, resend throttling).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS email_otps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      code_hash TEXT NOT NULL,
+      expires_at_sec INTEGER NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      sent_hour_start_sec INTEGER,
+      sent_count_hour INTEGER NOT NULL DEFAULT 0,
+      last_sent_at_sec INTEGER,
+      verified_at_sec INTEGER,
+      created_at_sec INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      UNIQUE(user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // --- GMAPS REVIEWS (submission bukti review Google Maps) ---
   db.run(`
     CREATE TABLE IF NOT EXISTS gmaps_reviews (
@@ -759,6 +779,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'permissions', "TEXT DEFAULT '[]'");
   addColumnIfNotExists('users', 'location', 'TEXT DEFAULT "Lainnya"');
   addColumnIfNotExists('users', 'has_completed_tc_gamification', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'email_verified', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'bank_account', 'TEXT');
   addColumnIfNotExists('users', 'bank_name', 'TEXT');
   addColumnIfNotExists('users', 'referred_by', 'TEXT');
@@ -907,6 +928,8 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_ktp_id ON users(ktp_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ktp_blacklist_ktp_id ON ktp_blacklist(ktp_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email)`);
 
   // Finance indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);
