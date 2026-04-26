@@ -6,6 +6,7 @@ import TodayOpsPanel from '../../components/admin/dashboard/TodayOpsPanel';
 import QuickMenu from '../../components/admin/dashboard/QuickMenu';
 import RecentBookings from '../../components/admin/dashboard/RecentBookings';
 import CrewProductivityPanel from '../../components/admin/dashboard/CrewProductivityPanel';
+import AccordionSection from '../../components/admin/dashboard/AccordionSection';
 
 export default function AdminDashboard() {
   const [period, setPeriod] = useState('7d');
@@ -69,10 +70,42 @@ export default function AdminDashboard() {
       </div>
 
       <StatsPanel stats={stats} formatRupiah={formatRupiah} />
-      <TodayOpsPanel bookings={bookings} onRefresh={refetch} />
-      <CrewProductivityPanel />
-      <QuickMenu />
-      <RecentBookings bookings={recentBookings} />
+
+      <div className="mt-6 space-y-4">
+        <AccordionSection
+          id="today_ops"
+          title="Operasional Hari Ini"
+          subtitle="Lihat pesanan aktif, status unit, dan aksi cepat."
+          defaultOpen
+        >
+          <TodayOpsPanel bookings={bookings} onRefresh={refetch} />
+        </AccordionSection>
+
+        <AccordionSection
+          id="crew_productivity"
+          title="Produktivitas Tim"
+          subtitle="Ringkasan performa kru dan ritme operasional."
+        >
+          <CrewProductivityPanel />
+        </AccordionSection>
+
+        <AccordionSection
+          id="quick_menu"
+          title="Quick Menu"
+          subtitle="Shortcut ke fitur admin yang sering dipakai."
+        >
+          <QuickMenu />
+        </AccordionSection>
+
+        <AccordionSection
+          id="recent_bookings"
+          title="Booking Terbaru"
+          subtitle="Daftar pesanan terbaru untuk diproses."
+          keepMounted
+        >
+          <RecentBookings bookings={recentBookings} />
+        </AccordionSection>
+      </div>
     </div>
   );
 }
