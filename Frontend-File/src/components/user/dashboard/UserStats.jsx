@@ -83,8 +83,10 @@ const TIER_ORDER = TIERS.map(t => t.id);
 
 export default function UserStats({ currentMiles, navigate, user }) {
   const rawTier      = user?.user_tier || 'backpacker';
-  const seasonMiles  = user?.season_miles_earned || 0;
-  const seasonTrips  = user?.season_trip_count   || 0;
+  const seasonStarted = Boolean(user?.season_start_date);
+  // NOTE: jika season belum pernah dimulai (season_start_date null), anggap progress pakai total miles agar bar bergerak.
+  const seasonMiles  = seasonStarted ? (Number(user?.season_miles_earned) || 0) : (Number(currentMiles) || 0);
+  const seasonTrips  = Number(user?.season_trip_count) || 0;
 
   const tierIdx  = TIER_ORDER.indexOf(rawTier) !== -1 ? TIER_ORDER.indexOf(rawTier) : 0;
   const tier     = TIERS[tierIdx];
@@ -97,6 +99,9 @@ export default function UserStats({ currentMiles, navigate, user }) {
   const tripsProgress = nextTier
     ? Math.min((seasonTrips - tier.minTrips) / (nextTier.minTrips - tier.minTrips) * 100, 100)
     : 100;
+
+  const safeMilesProgress = Number.isFinite(milesProgress) ? Math.max(0, milesProgress) : 0;
+  const safeTripsProgress = Number.isFinite(tripsProgress) ? Math.max(0, tripsProgress) : 0;
 
   const milesLeft = nextTier ? Math.max(0, nextTier.minMiles - seasonMiles) : 0;
   const tripsLeft = nextTier ? Math.max(0, nextTier.minTrips - seasonTrips) : 0;
@@ -131,6 +136,43 @@ export default function UserStats({ currentMiles, navigate, user }) {
               Progress ke {nextTier.label} — Season Ini
             </p>
 
+            {/* Roadmap tier mini */}
+            <div className="pt-1">
+              <div className="flex items-center gap-2">
+                {TIERS.map((t, i) => {
+                  const isActive = i === tierIdx;
+                  const isPassed = i < tierIdx;
+                  const isNext = i === tierIdx + 1;
+                  const dotClass = isActive
+                    ? 'bg-white text-slate-900'
+                    : isPassed
+                      ? 'bg-white/60 text-slate-900'
+                      : isNext
+                        ? 'bg-white/20 text-white'
+                        : 'bg-white/10 text-white/70';
+                  const ringClass = isActive ? 'ring-2 ring-white/60' : 'ring-1 ring-white/20';
+                  return (
+                    <React.Fragment key={t.id}>
+                      <div className={`flex items-center gap-1.5`}>
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black ${dotClass} ${ringClass}`}>
+                          {t.multiplier}
+                        </div>
+                        <div className={`hidden sm:block text-[10px] font-black uppercase tracking-widest ${isActive ? tier.text : tier.sub}`}>
+                          {t.label}
+                        </div>
+                      </div>
+                      {i !== TIERS.length - 1 && (
+                        <div className="flex-1 h-[2px] rounded-full bg-white/15" />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+              <div className={`mt-2 text-[10px] font-bold ${tier.sub}`}>
+                Naik tier = bonus pengumpulan miles lebih besar ({tier.multiplier} → {nextTier.multiplier}).
+              </div>
+            </div>
+
             {/* Miles progress */}
             <div>
               <div className="flex justify-between mb-1">
@@ -138,7 +180,7 @@ export default function UserStats({ currentMiles, navigate, user }) {
                 <span className={`text-[11px] font-black ${tier.text}`}>{seasonMiles} / {nextTier.minMiles}</span>
               </div>
               <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-                <div className={`${tier.bar} h-full rounded-full transition-all duration-1000`} style={{ width: `${milesProgress}%` }} />
+                <div className={`${tier.bar} h-full rounded-full transition-all duration-1000`} style={{ width: `${safeMilesProgress}%` }} />
               </div>
               {milesLeft > 0 && <p className={`text-[10px] mt-1 ${tier.sub}`}>{milesLeft} miles lagi</p>}
             </div>
@@ -150,7 +192,7 @@ export default function UserStats({ currentMiles, navigate, user }) {
                 <span className={`text-[11px] font-black ${tier.text}`}>{seasonTrips} / {nextTier.minTrips} trip</span>
               </div>
               <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
-                <div className={`${tier.bar} h-full rounded-full transition-all duration-1000`} style={{ width: `${tripsProgress}%` }} />
+                <div className={`${tier.bar} h-full rounded-full transition-all duration-1000`} style={{ width: `${safeTripsProgress}%` }} />
               </div>
               {tripsLeft > 0 && <p className={`text-[10px] mt-1 ${tier.sub}`}>{tripsLeft} trip lagi</p>}
             </div>
