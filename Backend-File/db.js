@@ -780,6 +780,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'location', 'TEXT DEFAULT "Lainnya"');
   addColumnIfNotExists('users', 'has_completed_tc_gamification', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'email_verified', 'INTEGER DEFAULT 0');
+  addColumnIfNotExists('users', 'google_sub', 'TEXT');
   addColumnIfNotExists('users', 'bank_account', 'TEXT');
   addColumnIfNotExists('users', 'bank_name', 'TEXT');
   addColumnIfNotExists('users', 'referred_by', 'TEXT');
@@ -930,6 +931,7 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_support_tickets_user ON support_tickets(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email)`);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)`);
 
   // Finance indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);

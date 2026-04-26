@@ -15,6 +15,7 @@ const router   = express.Router();
 const bcrypt   = require('bcrypt');
 const jwt      = require('jsonwebtoken');
 const crypto   = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const db       = require('../db');
 const REFERRAL_CONFIG = require('../utils/referralConfig');
 const { sendResetPasswordEmail, sendEmailOtp, isEnabled: isMailerEnabled } = require('../utils/mailer'); // [FIX P7]
@@ -55,6 +56,15 @@ const otpHash = ({ userId, email, code }) =>
     .createHash('sha256')
     .update(`${OTP_SECRET}:${String(userId)}:${String(email).toLowerCase()}:${String(code)}`)
     .digest('hex');
+
+// ─── Google Sign-In config ───────────────────────────────────────────────────
+const GOOGLE_CLIENT_IDS = String(process.env.GOOGLE_CLIENT_ID || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+const googleClient = GOOGLE_CLIENT_IDS.length ? new OAuth2Client() : null;
+
+const isGoogleEnabled = () => GOOGLE_CLIENT_IDS.length > 0;
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 let rateLimit, ipKeyGenerator;
@@ -103,6 +113,12 @@ const emailOtpLimiter = rateLimit(baseRateOpts({
   windowMs: 10 * 60 * 1000,
   max:      10,
   message:  { success: false, error: 'Terlalu banyak permintaan OTP. Coba lagi beberapa menit.' },
+}));
+
+const googleLimiter = rateLimit(baseRateOpts({
+  windowMs: 10 * 60 * 1000,
+  max:      30,
+  message:  { success: false, error: 'Terlalu banyak percobaan login Google. Coba lagi beberapa menit.' },
 }));
 
 // ─── DB Helpers ───────────────────────────────────────────────────────────────
@@ -195,6 +211,50 @@ const verifyEmailOtp = async ({ userId, email, code }) => {
   await dbRun(`UPDATE email_otps SET verified_at_sec = ? WHERE user_id = ?`, [t, userId]);
   await dbRun(`UPDATE users SET email_verified = 1 WHERE id = ?`, [userId]);
   return { ok: true };
+};
+
+const verifyGoogleIdToken = async (idToken) => {
+  if (!isGoogleEnabled() || !googleClient) {
+    const e = new Error('Google login belum dikonfigurasi.');
+    e.statusCode = 503;
+    throw e;
+  }
+  if (!idToken || typeof idToken !== 'string') {
+    const e = new Error('Token Google tidak valid.');
+    e.statusCode = 400;
+    throw e;
+  }
+
+  // Verify against the allowed audience(s)
+  let ticket = null;
+  for (const aud of GOOGLE_CLIENT_IDS) {
+    try {
+      ticket = await googleClient.verifyIdToken({ idToken, audience: aud });
+      break;
+    } catch {}
+  }
+  if (!ticket) {
+    const e = new Error('Token Google tidak valid.');
+    e.statusCode = 401;
+    throw e;
+  }
+  const payload = ticket.getPayload() || {};
+  if (!payload.sub || !payload.email) {
+    const e = new Error('Data Google tidak lengkap.');
+    e.statusCode = 400;
+    throw e;
+  }
+  if (payload.email_verified === false) {
+    const e = new Error('Email Google belum terverifikasi.');
+    e.statusCode = 403;
+    throw e;
+  }
+  return {
+    sub: String(payload.sub),
+    email: String(payload.email).toLowerCase(),
+    name: payload.name ? String(payload.name).trim().slice(0, 140) : null,
+    picture: payload.picture ? String(payload.picture).trim().slice(0, 400) : null,
+  };
 };
 
 // ─── Input Sanitizer ──────────────────────────────────────────────────────────
@@ -590,6 +650,195 @@ router.post('/email-otp/verify', emailOtpLimiter, async (req, res) => {
     if (status !== 500) return res.status(status).json({ success: false, error: err.message });
     console.error('POST /email-otp/verify error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal memverifikasi OTP.' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1c. GOOGLE LOGIN / REGISTER
+// POST /api/auth/google
+// POST /api/auth/google/complete
+// ═══════════════════════════════════════════════════════════════════════════════
+router.post('/google', googleLimiter, async (req, res) => {
+  try {
+    const idToken = req.body?.id_token;
+    const g = await verifyGoogleIdToken(idToken);
+
+    // Existing user by google_sub
+    let user = await dbGet(
+      `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+              profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
+       FROM users WHERE google_sub = ? LIMIT 1`,
+      [g.sub]
+    );
+
+    // Existing user by email (link account)
+    if (!user) {
+      user = await dbGet(
+        `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+                profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
+         FROM users WHERE email = ? LIMIT 1`,
+        [g.email]
+      );
+      if (user && !user.google_sub) {
+        await dbRun(`UPDATE users SET google_sub = ?, email_verified = 1 WHERE id = ?`, [g.sub, user.id]).catch(() => {});
+        if (g.picture && !user.profile_picture) {
+          await dbRun(`UPDATE users SET profile_picture = ? WHERE id = ?`, [g.picture, user.id]).catch(() => {});
+          user.profile_picture = g.picture;
+        }
+        user.google_sub = g.sub;
+      }
+    }
+
+    // If user exists and already complete → issue JWT
+    if (user) {
+      const hasPhone = !!String(user.phone || '').trim();
+      const hasKtp = String(user.ktp_id || '').replace(/\D/g, '').length === 16;
+      if (!hasPhone || !hasKtp) {
+        const tempExpSec = Math.floor(Date.now() / 1000) + (15 * 60);
+        const tempToken = jwt.sign(
+          { scope: 'google_complete', sub: g.sub, email: g.email, name: g.name, picture: g.picture, exp: tempExpSec },
+          JWT_SECRET
+        );
+        return res.json({
+          success: true,
+          needs_profile: true,
+          temp_token: tempToken,
+          profile: { email: g.email, name: g.name, picture: g.picture },
+        });
+      }
+
+      // Mark email as verified (trusted by Google)
+      await dbRun(`UPDATE users SET email_verified = 1 WHERE id = ?`, [user.id]).catch(() => {});
+      user.email_verified = 1;
+
+      const expiresAt = Date.now() + (8 * 60 * 60 * 1000);
+      const token = jwt.sign(
+        { id: user.id, role: user.role, permissions: user.permissions, exp: Math.floor(expiresAt / 1000) },
+        JWT_SECRET
+      );
+
+      return res.json({ success: true, user, token });
+    }
+
+    // New user: ask for additional profile (phone + NIK)
+    const tempExpSec = Math.floor(Date.now() / 1000) + (15 * 60);
+    const tempToken = jwt.sign(
+      { scope: 'google_complete', sub: g.sub, email: g.email, name: g.name, picture: g.picture, exp: tempExpSec },
+      JWT_SECRET
+    );
+    return res.json({
+      success: true,
+      needs_profile: true,
+      temp_token: tempToken,
+      profile: { email: g.email, name: g.name, picture: g.picture },
+    });
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /auth/google error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal login dengan Google.' });
+  }
+});
+
+router.post('/google/complete', googleLimiter, async (req, res) => {
+  try {
+    const { temp_token, phone, ktp_id } = req.body || {};
+    if (!temp_token || typeof temp_token !== 'string') {
+      return res.status(400).json({ success: false, error: 'Token tidak valid.' });
+    }
+    let decoded = null;
+    try {
+      decoded = jwt.verify(temp_token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ success: false, error: 'Token sudah kedaluwarsa. Silakan ulangi login Google.' });
+    }
+    if (decoded?.scope !== 'google_complete' || !decoded?.email || !decoded?.sub) {
+      return res.status(400).json({ success: false, error: 'Token tidak valid.' });
+    }
+
+    const email = String(decoded.email).toLowerCase();
+    const name = decoded.name ? String(decoded.name).trim().slice(0, 140) : 'User';
+    const picture = decoded.picture ? String(decoded.picture).trim().slice(0, 400) : null;
+    const googleSub = String(decoded.sub);
+
+    const safePhone = sanitize(phone || '');
+    if (!isValidPhone(safePhone)) {
+      return res.status(400).json({ success: false, error: 'Format nomor HP tidak valid.' });
+    }
+    const nik = String(ktp_id || '').replace(/\D/g, '');
+    if (nik.length !== 16) {
+      return res.status(400).json({ success: false, error: 'ID KTP (NIK) harus 16 digit angka.' });
+    }
+
+    // If email exists, update that account (link + fill missing)
+    const existing = await dbGet(`SELECT id, role, google_sub FROM users WHERE email = ? LIMIT 1`, [email]);
+    if (existing) {
+      if (existing.role !== 'user') {
+        return res.status(403).json({ success: false, error: 'Akun ini tidak bisa digunakan untuk login Google.' });
+      }
+      await dbRun(
+        `UPDATE users
+         SET phone = COALESCE(NULLIF(phone, ''), ?),
+             ktp_id = COALESCE(NULLIF(ktp_id, ''), ?),
+             google_sub = COALESCE(google_sub, ?),
+             email_verified = 1,
+             profile_picture = COALESCE(profile_picture, ?)
+         WHERE id = ?`,
+        [safePhone, nik, googleSub, picture, existing.id]
+      );
+
+      const user = await dbGet(
+        `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+                profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
+         FROM users WHERE id = ? LIMIT 1`,
+        [existing.id]
+      );
+
+      const expiresAt = Date.now() + (8 * 60 * 60 * 1000);
+      const token = jwt.sign(
+        { id: user.id, role: user.role, permissions: user.permissions, exp: Math.floor(expiresAt / 1000) },
+        JWT_SECRET
+      );
+      return res.json({ success: true, user, token });
+    }
+
+    // Ensure NIK not duplicated
+    const existingKtp = await dbGet(`SELECT id FROM users WHERE ktp_id = ? LIMIT 1`, [nik]);
+    if (existingKtp) {
+      return res.status(409).json({ success: false, error: 'ID KTP sudah terdaftar.' });
+    }
+
+    // Create new user (password random)
+    const userId = crypto.randomUUID();
+    const joinDate = new Date().toISOString();
+    const referralCode = generateReferralCode();
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(randomPassword, BCRYPT_ROUNDS);
+
+    await dbRun(
+      `INSERT INTO users (id, name, email, phone, ktp_id, password, join_date, referral_code, email_verified, google_sub, profile_picture)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [userId, name, email, safePhone, nik, hashedPassword, joinDate, referralCode, googleSub, picture]
+    );
+
+    const user = await dbGet(
+      `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+              profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
+       FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+
+    const expiresAt = Date.now() + (8 * 60 * 60 * 1000);
+    const token = jwt.sign(
+      { id: user.id, role: user.role, permissions: user.permissions, exp: Math.floor(expiresAt / 1000) },
+      JWT_SECRET
+    );
+    return res.json({ success: true, user, token });
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message });
+    console.error('POST /auth/google/complete error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal menyimpan data akun.' });
   }
 });
 

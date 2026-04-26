@@ -17,6 +17,7 @@ import ArticleDetail from '../pages/public/ArticleDetail';
 import LoginPage from '../pages/public/LoginPage';
 import RegisterPage from '../pages/public/RegisterPage';
 import VerifyEmailPage from '../pages/public/VerifyEmailPage';
+import GoogleCompleteProfilePage from '../pages/public/GoogleCompleteProfilePage';
 import ResetPasswordPage from '../pages/public/ResetPasswordPage';
 import TermsPage from '../pages/public/TermsPage';
 import PrivacyPage from '../pages/public/PrivacyPage';
@@ -95,6 +96,7 @@ const AppRoutes = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/google/complete-profile" element={<GoogleCompleteProfilePage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />

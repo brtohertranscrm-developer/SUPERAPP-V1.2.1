@@ -19,6 +19,8 @@ export default function LoginPage() {
     isLoading, error, forgotStatus, setForgotStatus,
     lockSeconds,
     handleLoginSubmit, handleForgotPasswordSubmit,
+    googleLoading,
+    handleGoogleCredential,
   } = useAuthForm();
 
   const [isForgotMode, setIsForgotMode] = useState(false);
@@ -107,10 +109,12 @@ export default function LoginPage() {
         ) : (
           <LoginForm
             isLoading={isLoading}
+            googleLoading={googleLoading}
             error={error}
             lockSeconds={lockSeconds}
             onSubmit={handleLoginSubmit}
             onForgotClick={() => setIsForgotMode(true)}
+            onGoogleCredential={handleGoogleCredential}
           />
         )}
       </div>

@@ -4,6 +4,7 @@ import {
   User, Mail, Lock, Phone, ArrowRight, Loader2, AlertCircle,
   Eye, EyeOff, Gift, CheckCircle2, XCircle, ShieldCheck, ExternalLink
 } from 'lucide-react';
+import GoogleSignInButton from './GoogleSignInButton';
 const sanitize = (str = '') => str.replace(/[<>"'`]/g, '').slice(0, 500);
 const isValidEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 const formatPhone = (v = '') => { const d = v.replace(/\D/g, ''); if (d.startsWith('08')) return '628' + d.slice(2); if (d.startsWith('8')) return '62' + d; return d; };
@@ -193,7 +194,7 @@ const LegalConsent = ({ checked, onChange, error }) => {
 };
 
 // --- Komponen utama -----------------------------------------------------------
-const RegisterForm = ({ isLoading, error, onSubmit }) => {
+const RegisterForm = ({ isLoading, googleLoading, error, onSubmit, onGoogleCredential }) => {
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', ktp_id: '', password: '', referred_by: '',
   });
@@ -249,6 +250,24 @@ const RegisterForm = ({ isLoading, error, onSubmit }) => {
       <div className="text-center mb-7">
         <h1 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Buat Akun Baru</h1>
         <p className="text-slate-500 text-sm font-medium">Bergabung dan mulai perjalanan bersama Brother Trans hari ini.</p>
+      </div>
+
+      {/* Quick register with Google */}
+      <div className="mb-6">
+        <GoogleSignInButton
+          onCredential={onGoogleCredential}
+          disabled={isLoading || googleLoading || submitted}
+          text="signup_with"
+        />
+        <p className="text-[10px] text-slate-400 font-medium text-center mt-2 px-4 leading-relaxed">
+          Daftar cepat via Google, lalu isi <span className="font-black text-slate-500">No HP</span> &{' '}
+          <span className="font-black text-slate-500">NIK</span> (sekali saja).
+        </p>
+        <div className="mt-5 flex items-center gap-3">
+          <div className="h-px bg-slate-200/80 flex-1" />
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">atau</span>
+          <div className="h-px bg-slate-200/80 flex-1" />
+        </div>
       </div>
 
       {/* Error global */}

@@ -66,6 +66,7 @@ export const useAuthForm = () => {
   const { login } = useContext(AuthContext) || {};
 
   const [isLoading,    setIsLoading]    = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error,        setError]        = useState('');
   const [forgotStatus, setForgotStatus] = useState({ type: '', message: '' });
   const [lockSeconds,  setLockSeconds]  = useState(0);
@@ -101,6 +102,42 @@ export const useAuthForm = () => {
     return res.json();
   }, []);
 
+  const redirectAfterAuth = useCallback((user) => {
+    const role = user?.role;
+    if (role === 'superadmin' || role === 'admin' || role === 'subadmin') {
+      navigate(getAdminLandingPath(user));
+      return;
+    }
+
+    const pending = sessionStorage.getItem('pending_checkout');
+    if (pending) {
+      sessionStorage.removeItem('pending_checkout');
+      try {
+        const parsed = JSON.parse(pending);
+        const path =
+          parsed?.checkout_path ||
+          (parsed?.item_type === 'car' ? '/checkout-mobil'
+            : parsed?.item_type === 'locker' ? '/checkout-loker'
+              : '/checkout-motor');
+        navigate(path, { state: parsed, replace: true });
+        return;
+      } catch {
+        navigate('/checkout-motor', { replace: true });
+        return;
+      }
+    }
+
+    if (location?.state?.from) {
+      const from = location.state.from;
+      const nextState = { ...(location.state || {}) };
+      delete nextState.from;
+      navigate(from, { state: nextState, replace: true });
+      return;
+    }
+
+    navigate('/dashboard');
+  }, [navigate, location]);
+
   // --- FUNGSI: Login --------------------------------------------------------
   const handleLoginSubmit = useCallback(async (rawData) => {
     // Rate limit check
@@ -134,38 +171,7 @@ export const useAuthForm = () => {
       if (result.success) {
         rateLimiter.reset();
         if (login) login(result.user, result.token);
-
-        // Redirect berdasarkan role
-        const role = result.user.role;
-        if (role === 'superadmin' || role === 'admin') {
-          navigate(getAdminLandingPath(result.user));
-        } else if (role === 'subadmin') {
-          navigate(getAdminLandingPath(result.user));
-        } else {
-          // Cek pending checkout (motor/loker/mobil) atau redirect origin
-          const pending = sessionStorage.getItem('pending_checkout');
-          if (pending) {
-            sessionStorage.removeItem('pending_checkout');
-            try {
-              const parsed = JSON.parse(pending);
-              const path =
-                parsed?.checkout_path ||
-                (parsed?.item_type === 'car' ? '/checkout-mobil'
-                  : parsed?.item_type === 'locker' ? '/checkout-loker'
-                    : '/checkout-motor');
-              navigate(path, { state: parsed, replace: true });
-            } catch {
-              navigate('/checkout-motor', { replace: true });
-            }
-          } else if (location?.state?.from) {
-            const from = location.state.from;
-            const nextState = { ...(location.state || {}) };
-            delete nextState.from;
-            navigate(from, { state: nextState, replace: true });
-          } else {
-            navigate('/dashboard');
-          }
-        }
+        redirectAfterAuth(result.user);
       } else {
         if (result?.needs_email_verification) {
           navigate('/verify-email', { state: { email }, replace: true });
@@ -185,7 +191,89 @@ export const useAuthForm = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [authFetch, login, navigate, startCountdown]);
+  }, [authFetch, login, navigate, startCountdown, redirectAfterAuth]);
+
+  // --- FUNGSI: Google Login (Sign-In) ---------------------------------------
+  const handleGoogleCredential = useCallback(async (credential) => {
+    if (!credential) return false;
+    setError('');
+    setGoogleLoading(true);
+    try {
+      const result = await authFetch('/api/auth/google', { id_token: credential });
+      if (result?.success) {
+        if (result?.needs_profile) {
+          if (result?.temp_token) {
+            sessionStorage.setItem('google_complete_temp_token', result.temp_token);
+          }
+          if (result?.profile) {
+            sessionStorage.setItem('google_complete_profile', JSON.stringify(result.profile));
+          }
+          navigate('/google/complete-profile', {
+            state: { temp_token: result?.temp_token, profile: result?.profile },
+            replace: true,
+          });
+          return true;
+        }
+        if (login) login(result.user, result.token);
+        redirectAfterAuth(result.user);
+        return true;
+      }
+      setError(result?.error || 'Gagal login dengan Google.');
+      return false;
+    } catch {
+      setError('Gagal terhubung ke server.');
+      return false;
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [authFetch, login, navigate, redirectAfterAuth]);
+
+  // --- FUNGSI: Lengkapi Profil setelah Google -------------------------------
+  const handleGoogleCompleteSubmit = useCallback(async (rawData) => {
+    setError('');
+    setGoogleLoading(true);
+
+    const tempToken =
+      typeof rawData?.temp_token === 'string' && rawData.temp_token
+        ? rawData.temp_token
+        : (sessionStorage.getItem('google_complete_temp_token') || '');
+    const phone = formatPhone(sanitize(rawData?.phone || ''));
+    const ktp_id = sanitize(rawData?.ktp_id || '').replace(/\D/g, '');
+
+    if (!tempToken) {
+      setError('Sesi Google kedaluwarsa. Silakan ulangi login Google.');
+      setGoogleLoading(false);
+      return false;
+    }
+    if (!phone || phone.length < 10 || phone.length > 15) {
+      setError('Nomor HP tidak valid (10-15 digit).');
+      setGoogleLoading(false);
+      return false;
+    }
+    if (!ktp_id || ktp_id.length !== 16) {
+      setError('ID KTP (NIK) harus 16 digit angka.');
+      setGoogleLoading(false);
+      return false;
+    }
+
+    try {
+      const result = await authFetch('/api/auth/google/complete', { temp_token: tempToken, phone, ktp_id });
+      if (result?.success) {
+        sessionStorage.removeItem('google_complete_temp_token');
+        sessionStorage.removeItem('google_complete_profile');
+        if (login) login(result.user, result.token);
+        redirectAfterAuth(result.user);
+        return true;
+      }
+      setError(result?.error || 'Gagal menyimpan data akun.');
+      return false;
+    } catch {
+      setError('Gagal terhubung ke server.');
+      return false;
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [authFetch, login, redirectAfterAuth]);
 
   // --- FUNGSI: Register -----------------------------------------------------
   const handleRegisterSubmit = useCallback(async (rawData) => {
@@ -282,11 +370,14 @@ export const useAuthForm = () => {
 
   return {
     isLoading,
+    googleLoading,
     error,
     forgotStatus,
     setForgotStatus,
     lockSeconds,
     handleLoginSubmit,
+    handleGoogleCredential,
+    handleGoogleCompleteSubmit,
     handleRegisterSubmit,
     handleForgotPasswordSubmit,
   };

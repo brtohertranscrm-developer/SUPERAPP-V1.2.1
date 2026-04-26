@@ -4,6 +4,7 @@ import {
   Mail, Lock, ArrowRight, Loader2, AlertCircle,
   Eye, EyeOff, ShieldAlert, Clock
 } from 'lucide-react';
+import GoogleSignInButton from './GoogleSignInButton';
 const sanitize = (str = '') => str.replace(/[<>"'`]/g, '').slice(0, 500);
 const isValidEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
@@ -37,7 +38,7 @@ const PasswordInput = ({ value, onChange, placeholder = 'Kata sandi Anda', name 
 };
 
 // --- Komponen utama LoginForm -------------------------------------------------
-const LoginForm = ({ isLoading, error, lockSeconds, onSubmit, onForgotClick }) => {
+const LoginForm = ({ isLoading, googleLoading, error, lockSeconds, onSubmit, onForgotClick, onGoogleCredential }) => {
   const [formData,   setFormData]   = useState({ email: '', password: '' });
   const [fieldError, setFieldError] = useState({ email: '', password: '' });
 
@@ -66,6 +67,7 @@ const LoginForm = ({ isLoading, error, lockSeconds, onSubmit, onForgotClick }) =
   };
 
   const isLocked = lockSeconds > 0;
+  const isGoogleDisabled = isLoading || googleLoading || isLocked;
 
   return (
     <div className="animate-fade-in-up w-full">
@@ -166,6 +168,18 @@ const LoginForm = ({ isLoading, error, lockSeconds, onSubmit, onForgotClick }) =
           )}
         </button>
       </form>
+
+      {/* -- Google sign-in -- */}
+      <div className="my-5 flex items-center gap-3">
+        <div className="h-px bg-slate-200/80 flex-1" />
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">atau</span>
+        <div className="h-px bg-slate-200/80 flex-1" />
+      </div>
+      <GoogleSignInButton
+        onCredential={onGoogleCredential}
+        disabled={isGoogleDisabled}
+        text="continue_with"
+      />
 
       {/* -- Security note -- */}
       <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-slate-400 font-bold">

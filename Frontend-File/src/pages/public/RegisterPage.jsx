@@ -8,7 +8,7 @@ import { getAdminLandingPath } from '../../utils/adminNavigation';
 export default function RegisterPage() {
   const { user }    = useContext(AuthContext) || {};
   const navigate    = useNavigate();
-  const { isLoading, error, handleRegisterSubmit } = useAuthForm();
+  const { isLoading, googleLoading, error, handleRegisterSubmit, handleGoogleCredential } = useAuthForm();
 
   // ── Jika sudah login, jangan tampilkan halaman register ────────────────────
   useEffect(() => {
@@ -37,8 +37,10 @@ export default function RegisterPage() {
 
         <RegisterForm
           isLoading={isLoading}
+          googleLoading={googleLoading}
           error={error}
           onSubmit={handleRegisterSubmit}
+          onGoogleCredential={handleGoogleCredential}
         />
       </div>
 
