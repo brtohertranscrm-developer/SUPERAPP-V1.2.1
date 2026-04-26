@@ -3,6 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { CreditCard, Loader2, Upload } from 'lucide-react';
 import { usePayment } from '../../hooks/usePayment';
 
+const parseBookingExpiry = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+
+  // SQLite datetime('now') returns UTC as "YYYY-MM-DD HH:mm:ss".
+  // Browsers parse that format as local time, so WIB users saw it as expired immediately.
+  const sqliteUtcMatch = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw);
+  const isoWithoutZoneMatch = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(raw);
+  const normalized = sqliteUtcMatch
+    ? `${raw.replace(' ', 'T')}Z`
+    : isoWithoutZoneMatch
+      ? `${raw}Z`
+      : raw;
+
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
 export default function PaymentPage() {
   const navigate = useNavigate();
   const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
@@ -41,8 +59,8 @@ export default function PaymentPage() {
       return;
     }
 
-    const exp = new Date(expRaw);
-    if (Number.isNaN(exp.getTime())) {
+    const exp = parseBookingExpiry(expRaw);
+    if (!exp) {
       setExpiresLeftSec(null);
       return;
     }
