@@ -33,7 +33,11 @@ const toThreadId = (v) => {
 const TOPICS = {
   log:     toThreadId(process.env.TELEGRAM_TOPIC_LOG),
   booking: toThreadId(process.env.TELEGRAM_TOPIC_BOOKING),
+  // Backward-compatible: TELEGRAM_TOPIC_PAYMENT routes all payment-related messages
   payment: toThreadId(process.env.TELEGRAM_TOPIC_PAYMENT),
+  // Preferred: split proof vs confirmed
+  payment_proof: toThreadId(process.env.TELEGRAM_TOPIC_PAYMENT_PROOF),
+  payment_confirmed: toThreadId(process.env.TELEGRAM_TOPIC_PAYMENT_CONFIRMED),
   kyc:     toThreadId(process.env.TELEGRAM_TOPIC_KYC),
   locker:  toThreadId(process.env.TELEGRAM_TOPIC_LOCKER),
   review:  toThreadId(process.env.TELEGRAM_TOPIC_REVIEW),
@@ -112,6 +116,12 @@ const notifyTo = (topicKey, payload) => {
   if (threadId) return notify({ ...payload, message_thread_id: threadId });
   return notify(payload);
 };
+
+const notifyPaymentProof = (payload) =>
+  notifyTo(TOPICS.payment_proof ? 'payment_proof' : 'payment', payload);
+
+const notifyPaymentConfirmedTopic = (payload) =>
+  notifyTo(TOPICS.payment_confirmed ? 'payment_confirmed' : 'payment', payload);
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -251,7 +261,7 @@ const notifyPaymentConfirmed = (recon, booking, adminName) => {
   };
   const bankLabel = BANK_LABELS[recon?.bank_name] || esc(recon?.bank_name);
 
-  return notifyTo('payment', {
+  return notifyPaymentConfirmedTopic({
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -327,7 +337,7 @@ const notifyPaymentProofUploaded = (recon, booking, user) => {
     extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
   }
 
-  return notifyTo('payment', {
+  return notifyPaymentProof({
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
