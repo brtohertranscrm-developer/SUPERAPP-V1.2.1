@@ -15,11 +15,13 @@ const router   = express.Router();
 const bcrypt   = require('bcrypt');
 const jwt      = require('jsonwebtoken');
 const crypto   = require('crypto');
+const path     = require('path');
 const { OAuth2Client } = require('google-auth-library');
 const db       = require('../db');
 const REFERRAL_CONFIG = require('../utils/referralConfig');
 const { sendResetPasswordEmail, sendEmailOtp, isEnabled: isMailerEnabled } = require('../utils/mailer'); // [FIX P7]
-require('dotenv').config();
+// Load env robustly regardless of PM2 cwd
+require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
 const JWT_SECRET       = process.env.JWT_SECRET;

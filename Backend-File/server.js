@@ -4,7 +4,8 @@ const express  = require('express');
 const cors     = require('cors');
 const path     = require('path');
 const fs       = require('fs');
-require('dotenv').config();
+// Load env robustly regardless of PM2 cwd
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 
 // ─── Helmet (opsional, graceful fallback jika belum install) ──────────────────
 let helmet;
@@ -30,6 +31,8 @@ app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 if (helmet) {
   app.use(
     helmet({
+      // Needed for Google Sign-In popup/iframe postMessage
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
       contentSecurityPolicy: {
         directives: {
           defaultSrc:  ["'self'"],
