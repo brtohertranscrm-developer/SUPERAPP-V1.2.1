@@ -5,6 +5,16 @@ import { createContext, useState } from 'react';
 export const AuthContext = createContext();
 
 const isAdminRole = (role) => role === 'admin' || role === 'superadmin' || role === 'subadmin';
+const normalizeAuthUser = (userData) => {
+  if (!userData || typeof userData !== 'object') return userData || null;
+  const rawKyc = userData.kyc_status ?? userData.kycStatus ?? 'unverified';
+  const kycStatus = String(rawKyc || 'unverified').trim().toLowerCase();
+  return {
+    ...userData,
+    kyc_status: kycStatus,
+    kycStatus,
+  };
+};
 
 export const AuthProvider = ({ children }) => {
   
@@ -13,7 +23,12 @@ export const AuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('user');
     // Bersihkan jika ternyata yang tersimpan adalah string 'undefined'
     if (storedUser === 'undefined' || storedUser === 'null') return null;
-    return storedUser ? JSON.parse(storedUser) : null;
+    try {
+      return storedUser ? normalizeAuthUser(JSON.parse(storedUser)) : null;
+    } catch {
+      localStorage.removeItem('user');
+      return null;
+    }
   });
 
   // State untuk Token
@@ -26,12 +41,13 @@ export const AuthProvider = ({ children }) => {
 
   // Fungsi Login
   const login = (userData, authToken) => {
-    setUser(userData);
+    const normalizedUser = normalizeAuthUser(userData);
+    setUser(normalizedUser);
     setToken(authToken); 
-    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('user', JSON.stringify(normalizedUser));
 
     // Pisahkan token admin vs user agar request /api/admin tidak "ketuker" token user yang stale.
-    if (isAdminRole(userData?.role)) {
+    if (isAdminRole(normalizedUser?.role)) {
       localStorage.setItem('admin_token', authToken);
       localStorage.setItem('token', authToken); // tetap set untuk kompatibilitas komponen lama
     } else {
@@ -53,7 +69,8 @@ export const AuthProvider = ({ children }) => {
   const updateKycStatus = (status) => {
     if (user) {
       const normalized = String(status || '').trim().toLowerCase();
-      const updatedUser = { ...user, kyc_status: normalized || user.kyc_status };
+      const nextStatus = normalized || user.kyc_status || user.kycStatus || 'unverified';
+      const updatedUser = normalizeAuthUser({ ...user, kyc_status: nextStatus, kycStatus: nextStatus });
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
     }

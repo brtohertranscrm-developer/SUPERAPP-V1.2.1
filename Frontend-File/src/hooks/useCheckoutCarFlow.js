@@ -18,6 +18,7 @@ export const useCheckoutCarFlow = () => {
 
   const [checkoutStep, setCheckoutStep] = useState('detail');
   const [paymentMethod, setPaymentMethod] = useState('bca');
+  const [freshKycStatus, setFreshKycStatus] = useState(null);
   const { paymentInfo } = usePaymentInfo();
 
   const [tripScope, setTripScope] = useState('local'); // local | out_of_town
@@ -44,9 +45,10 @@ export const useCheckoutCarFlow = () => {
     const run = async () => {
       try {
         const resultMe = await apiFetch('/api/dashboard/me');
-        const fresh = String(resultMe?.data?.user?.kyc_status || '').toLowerCase();
-        const current = String(user?.kyc_status || '').toLowerCase();
+        const fresh = String(resultMe?.data?.user?.kyc_status || '').trim().toLowerCase();
+        const current = String(user?.kyc_status ?? user?.kycStatus ?? '').trim().toLowerCase();
         if (!mounted) return;
+        if (fresh) setFreshKycStatus(fresh);
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
       } catch {
         // best-effort refresh; ignore network errors
@@ -90,7 +92,7 @@ export const useCheckoutCarFlow = () => {
     deliveryFee,
   } = delivery;
 
-  const kycRaw = user?.kyc_status ?? user?.kycStatus ?? '';
+  const kycRaw = freshKycStatus ?? user?.kyc_status ?? user?.kycStatus ?? '';
   const isKycVerified = String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   const subTotal = Number(computed?.subTotal) || 0;
@@ -184,6 +186,7 @@ export const useCheckoutCarFlow = () => {
     isSubmitting: submit.isSubmitting,
     submitError: submit.submitError,
     isKycVerified,
+    kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(),
     handleCheckout: submit.handleCheckout,
   };
 };

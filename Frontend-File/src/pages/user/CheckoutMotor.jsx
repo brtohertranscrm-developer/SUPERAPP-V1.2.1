@@ -37,6 +37,7 @@ export default function CheckoutMotor() {
     grandTotal,
     submitError,
     isKycVerified,
+    kycStatus,
     handleCheckout,
     isSubmitting,
     handoverMethod,
@@ -111,7 +112,7 @@ export default function CheckoutMotor() {
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight mb-6">Selesaikan Pesanan</h1>
 
         {!isKycVerified && (
-          <KycBanner status={user?.kyc_status} onNavigate={() => navigate('/dashboard')} />
+          <KycBanner status={kycStatus} onNavigate={() => navigate('/dashboard')} />
         )}
 
         <CheckoutStepIndicator steps={CHECKOUT_STEPS} activeKey={checkoutStep} />
@@ -265,4 +266,3 @@ export default function CheckoutMotor() {
     </div>
   );
 }
-

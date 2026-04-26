@@ -16,7 +16,6 @@ export default function CheckoutCar() {
 
   const {
     bookingData,
-    user,
     navigate,
     checkoutStep,
     setCheckoutStep,
@@ -33,6 +32,7 @@ export default function CheckoutCar() {
     isSubmitting,
     submitError,
     isKycVerified,
+    kycStatus,
     pickupLocation,
     handoverMethod,
     setHandoverMethod,
@@ -100,7 +100,7 @@ export default function CheckoutCar() {
 
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight mb-6">Selesaikan Pesanan Mobil</h1>
 
-        {!isKycVerified && <KycBanner status={user?.kyc_status} onNavigate={() => navigate('/dashboard')} />}
+        {!isKycVerified && <KycBanner status={kycStatus} onNavigate={() => navigate('/dashboard')} />}
 
         <CheckoutStepIndicator steps={CHECKOUT_CAR_STEPS} activeKey={checkoutStep} />
 

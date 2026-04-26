@@ -19,6 +19,7 @@ export const useCheckoutMotorFlow = () => {
 
   const [checkoutStep, setCheckoutStep] = useState('detail');
   const [paymentMethod, setPaymentMethod] = useState('bca');
+  const [freshKycStatus, setFreshKycStatus] = useState(null);
 
   const [tripScope, setTripScope] = useState('local'); // local | out_of_town
   const [tripDestination, setTripDestination] = useState('');
@@ -44,9 +45,10 @@ export const useCheckoutMotorFlow = () => {
     const run = async () => {
       try {
         const resultMe = await apiFetch('/api/dashboard/me');
-        const fresh = String(resultMe?.data?.user?.kyc_status || '').toLowerCase();
-        const current = String(user?.kyc_status || '').toLowerCase();
+        const fresh = String(resultMe?.data?.user?.kyc_status || '').trim().toLowerCase();
+        const current = String(user?.kyc_status ?? user?.kycStatus ?? '').trim().toLowerCase();
         if (!mounted) return;
+        if (fresh) setFreshKycStatus(fresh);
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
       } catch {
         // best-effort refresh; ignore network errors
@@ -124,7 +126,7 @@ export const useCheckoutMotorFlow = () => {
     [beforeDiscount, safeDiscount, deliveryFee, addonTotal]
   );
 
-  const kycRaw = user?.kyc_status ?? user?.kycStatus ?? '';
+  const kycRaw = freshKycStatus ?? user?.kyc_status ?? user?.kycStatus ?? '';
   const isKycVerified = String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   const submit = useSubmitMotorBooking({
@@ -182,6 +184,7 @@ export const useCheckoutMotorFlow = () => {
     isSubmitting: submit.isSubmitting,
     submitError: submit.submitError,
     setSubmitError: submit.setSubmitError,
+    kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(),
 
     handoverMethod,
     setHandoverMethod,

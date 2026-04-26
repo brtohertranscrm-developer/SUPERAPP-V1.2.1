@@ -18,6 +18,7 @@ export const useCheckoutLocker = () => {
   const [endDate, setEndDate] = useState(passedData.endDate || '');
   const [lockerSize, setLockerSize] = useState(passedData.size || 'Medium');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [freshKycStatus, setFreshKycStatus] = useState(null);
   
   // Normalisasi lokasi ke nama kota
   const rawLoc = passedData.location || '';
@@ -60,7 +61,7 @@ export const useCheckoutLocker = () => {
   }, [user, navigate, location.pathname, passedData]);
 
   // Perbaikan penulisan key dari database/context (kyc_status)
-  const kycRaw = user?.kyc_status ?? user?.kycStatus ?? '';
+  const kycRaw = freshKycStatus ?? user?.kyc_status ?? user?.kycStatus ?? '';
   const isKycApproved = String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   // Refresh ringan agar status KYC tidak stale setelah admin verifikasi
@@ -69,9 +70,10 @@ export const useCheckoutLocker = () => {
     const run = async () => {
       try {
         const resultMe = await apiFetch('/api/dashboard/me');
-        const fresh = String(resultMe?.data?.user?.kyc_status || '').toLowerCase();
-        const current = String(user?.kyc_status || '').toLowerCase();
+        const fresh = String(resultMe?.data?.user?.kyc_status || '').trim().toLowerCase();
+        const current = String(user?.kyc_status ?? user?.kycStatus ?? '').trim().toLowerCase();
         if (!mounted) return;
+        if (fresh) setFreshKycStatus(fresh);
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
       } catch {
         // best-effort refresh; ignore network errors
@@ -106,7 +108,7 @@ export const useCheckoutLocker = () => {
     endDate, setEndDate,
     lockerSize, setLockerSize,
     lockerLocation, basePrice, totalDays, totalPrice,
-    isKycApproved, isProcessing,
+    isKycApproved, kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(), isProcessing,
     handlePayment
   };
 };
