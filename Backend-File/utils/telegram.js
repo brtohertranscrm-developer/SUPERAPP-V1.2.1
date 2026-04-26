@@ -23,6 +23,22 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID;
 const ADMIN_URL = process.env.ADMIN_URL || 'http://localhost:5173/admin';
 
+// Telegram Forum Topics (optional)
+// If the group has Topics enabled, set these to route messages into separate threads.
+const toThreadId = (v) => {
+  const n = parseInt(String(v || '').trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+const TOPICS = {
+  log:     toThreadId(process.env.TELEGRAM_TOPIC_LOG),
+  booking: toThreadId(process.env.TELEGRAM_TOPIC_BOOKING),
+  payment: toThreadId(process.env.TELEGRAM_TOPIC_PAYMENT),
+  kyc:     toThreadId(process.env.TELEGRAM_TOPIC_KYC),
+  locker:  toThreadId(process.env.TELEGRAM_TOPIC_LOCKER),
+  review:  toThreadId(process.env.TELEGRAM_TOPIC_REVIEW),
+};
+
 if (!BOT_TOKEN || !CHAT_ID) {
   console.warn('⚠️  Telegram: TELEGRAM_BOT_TOKEN atau TELEGRAM_CHAT_ID belum di-set di .env');
   console.warn('   Notifikasi Telegram dinonaktifkan sampai .env dilengkapi.');
@@ -91,6 +107,12 @@ const bookingMeta = (booking) => {
 const notify = (payload) =>
   sendMessage(payload).catch((e) => console.error('Telegram notify failed:', e.message));
 
+const notifyTo = (topicKey, payload) => {
+  const threadId = topicKey ? TOPICS[topicKey] : null;
+  if (threadId) return notify({ ...payload, message_thread_id: threadId });
+  return notify(payload);
+};
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. BOOKING BARU
@@ -118,7 +140,8 @@ const notifyNewBooking = (booking, user) => {
     }
   }
 
-  return notify({
+  const topicKey = booking?.item_type === 'locker' ? 'locker' : 'booking';
+  return notifyTo(topicKey, {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -153,7 +176,7 @@ const notifyExtendBooking = (booking, user, newEndDate, extraCost) => {
     extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
   }
 
-  return notify({
+  return notifyTo('booking', {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -183,7 +206,7 @@ const notifyExtendBooking = (booking, user, newEndDate, extraCost) => {
 const notifyKycPending = (user) => {
   const phone = String(user?.phone || '').replace(/\D/g, '').replace(/^0/, '62');
 
-  return notify({
+  return notifyTo('kyc', {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -228,7 +251,7 @@ const notifyPaymentConfirmed = (recon, booking, adminName) => {
   };
   const bankLabel = BANK_LABELS[recon?.bank_name] || esc(recon?.bank_name);
 
-  return notify({
+  return notifyTo('payment', {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -259,7 +282,7 @@ const notifyPaymentConfirmed = (recon, booking, adminName) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 const testConnection = async () => {
   if (!isEnabled()) return;
-  await notify({
+  await notifyTo('log', {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     text:       `🚀 *Brother Trans server started*\n\nNotifikasi Telegram aktif ✓\n⏰ ${esc(fmtTime())}`,
@@ -286,7 +309,7 @@ const notifyGmapsReview = function(review, user) {
   if (review && review.screenshot_url) {
     lines.push('[Lihat Screenshot](' + review.screenshot_url + ')');
   }
-  return notify({
+  return notifyTo('review', {
     chat_id: CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
@@ -304,7 +327,7 @@ const notifyPaymentProofUploaded = (recon, booking, user) => {
     extraLines.push(`🚘 Plat: *${esc(booking?.plate_number)}*`);
   }
 
-  return notify({
+  return notifyTo('payment', {
     chat_id:    CHAT_ID,
     parse_mode: 'MarkdownV2',
     disable_web_page_preview: true,
