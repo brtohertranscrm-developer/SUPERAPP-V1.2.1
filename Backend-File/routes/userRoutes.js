@@ -1387,7 +1387,21 @@ router.post('/bookings', async (req, res) => {
       ))
       .catch((err) => console.error('[Telegram] booking notify error:', err.message));
 
-    res.status(201).json({ success: true, message: 'Booking berhasil dibuat.', order_id });
+    const createdBooking = await dbGet(
+      `SELECT order_id, item_type, item_name, total_price, payment_method, status, payment_status,
+              unit_id, plate_number, created_at, expires_at
+       FROM bookings
+       WHERE order_id = ? AND user_id = ?
+       LIMIT 1`,
+      [order_id, req.user.id]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Booking berhasil dibuat.',
+      order_id,
+      data: createdBooking || null,
+    });
 
   } catch (err) {
     const status = err?.statusCode || 500;

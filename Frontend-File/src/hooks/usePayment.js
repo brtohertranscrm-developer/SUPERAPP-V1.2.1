@@ -32,20 +32,25 @@ export const usePayment = () => {
           .then((r) => r.json())
           .then((data) => { if (data?.success) setPaymentInfo(data.data); });
 
-        if (orderDataFromState) {
-          await paymentInfoReq;
-          setOrderData(orderDataFromState);
-          return;
-        }
-
         if (orderIdParam) {
           const res = await fetch(`${API_URL}/api/bookings/${orderIdParam}`, {
             headers: { Authorization: `Bearer ${authToken}` },
           });
           const data = await res.json();
-          if (data?.success && data?.data) setOrderData(data.data);
-          else navigate('/dashboard', { replace: true });
+          if (data?.success && data?.data) {
+            setOrderData({ ...(orderDataFromState || {}), ...data.data });
+          } else if (orderDataFromState) {
+            setOrderData(orderDataFromState);
+          } else {
+            navigate('/dashboard', { replace: true });
+          }
           await paymentInfoReq;
+          return;
+        }
+
+        if (orderDataFromState) {
+          await paymentInfoReq;
+          setOrderData(orderDataFromState);
           return;
         }
 

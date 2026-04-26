@@ -137,6 +137,7 @@ export const useSubmitCarBooking = ({
       navigate(`/payment/${orderId}`, {
         state: {
           orderData: {
+            ...(data?.data || {}),
             order_id: orderId,
             item_type: 'car',
             item_name: bookingData?.carName || 'Mobil',
@@ -175,4 +176,3 @@ export const useSubmitCarBooking = ({
 
   return { isSubmitting, submitError, setSubmitError, handleCheckout };
 };
-

@@ -148,6 +148,7 @@ export const useSubmitMotorBooking = ({
       navigate(`/payment/${orderId}`, {
         state: {
           orderData: {
+            ...(data?.data || {}),
             order_id: orderId,
             item_type: 'motor',
             item_name: motorName,
@@ -189,4 +190,3 @@ export const useSubmitMotorBooking = ({
 
   return { isSubmitting, submitError, setSubmitError, handleCheckout };
 };
-
