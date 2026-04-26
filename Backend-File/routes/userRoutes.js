@@ -168,13 +168,20 @@ router.get('/dashboard/me', async (req, res) => {
 
     // Mengambil semua order aktif sebagai array
     const activeOrders = await dbAll(
-      `SELECT order_id as id, item_type, item_name as item, status, payment_status, location, 
+      `SELECT b.order_id as id, b.item_type, b.item_name as item, b.status, b.payment_status, b.location, 
               start_date as startDate, end_date as endDate, total_price,
               delivery_type, delivery_station_id, delivery_address,
-              unit_id, plate_number
-       FROM bookings 
-       WHERE user_id = ? AND status IN ('pending', 'active') 
-       ORDER BY start_date DESC`,
+              unit_id, plate_number,
+              (
+                SELECT pr.status
+                FROM payment_reconciliations pr
+                WHERE pr.order_id = b.order_id
+                ORDER BY pr.created_at DESC
+                LIMIT 1
+              ) AS recon_status
+       FROM bookings b
+       WHERE b.user_id = ? AND b.status IN ('pending', 'active') 
+       ORDER BY b.start_date DESC`,
       [req.user.id]
     );
 

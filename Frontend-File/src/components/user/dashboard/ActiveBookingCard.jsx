@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Bike, Package, MapPin, AlertTriangle, QrCode, CalendarPlus,
   ChevronLeft, ChevronRight, CheckCircle2, Clock,
@@ -18,7 +18,7 @@ const getDaysRemaining = (endDateStr) => {
 };
 
 // ─── Resolver: 5 state tiket dari kombinasi status + payment_status ──────────
-const resolveTicketState = (status, paymentStatus, endDateStr) => {
+const resolveTicketState = (status, paymentStatus, reconStatus, endDateStr) => {
   const daysLeft = getDaysRemaining(endDateStr);
 
   // Prioritas 1 — tagihan extend belum dibayar
@@ -30,6 +30,46 @@ const resolveTicketState = (status, paymentStatus, endDateStr) => {
       color:     'text-amber-400',
       icon:      CreditCard,
       bannerBg:  'bg-amber-500/20 border-amber-500/30',
+      pulse:     true,
+      showQr:    false,
+    };
+  }
+
+  // Prioritas 2 — bukti transfer sudah diupload (rekonsiliasi pending/matched), jangan tampil "menunggu pembayaran"
+  if (status === 'pending' && paymentStatus === 'unpaid' && reconStatus === 'matched') {
+    return {
+      key:       'waiting',
+      label:     'Menunggu Konfirmasi Admin',
+      desc:      'Pembayaran terverifikasi. Tim kami sedang memverifikasi dan menyiapkan unit.',
+      color:     'text-blue-400',
+      icon:      Clock,
+      bannerBg:  'bg-blue-500/20 border-blue-500/30',
+      pulse:     true,
+      showQr:    false,
+    };
+  }
+
+  if (status === 'pending' && paymentStatus === 'unpaid' && reconStatus === 'pending') {
+    return {
+      key:       'verifying',
+      label:     'Sedang Diverifikasi Admin',
+      desc:      'Bukti transfer sudah kamu upload. Tim admin sedang memverifikasi pembayaran.',
+      color:     'text-amber-400',
+      icon:      Clock,
+      bannerBg:  'bg-amber-500/20 border-amber-500/30',
+      pulse:     true,
+      showQr:    false,
+    };
+  }
+
+  if (status === 'pending' && paymentStatus === 'unpaid' && reconStatus === 'rejected') {
+    return {
+      key:       'rejected',
+      label:     'Bukti Transfer Ditolak',
+      desc:      'Bukti sebelumnya ditolak. Silakan upload ulang bukti transfer yang benar.',
+      color:     'text-rose-400',
+      icon:      AlertCircle,
+      bannerBg:  'bg-rose-500/20 border-rose-500/30',
       pulse:     true,
       showQr:    false,
     };
@@ -169,9 +209,11 @@ const ActiveBookingCard = ({
     });
   };
 
-  const ticketState = useMemo(
-    () => resolveTicketState(data.status, data.payment_status, data.endDate),
-    [data.status, data.payment_status, data.endDate]
+  const ticketState = resolveTicketState(
+    data.status,
+    data.payment_status,
+    data.recon_status,
+    data.endDate
   );
 
   const ItemIcon = data.item_type === 'locker' ? Package : Bike;
