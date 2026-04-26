@@ -115,29 +115,36 @@ const CheckoutLocker = () => {
   // STEP INDICATORS
   // ==========================================
   const StepIndicator = () => (
-    <div className="flex items-center justify-center gap-2 mb-8">
-      {STEPS.map((s, i) => {
-        const stepKeys = STEPS.map(x => x.key);
-        const currentIdx = stepKeys.indexOf(step);
-        const thisIdx = i;
-        const isDone   = thisIdx < currentIdx;
-        const isCurrent= thisIdx === currentIdx;
-        return (
-          <React.Fragment key={s.key}>
-            {i > 0 && <div className={`h-px w-8 ${isDone ? 'bg-blue-400' : 'bg-slate-200'}`} />}
-            <div className={`flex items-center gap-1.5 text-xs font-bold transition-all ${
-              isCurrent ? 'text-blue-600' : isDone ? 'text-emerald-500' : 'text-slate-400'
-            }`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                isDone ? 'bg-emerald-500 text-white' : isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
-              }`}>
-                {isDone ? '✓' : i + 1}
-              </div>
-              <span className="hidden sm:inline">{s.label}</span>
-            </div>
-          </React.Fragment>
-        );
-      })}
+    <div className="mb-8">
+      <div className="flex items-center justify-center">
+        <div className="flex items-center w-full max-w-xl flex-nowrap">
+          {STEPS.map((s, i) => {
+            const stepKeys = STEPS.map((x) => x.key);
+            const currentIdx = stepKeys.indexOf(step);
+            const isDone = i < currentIdx;
+            const isCurrent = i === currentIdx;
+            return (
+              <React.Fragment key={s.key}>
+                {i > 0 && <div className={`h-px flex-1 mx-2 ${isDone ? 'bg-blue-500' : 'bg-slate-200'}`} />}
+                <div
+                  className={`flex items-center gap-2 text-xs font-bold transition-all shrink-0 ${
+                    isCurrent ? 'text-blue-600' : isDone ? 'text-emerald-500' : 'text-slate-400'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                      isDone ? 'bg-emerald-500 text-white' : isCurrent ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-400'
+                    }`}
+                  >
+                    {isDone ? '✓' : i + 1}
+                  </div>
+                  <span className="hidden sm:inline whitespace-nowrap">{s.label}</span>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 
