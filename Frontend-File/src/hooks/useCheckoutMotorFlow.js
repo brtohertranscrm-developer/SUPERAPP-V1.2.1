@@ -189,6 +189,7 @@ export const useCheckoutMotorFlow = () => {
     isSubmitting: submit.isSubmitting,
     submitError: submit.submitError,
     setSubmitError: submit.setSubmitError,
+    isKycVerified,
     kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(),
     isKycChecking,
 
