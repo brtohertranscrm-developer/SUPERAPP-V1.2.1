@@ -19,6 +19,7 @@ export const useCheckoutCarFlow = () => {
   const [checkoutStep, setCheckoutStep] = useState('detail');
   const [paymentMethod, setPaymentMethod] = useState('bca');
   const [freshKycStatus, setFreshKycStatus] = useState(null);
+  const [isKycRefreshing, setIsKycRefreshing] = useState(false);
   const { paymentInfo } = usePaymentInfo();
 
   const [tripScope, setTripScope] = useState('local'); // local | out_of_town
@@ -43,8 +44,9 @@ export const useCheckoutCarFlow = () => {
   useEffect(() => {
     let mounted = true;
     const run = async () => {
+      setIsKycRefreshing(true);
       try {
-        const resultMe = await apiFetch('/api/dashboard/me');
+        const resultMe = await apiFetch(`/api/dashboard/me?_t=${Date.now()}`);
         const fresh = String(resultMe?.data?.user?.kyc_status || '').trim().toLowerCase();
         const current = String(user?.kyc_status ?? user?.kycStatus ?? '').trim().toLowerCase();
         if (!mounted) return;
@@ -52,6 +54,8 @@ export const useCheckoutCarFlow = () => {
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
       } catch {
         // best-effort refresh; ignore network errors
+      } finally {
+        if (mounted) setIsKycRefreshing(false);
       }
     };
     if (user) void run();
@@ -93,7 +97,8 @@ export const useCheckoutCarFlow = () => {
   } = delivery;
 
   const kycRaw = freshKycStatus ?? user?.kyc_status ?? user?.kycStatus ?? '';
-  const isKycVerified = String(kycRaw || '').trim().toLowerCase() === 'verified';
+  const isKycChecking = Boolean(user) && isKycRefreshing && freshKycStatus === null;
+  const isKycVerified = isKycChecking || String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   const subTotal = Number(computed?.subTotal) || 0;
   const beforeDiscount = Number(computed?.beforeDiscount) || 0;
@@ -187,6 +192,7 @@ export const useCheckoutCarFlow = () => {
     submitError: submit.submitError,
     isKycVerified,
     kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(),
+    isKycChecking,
     handleCheckout: submit.handleCheckout,
   };
 };

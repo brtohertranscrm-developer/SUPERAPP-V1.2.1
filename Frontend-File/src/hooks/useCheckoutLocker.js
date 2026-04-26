@@ -19,6 +19,7 @@ export const useCheckoutLocker = () => {
   const [lockerSize, setLockerSize] = useState(passedData.size || 'Medium');
   const [isProcessing, setIsProcessing] = useState(false);
   const [freshKycStatus, setFreshKycStatus] = useState(null);
+  const [isKycRefreshing, setIsKycRefreshing] = useState(false);
   
   // Normalisasi lokasi ke nama kota
   const rawLoc = passedData.location || '';
@@ -62,14 +63,16 @@ export const useCheckoutLocker = () => {
 
   // Perbaikan penulisan key dari database/context (kyc_status)
   const kycRaw = freshKycStatus ?? user?.kyc_status ?? user?.kycStatus ?? '';
-  const isKycApproved = String(kycRaw || '').trim().toLowerCase() === 'verified';
+  const isKycChecking = Boolean(user) && isKycRefreshing && freshKycStatus === null;
+  const isKycApproved = isKycChecking || String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   // Refresh ringan agar status KYC tidak stale setelah admin verifikasi
   useEffect(() => {
     let mounted = true;
     const run = async () => {
+      setIsKycRefreshing(true);
       try {
-        const resultMe = await apiFetch('/api/dashboard/me');
+        const resultMe = await apiFetch(`/api/dashboard/me?_t=${Date.now()}`);
         const fresh = String(resultMe?.data?.user?.kyc_status || '').trim().toLowerCase();
         const current = String(user?.kyc_status ?? user?.kycStatus ?? '').trim().toLowerCase();
         if (!mounted) return;
@@ -77,6 +80,8 @@ export const useCheckoutLocker = () => {
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
       } catch {
         // best-effort refresh; ignore network errors
+      } finally {
+        if (mounted) setIsKycRefreshing(false);
       }
     };
     if (user) void run();
@@ -108,7 +113,10 @@ export const useCheckoutLocker = () => {
     endDate, setEndDate,
     lockerSize, setLockerSize,
     lockerLocation, basePrice, totalDays, totalPrice,
-    isKycApproved, kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(), isProcessing,
+    isKycApproved,
+    kycStatus: String(kycRaw || 'unverified').trim().toLowerCase(),
+    isKycChecking,
+    isProcessing,
     handlePayment
   };
 };
