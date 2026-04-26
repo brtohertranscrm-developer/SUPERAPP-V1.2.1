@@ -89,6 +89,10 @@ export default function MotorCatalog() {
           </div>
         </div>
 
+        <div className="text-center text-xs text-slate-500 font-semibold leading-relaxed max-w-2xl mx-auto">
+          Unit dan warna kendaraan akan disesuaikan dengan stok yang tersedia. Foto di katalog adalah ilustrasi, kami akan berikan unit terbaik yang tersedia.
+        </div>
+
       </div>
     </div>
   );
