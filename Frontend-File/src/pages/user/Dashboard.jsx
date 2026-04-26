@@ -38,6 +38,7 @@ export default function Dashboard() {
     goToNextOrder,
     saveProfile,
     updateBanner,
+    updateProfilePicture,
     navigate,
     verifyKycCode,
     handleExtend,
@@ -114,6 +115,7 @@ export default function Dashboard() {
         setBannerUrl={setBannerUrl}
         kycStatus={kycStatus}
         updateBanner={updateBanner}
+        updateProfilePicture={updateProfilePicture}
         onEditClick={() => setIsEditModalOpen(true)}
       />
 

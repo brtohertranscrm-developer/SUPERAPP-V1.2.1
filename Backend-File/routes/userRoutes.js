@@ -222,6 +222,55 @@ router.put('/profile', async (req, res) => {
 });
 
 // ==========================================
+// 2b. UPDATE PROFILE MEDIA (Banner & Avatar)
+// ==========================================
+router.post('/users/update-banner', async (req, res) => {
+  try {
+    const bannerUrl = req.body?.bannerUrl;
+    if (!bannerUrl || typeof bannerUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'bannerUrl wajib diisi.' });
+    }
+
+    const trimmed = bannerUrl.trim();
+    if (trimmed.length < 10) {
+      return res.status(400).json({ success: false, error: 'Banner tidak valid.' });
+    }
+    if (trimmed.length > 2_000_000) {
+      return res.status(413).json({ success: false, error: 'Ukuran banner terlalu besar.' });
+    }
+
+    await dbRun(`UPDATE users SET profile_banner = ? WHERE id = ?`, [trimmed, req.user.id]);
+    res.json({ success: true, message: 'Banner berhasil diperbarui.', profile_banner: trimmed });
+  } catch (err) {
+    console.error('POST /users/update-banner error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui banner.' });
+  }
+});
+
+router.post('/users/update-profile-picture', async (req, res) => {
+  try {
+    const pictureUrl = req.body?.pictureUrl ?? req.body?.profile_picture ?? req.body?.profilePicture;
+    if (!pictureUrl || typeof pictureUrl !== 'string') {
+      return res.status(400).json({ success: false, error: 'pictureUrl wajib diisi.' });
+    }
+
+    const trimmed = pictureUrl.trim();
+    if (trimmed.length < 10) {
+      return res.status(400).json({ success: false, error: 'Foto profil tidak valid.' });
+    }
+    if (trimmed.length > 1_500_000) {
+      return res.status(413).json({ success: false, error: 'Ukuran foto profil terlalu besar.' });
+    }
+
+    await dbRun(`UPDATE users SET profile_picture = ? WHERE id = ?`, [trimmed, req.user.id]);
+    res.json({ success: true, message: 'Foto profil berhasil diperbarui.', profile_picture: trimmed });
+  } catch (err) {
+    console.error('POST /users/update-profile-picture error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal memperbarui foto profil.' });
+  }
+});
+
+// ==========================================
 // 3. TOP TRAVELLERS
 // ==========================================
 router.get('/dashboard/top-travellers', async (req, res) => {

@@ -179,13 +179,37 @@ export const useUserDashboard = () => {
 
   const updateBanner = async (base64String) => {
     try {
-      await fetch(`${API_URL}/api/users/update-banner`, {
+      const res = await fetch(`${API_URL}/api/users/update-banner`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({ bannerUrl: base64String }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      fetchDashboardData();
     } catch (error) {
       console.error('Gagal update banner:', error);
+    }
+  };
+
+  const updateProfilePicture = async (base64String) => {
+    try {
+      const res = await fetch(`${API_URL}/api/users/update-profile-picture`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ pictureUrl: base64String }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      fetchDashboardData();
+      return true;
+    } catch (error) {
+      console.error('Gagal update foto profil:', error);
+      return false;
     }
   };
 
@@ -235,6 +259,7 @@ export const useUserDashboard = () => {
     verifyKycCode,
     saveProfile,
     updateBanner,
+    updateProfilePicture,
     navigate,
     handleExtend,
   };
