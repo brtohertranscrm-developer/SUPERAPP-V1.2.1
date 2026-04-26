@@ -124,7 +124,8 @@ export const useCheckoutMotorFlow = () => {
     [beforeDiscount, safeDiscount, deliveryFee, addonTotal]
   );
 
-  const isKycVerified = String(user?.kyc_status || '').trim().toLowerCase() === 'verified';
+  const kycRaw = user?.kyc_status ?? user?.kycStatus ?? '';
+  const isKycVerified = String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   const submit = useSubmitMotorBooking({
     isKycVerified,

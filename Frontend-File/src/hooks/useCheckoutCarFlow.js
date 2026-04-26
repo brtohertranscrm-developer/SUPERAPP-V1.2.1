@@ -90,7 +90,8 @@ export const useCheckoutCarFlow = () => {
     deliveryFee,
   } = delivery;
 
-  const isKycVerified = String(user?.kyc_status || '').trim().toLowerCase() === 'verified';
+  const kycRaw = user?.kyc_status ?? user?.kycStatus ?? '';
+  const isKycVerified = String(kycRaw || '').trim().toLowerCase() === 'verified';
 
   const subTotal = Number(computed?.subTotal) || 0;
   const beforeDiscount = Number(computed?.beforeDiscount) || 0;
