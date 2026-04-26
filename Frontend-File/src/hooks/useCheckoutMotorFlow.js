@@ -48,7 +48,9 @@ export const useCheckoutMotorFlow = () => {
         const current = String(user?.kyc_status || '').toLowerCase();
         if (!mounted) return;
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
-      } catch {}
+      } catch {
+        // best-effort refresh; ignore network errors
+      }
     };
     if (user) void run();
     return () => { mounted = false; };
@@ -122,7 +124,7 @@ export const useCheckoutMotorFlow = () => {
     [beforeDiscount, safeDiscount, deliveryFee, addonTotal]
   );
 
-  const isKycVerified = user?.kyc_status === 'verified';
+  const isKycVerified = String(user?.kyc_status || '').trim().toLowerCase() === 'verified';
 
   const submit = useSubmitMotorBooking({
     isKycVerified,

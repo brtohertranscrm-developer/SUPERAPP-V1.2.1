@@ -60,7 +60,7 @@ export const useCheckoutLocker = () => {
   }, [user, navigate, location.pathname, passedData]);
 
   // Perbaikan penulisan key dari database/context (kyc_status)
-  const isKycApproved = user?.kyc_status === 'verified';
+  const isKycApproved = String(user?.kyc_status || '').trim().toLowerCase() === 'verified';
 
   // Refresh ringan agar status KYC tidak stale setelah admin verifikasi
   useEffect(() => {
@@ -72,7 +72,9 @@ export const useCheckoutLocker = () => {
         const current = String(user?.kyc_status || '').toLowerCase();
         if (!mounted) return;
         if (fresh && updateKycStatus && fresh !== current) updateKycStatus(fresh);
-      } catch {}
+      } catch {
+        // best-effort refresh; ignore network errors
+      }
     };
     if (user) void run();
     return () => { mounted = false; };

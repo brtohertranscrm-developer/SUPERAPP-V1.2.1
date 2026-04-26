@@ -990,7 +990,8 @@ router.post('/bookings', async (req, res) => {
     }
 
     const user = await dbGet(`SELECT kyc_status FROM users WHERE id = ?`, [req.user.id]);
-    if (!user || user.kyc_status !== 'verified') {
+    const kyc = String(user?.kyc_status || '').trim().toLowerCase();
+    if (!user || kyc !== 'verified') {
       return res.status(403).json({
         success: false,
         error: 'Anda harus melakukan verifikasi data (KYC) terlebih dahulu sebelum membuat pesanan.'
@@ -1515,7 +1516,7 @@ router.post('/users/kyc/verify', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
     }
 
-    if (user.kyc_status === 'verified') {
+    if (String(user.kyc_status || '').trim().toLowerCase() === 'verified') {
       return res.status(400).json({ success: false, error: 'Akun Anda sudah terverifikasi.' });
     }
 

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 // src/context/AuthContext.jsx
 import { createContext, useState } from 'react';
 
@@ -51,7 +52,8 @@ export const AuthProvider = ({ children }) => {
   // Fungsi Update KYC
   const updateKycStatus = (status) => {
     if (user) {
-      const updatedUser = { ...user, kyc_status: status };
+      const normalized = String(status || '').trim().toLowerCase();
+      const updatedUser = { ...user, kyc_status: normalized || user.kyc_status };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
     }
