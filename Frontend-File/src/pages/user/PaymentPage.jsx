@@ -21,6 +21,7 @@ export default function PaymentPage() {
   const [transferAmount, setTransferAmount] = useState('');
   // recon_status dari backend: 'pending' | 'matched' | 'rejected' | null
   const [reconStatus, setReconStatus] = useState(null);
+  const [expiresLeftSec, setExpiresLeftSec] = useState(null);
 
   useEffect(() => {
     if (orderData?.total_price != null) {
@@ -30,6 +31,31 @@ export default function PaymentPage() {
       setReconStatus(orderData.recon_status);
     }
   }, [orderData?.total_price, orderData?.recon_status]);
+
+  useEffect(() => {
+    const expRaw = orderData?.expires_at;
+    const status = String(orderData?.status || '').toLowerCase();
+    const pay = String(orderData?.payment_status || '').toLowerCase();
+    if (!expRaw || status !== 'pending' || pay !== 'unpaid') {
+      setExpiresLeftSec(null);
+      return;
+    }
+
+    const exp = new Date(expRaw);
+    if (Number.isNaN(exp.getTime())) {
+      setExpiresLeftSec(null);
+      return;
+    }
+
+    const tick = () => {
+      const left = Math.floor((exp.getTime() - Date.now()) / 1000);
+      setExpiresLeftSec(left);
+    };
+
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [orderData?.expires_at, orderData?.status, orderData?.payment_status]);
 
   const handleUploadProof = async () => {
     setUploadMsg('');
@@ -125,6 +151,24 @@ export default function PaymentPage() {
                     Rp {Number(orderData.total_price || 0).toLocaleString('id-ID')}
                   </div>
                   <div className="mt-1 text-xs text-gray-500 font-bold">{orderData.item_name}</div>
+
+                  {reconStatus !== 'pending' && reconStatus !== 'matched' && typeof expiresLeftSec === 'number' && (
+                    <div className="mt-4">
+                      {expiresLeftSec > 0 ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-800 text-sm font-bold">
+                          Pesanan ini akan otomatis dibatalkan jika belum ada bukti transfer dalam{' '}
+                          <span className="font-black">
+                            {Math.floor(expiresLeftSec / 60)}:{String(expiresLeftSec % 60).padStart(2, '0')}
+                          </span>
+                          .
+                        </div>
+                      ) : (
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-700 text-sm font-bold">
+                          Waktu pembayaran sudah habis. Silakan buat pesanan baru dari katalog.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5">

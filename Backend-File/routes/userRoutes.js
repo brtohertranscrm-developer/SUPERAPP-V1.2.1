@@ -890,13 +890,33 @@ router.post('/bookings', async (req, res) => {
     let resolvedItemName = item_name;
     let assignedUnitId = null;
     let assignedPlateNumber = null;
+    let motorId = null;
 
     if (item_type === 'motor') {
+      const pickupKey = normalizeCityKey(location);
       const motor = await dbGet(
-        `SELECT base_price, price_12h FROM motors WHERE name = ? LIMIT 1`,
-        [item_name]
+        `
+        SELECT id, name, display_name, base_price, price_12h, location
+        FROM motors
+        WHERE lower(name) = lower(?)
+           OR lower(COALESCE(display_name, '')) = lower(?)
+        ORDER BY
+          CASE
+            WHEN (CASE
+                   WHEN lower(COALESCE(location, '')) LIKE '%solo%' OR lower(COALESCE(location, '')) LIKE '%balapan%' THEN 'solo'
+                   ELSE 'yogyakarta'
+                 END) = ? THEN 0
+            ELSE 1
+          END,
+          id ASC
+        LIMIT 1
+        `,
+        [item_name, item_name, pickupKey]
       );
+
       if (motor) {
+        motorId = motor.id;
+        resolvedItemName = motor.display_name || motor.name;
         const settings = await dbGet(
           `SELECT motor_billing_mode, motor_threshold_12h
            FROM booking_pricing_settings WHERE id = 1`
@@ -915,6 +935,9 @@ router.post('/bookings', async (req, res) => {
         if (!rentalBreakdown.isValid) {
           return res.status(400).json({ success: false, error: rentalBreakdown.error });
         }
+      } else {
+        // Tetap izinkan booking jika item_name tidak match (kompatibilitas data lama),
+        // tapi auto-assign unit butuh motorId sehingga akan gagal dengan pesan yang jelas.
       }
     } else if (item_type === 'locker') {
       const locker = await dbGet(
@@ -1135,10 +1158,70 @@ router.post('/bookings', async (req, res) => {
     const endNorm = normalizeToSqliteDateTime(end_date);
     const bufPlus = bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes';
     const bufMinus = bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes';
+    const pendingTtlMinRaw = parseInt(process.env.BOOKING_PENDING_TTL_MINUTES || '180', 10);
+    const pendingTtlMin = Number.isFinite(pendingTtlMinRaw)
+      ? Math.max(5, Math.min(24 * 60, pendingTtlMinRaw))
+      : 180;
 
     // Atomic: booking + addon lines (+ car unit assign)
-    await dbRun(item_type === 'car' ? 'BEGIN IMMEDIATE' : 'BEGIN');
+    await dbRun((item_type === 'car' || item_type === 'motor') ? 'BEGIN IMMEDIATE' : 'BEGIN');
     try {
+      // Auto-assign unit for motor booking (to prevent double-booking)
+      if (item_type === 'motor') {
+        if (!motorId) {
+          const e = new Error('Motor tidak ditemukan. Silakan ulangi dari katalog.');
+          e.statusCode = 400;
+          throw e;
+        }
+        if (!startNorm || !endNorm) {
+          const e = new Error('Tanggal booking tidak valid.');
+          e.statusCode = 400;
+          throw e;
+        }
+
+        const unit = await dbGet(
+          `
+          SELECT mu.id, mu.plate_number
+          FROM motor_units mu
+          WHERE mu.motor_id = ?
+            AND mu.status = 'RDY'
+            AND mu.id NOT IN (
+              SELECT b.unit_id
+              FROM bookings b
+              WHERE b.item_type = 'motor'
+                AND b.unit_id IS NOT NULL
+                AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+            )
+            AND mu.id NOT IN (
+              SELECT ub.unit_id
+              FROM unit_blocks ub
+              WHERE datetime(ub.start_at) < datetime(?, ?)
+                AND datetime(ub.end_at)   > datetime(?, ?)
+            )
+          ORDER BY mu.id ASC
+          LIMIT 1
+          `,
+          [
+            motorId,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+          ]
+        );
+
+        if (!unit) {
+          const e = new Error('Motor sedang tidak tersedia untuk rentang tanggal tersebut.');
+          e.statusCode = 409;
+          throw e;
+        }
+
+        assignedUnitId = unit.id;
+        assignedPlateNumber = unit.plate_number || null;
+      }
+
       // Auto-assign unit for car booking (to prevent double-booking)
       if (item_type === 'car') {
         const carId = parseInt(car_id, 10) || null;
@@ -1231,6 +1314,14 @@ router.post('/bookings', async (req, res) => {
         ]
       );
 
+      // Expiry untuk booking pending/unpaid agar unit tidak terkunci selamanya
+      await dbRun(
+        `UPDATE bookings
+         SET expires_at = datetime('now', ?)
+         WHERE order_id = ? AND status = 'pending' AND payment_status = 'unpaid'`,
+        [`+${pendingTtlMin} minutes`, order_id]
+      );
+
       // Miles voucher: consume (mark used) in the same transaction as booking
       if (milesVoucher) {
         const used = await dbRun(
@@ -1321,7 +1412,7 @@ router.get('/bookings/:orderId', async (req, res) => {
               b.trip_scope, b.trip_destination,
               b.base_price, b.discount_amount, b.promo_code, b.service_fee, b.extend_fee, b.addon_fee, b.delivery_fee,
               b.paid_amount, b.total_price, b.status, b.payment_status, b.payment_method, b.duration_hours, b.price_notes,
-              b.unit_id, b.plate_number, b.created_at,
+              b.unit_id, b.plate_number, b.created_at, b.expires_at,
               r.status AS recon_status, r.bank_name AS recon_bank, r.transfer_date AS recon_transfer_date
        FROM bookings b
        LEFT JOIN (

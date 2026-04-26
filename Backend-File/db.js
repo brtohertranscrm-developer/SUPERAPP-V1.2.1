@@ -809,6 +809,7 @@ db.serialize(() => {
   addColumnIfNotExists('bookings', 'delivery_lng',         'REAL');
   addColumnIfNotExists('bookings', 'delivery_distance_km', 'REAL');
   addColumnIfNotExists('bookings', 'delivery_method',      'TEXT');
+  addColumnIfNotExists('bookings', 'expires_at',           'TEXT');
   // Trip info (out-of-town flag handled by scope)
   addColumnIfNotExists('bookings', 'trip_scope',           'TEXT');
   addColumnIfNotExists('bookings', 'trip_destination',     'TEXT');
@@ -949,6 +950,7 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_lockers_type ON lockers(type)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_locker_addons_type ON locker_addons(addon_type, is_active)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_bookings_duration ON bookings(duration_hours)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_bookings_expires_at ON bookings(expires_at)`);
 
   // Unit blocks + audit logs indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_unit_blocks_unit_id ON unit_blocks(unit_id)`);

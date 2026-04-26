@@ -21,6 +21,60 @@ const app  = express();
 const PORT = process.env.PORT || 5001;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// 0. BACKGROUND JOBS — cleanup booking expired (pending/unpaid)
+// ═══════════════════════════════════════════════════════════════════════════════
+const dbRun = (sql, params = []) =>
+  new Promise((resolve, reject) =>
+    db.run(sql, params, function (err) {
+      err ? reject(err) : resolve({ lastID: this.lastID, changes: this.changes });
+    })
+  );
+
+const cleanupExpiredBookings = async () => {
+  const ttlMinRaw = parseInt(process.env.BOOKING_PENDING_TTL_MINUTES || '180', 10);
+  const ttlMin = Number.isFinite(ttlMinRaw)
+    ? Math.max(5, Math.min(24 * 60, ttlMinRaw))
+    : 180;
+
+  // Safety net: if expires_at belum ada di booking lama, set berdasarkan created_at/start_date
+  // (hanya untuk pending/unpaid)
+  try {
+    await dbRun(
+      `
+      UPDATE bookings
+      SET expires_at = datetime(COALESCE(created_at, start_date), ?)
+      WHERE status = 'pending'
+        AND payment_status = 'unpaid'
+        AND (expires_at IS NULL OR trim(expires_at) = '')
+      `,
+      [`+${ttlMin} minutes`]
+    );
+  } catch {}
+
+  // Cancel booking yang sudah lewat expiry, tapi jangan cancel kalau sudah ada bukti transfer pending
+  await dbRun(
+    `
+    UPDATE bookings
+    SET status = 'cancelled'
+    WHERE status = 'pending'
+      AND payment_status = 'unpaid'
+      AND expires_at IS NOT NULL
+      AND datetime(expires_at) <= datetime('now')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM payment_reconciliations pr
+        WHERE pr.order_id = bookings.order_id
+          AND pr.status = 'pending'
+      )
+    `
+  ).catch(() => {});
+};
+
+setInterval(() => {
+  cleanupExpiredBookings().catch(() => {});
+}, 5 * 60 * 1000);
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // 1. TRUST PROXY
 // ═══════════════════════════════════════════════════════════════════════════════
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
