@@ -894,6 +894,107 @@ db.serialize(() => {
     )
   `);
 
+  // Seed default Places (hanya jika tabel kosong) agar admin tinggal refine.
+  // Fokus awal: charging station untuk Jogja & Solo.
+  db.get(`SELECT COUNT(*) AS cnt FROM places`, (err, row) => {
+    if (err) return;
+    if ((row?.cnt || 0) > 0) return;
+
+    const now = new Date().toISOString();
+    const gmapsSearch = (q) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(q || '').trim())}`;
+
+    const placesSeed = [
+      // =========================
+      // JOGJA — CHARGING
+      // =========================
+      {
+        place_type: 'charging',
+        city: 'jogja',
+        name: 'SPKLU Center PLN UP3 Yogyakarta',
+        address: 'Kantor PLN UP3 Yogyakarta (area Bantul), DI Yogyakarta',
+        maps_url: gmapsSearch('SPKLU Center PLN UP3 Yogyakarta'),
+        description: 'SPKLU Center PLN (cek titik paling akurat di Google Maps).',
+        sort_order: 10,
+      },
+      {
+        place_type: 'charging',
+        city: 'jogja',
+        name: 'SPKLU Kawasan Candi Prambanan',
+        address: 'Kompleks Candi Prambanan, Sleman, DI Yogyakarta',
+        maps_url: gmapsSearch('SPKLU Kawasan Candi Prambanan'),
+        description: 'Cocok untuk top-up saat wisata area Prambanan.',
+        sort_order: 20,
+      },
+      {
+        place_type: 'charging',
+        city: 'jogja',
+        name: 'SPKLU Transmart Maguwo',
+        address: 'Transmart Maguwo, Jl. Raya Solo KM 8 No.234, Maguwoharjo, Sleman',
+        maps_url: gmapsSearch('SPKLU Transmart Maguwo Jl. Raya Solo KM 8 No.234'),
+        description: 'Charging sambil belanja/istirahat.',
+        sort_order: 30,
+      },
+
+      // =========================
+      // SOLO — CHARGING
+      // =========================
+      {
+        place_type: 'charging',
+        city: 'solo',
+        name: 'SPKLU PLN UP3 Surakarta',
+        address: 'Jl. Brigjen Slamet Riyadi No.438, Surakarta',
+        maps_url: gmapsSearch('SPKLU PLN UP3 Surakarta Jl. Brigjen Slamet Riyadi 438'),
+        description: 'Titik charging PLN (cek ketersediaan & jam operasional di Maps).',
+        sort_order: 10,
+      },
+      {
+        place_type: 'charging',
+        city: 'solo',
+        name: 'SPKLU Transmart Solo Pabelan',
+        address: 'Transmart Pabelan Solo, Jl. Ahmad Yani No.234, Kartasura (area Solo Raya)',
+        maps_url: gmapsSearch('SPKLU Transmart Solo Pabelan Jl. Ahmad Yani 234'),
+        description: 'Charging sambil belanja/istirahat.',
+        sort_order: 20,
+      },
+      {
+        place_type: 'charging',
+        city: 'solo',
+        name: 'SPKLU Masjid Raya Sheikh Zayed Solo',
+        address: 'Masjid Raya Sheikh Zayed, Jl. Ahmad Yani (Banjarsari), Surakarta',
+        maps_url: gmapsSearch('SPKLU Masjid Raya Sheikh Zayed Solo'),
+        description: 'Charging dekat landmark utama kota Solo.',
+        sort_order: 30,
+      },
+    ];
+
+    const stmt = db.prepare(
+      `
+      INSERT INTO places
+        (place_type, city, name, address, maps_url, description, is_active, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `
+    );
+
+    for (const p of placesSeed) {
+      try {
+        stmt.run(
+          p.place_type,
+          p.city,
+          p.name,
+          p.address || null,
+          p.maps_url || null,
+          p.description || null,
+          Number.isFinite(Number(p.sort_order)) ? Number(p.sort_order) : 0,
+          now,
+          now
+        );
+      } catch {
+        // ignore seed failures (unique constraint, etc)
+      }
+    }
+    stmt.finalize();
+  });
+
   // Seed default SEO pages (hanya jika tabel kosong) agar admin tinggal refine.
   db.get(`SELECT COUNT(*) AS cnt FROM seo_pages`, (err, row) => {
     if (err) return;
