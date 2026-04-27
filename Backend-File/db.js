@@ -1185,7 +1185,14 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'user_tier',           "TEXT DEFAULT 'backpacker'");
   addColumnIfNotExists('users', 'season_trip_count',   'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'season_miles_earned', 'INTEGER DEFAULT 0');
-  addColumnIfNotExists('users', 'season_start_date',   "TEXT DEFAULT (date('now'))");
+  // SQLite tidak mengizinkan ALTER TABLE ADD COLUMN dengan DEFAULT non-konstan (mis. date('now')).
+  // Jadi kita add kolom tanpa default lalu backfill nilainya.
+  addColumnIfNotExists('users', 'season_start_date',   'TEXT');
+  db.run(
+    `UPDATE users
+     SET season_start_date = date('now')
+     WHERE season_start_date IS NULL OR trim(season_start_date) = ''`
+  );
 
   // Miles rewards — future-proof columns
   addColumnIfNotExists('miles_rewards', 'discount_amount', 'INTEGER NOT NULL DEFAULT 0');
