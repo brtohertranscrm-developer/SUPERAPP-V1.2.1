@@ -4,6 +4,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
+const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 
 router.use(verifyAdmin);
 router.use(requirePermission('tickets'));
@@ -40,6 +42,47 @@ router.get('/vendors', async (req, res) => {
   } catch (e) {
     console.error('GET /admin/tickets/vendors error:', e.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data vendor.' });
+  }
+});
+
+// POST /api/admin/tickets/vendors — create vendor user
+router.post('/vendors', async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const name = sanitize(raw.name, 140);
+    const email = sanitize(raw.email, 180).toLowerCase();
+    const phone = sanitize(raw.phone, 40) || '080000000000';
+    const password = typeof raw.password === 'string' ? raw.password : '';
+
+    if (!name) return res.status(400).json({ success: false, error: 'Nama wajib.' });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'Email tidak valid.' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password minimal 6 karakter.' });
+    }
+
+    const exists = await dbGet(`SELECT id FROM users WHERE email = ? LIMIT 1`, [email]).catch(() => null);
+    if (exists) return res.status(409).json({ success: false, error: 'Email sudah dipakai.' });
+
+    const id = crypto.randomUUID();
+    const hashed = await bcrypt.hash(password, 12);
+    const join_date = new Date().toISOString();
+
+    await dbRun(
+      `
+      INSERT INTO users
+        (id, name, email, password, phone, ktp_id, role, permissions, kyc_status, miles, location, join_date, email_verified)
+      VALUES
+        (?, ?, ?, ?, ?, NULL, 'vendor', '[]', 'unverified', 0, 'Lainnya', ?, 1)
+      `,
+      [id, name, email, hashed, phone, join_date]
+    );
+
+    res.status(201).json({ success: true, id });
+  } catch (e) {
+    console.error('POST /admin/tickets/vendors error:', e.message);
+    res.status(500).json({ success: false, error: 'Gagal membuat vendor.' });
   }
 });
 
@@ -252,4 +295,3 @@ router.put('/variants/:id', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -38,6 +38,9 @@ export default function Navbar() {
   // ========================================================
   const getDashboardUrl = (userData) => {
     if (!userData) return '/login';
+    if (userData.role === 'vendor') {
+      return '/vendor/tickets';
+    }
     if (userData.role === 'admin' || userData.role === 'superadmin' || userData.role === 'subadmin') {
       return getAdminLandingPath(userData);
     }
@@ -48,7 +51,8 @@ export default function Navbar() {
   const getRoleLabel = (role) => {
     if (role === 'superadmin') return 'Super Administrator';
     if (role === 'admin') return 'Administrator';
-    if (role === 'subadmin') return 'Sub-Admin / Vendor';
+    if (role === 'subadmin') return 'Sub-Admin';
+    if (role === 'vendor') return 'Vendor';
     return 'Pengguna Terverifikasi';
   };
 

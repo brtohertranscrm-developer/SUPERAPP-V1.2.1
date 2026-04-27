@@ -16,3 +16,13 @@ export const AdminRoute = ({ children }) => {
   
   return children;
 };
+
+export const VendorRoute = ({ children }) => {
+  const { user } = useContext(AuthContext);
+  if (!user) return <Navigate to="/login" replace />;
+  const role = String(user.role || '').toLowerCase();
+  if (role !== 'vendor' && role !== 'admin' && role !== 'superadmin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+};

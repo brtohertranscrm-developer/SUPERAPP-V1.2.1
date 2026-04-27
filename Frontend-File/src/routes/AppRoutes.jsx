@@ -4,6 +4,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from '../layouts/MainLayout';
 import AdminLayout from '../layouts/AdminLayout';
 import { AdminRoute } from './ProtectedRoute';
+import VendorLayout from '../layouts/VendorLayout';
+import { VendorRoute } from './ProtectedRoute';
 
 // 2. PUBLIC PAGES
 import Home from '../pages/public/Home';
@@ -22,6 +24,8 @@ import ResetPasswordPage from '../pages/public/ResetPasswordPage';
 import TermsPage from '../pages/public/TermsPage';
 import PrivacyPage from '../pages/public/PrivacyPage';
 import SeoPage from '../pages/public/SeoPage';
+import VendorTickets from '../pages/vendor/VendorTickets';
+import VendorReports from '../pages/vendor/VendorReports';
 
 // 3. USER PAGES (PROTECTED)
 import Dashboard from '../pages/user/Dashboard';
@@ -168,6 +172,13 @@ const AppRoutes = () => {
           <Route path="tickets" element={<AdminTickets />} />
           <Route path="content" element={<AdminContent />} />
 
+        </Route>
+
+        {/* RUTE VENDOR */}
+        <Route path="/vendor" element={<VendorRoute><VendorLayout /></VendorRoute>}>
+          <Route index element={<Navigate to="tickets" replace />} />
+          <Route path="tickets" element={<VendorTickets />} />
+          <Route path="reports" element={<VendorReports />} />
         </Route>
 
         {/* CATCH-ALL ROUTE */}

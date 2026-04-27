@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Plus, RefreshCcw, Save, XCircle } from 'lucide-react';
+import { Plus, RefreshCcw, Save, XCircle, UserPlus } from 'lucide-react';
 import { API_URL } from '../../components/admin/settings/settingsConstants';
 
 const authHeaders = () => {
@@ -25,6 +25,8 @@ export default function AdminTickets() {
   const [vendors, setVendors] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [variants, setVariants] = useState([]);
+  const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
+  const [vendorForm, setVendorForm] = useState({ name: '', email: '', phone: '', password: '' });
 
   const selected = useMemo(
     () => products.find((p) => p.id === selectedId) || null,
@@ -152,6 +154,27 @@ export default function AdminTickets() {
       if (!form.id && data.id) setSelectedId(data.id);
     } catch (e) {
       setError(e?.message || 'Gagal menyimpan.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createVendor = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/admin/tickets/vendors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(vendorForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Gagal membuat vendor.');
+      setIsVendorModalOpen(false);
+      setVendorForm({ name: '', email: '', phone: '', password: '' });
+      await loadVendors();
+    } catch (e) {
+      setError(e?.message || 'Gagal membuat vendor.');
     } finally {
       setLoading(false);
     }
@@ -339,7 +362,16 @@ export default function AdminTickets() {
                 />
               </label>
               <label className="block md:col-span-2">
-                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Vendor</div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendor</div>
+                  <button
+                    type="button"
+                    onClick={() => setIsVendorModalOpen(true)}
+                    className="text-[10px] font-black uppercase tracking-widest text-rose-600 hover:text-rose-700 flex items-center gap-1"
+                  >
+                    <UserPlus size={14} /> Tambah Vendor
+                  </button>
+                </div>
                 <select
                   value={form.vendor_id || ''}
                   onChange={(e) => setForm((p) => ({ ...p, vendor_id: e.target.value }))}
@@ -504,6 +536,75 @@ export default function AdminTickets() {
           </div>
         </div>
       </div>
+
+      {/* Vendor modal */}
+      {isVendorModalOpen ? (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-lg font-black text-slate-900">Tambah Vendor</div>
+                <div className="text-sm font-bold text-slate-500 mt-1">Buat akun vendor untuk akses portal redeem & rekap.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVendorModalOpen(false)}
+                className="p-2 rounded-xl hover:bg-slate-50 text-slate-500"
+                aria-label="Tutup"
+              >
+                <XCircle size={22} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                value={vendorForm.name}
+                onChange={(e) => setVendorForm((p) => ({ ...p, name: e.target.value }))}
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
+                placeholder="Nama vendor"
+              />
+              <input
+                value={vendorForm.email}
+                onChange={(e) => setVendorForm((p) => ({ ...p, email: e.target.value }))}
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
+                placeholder="Email vendor"
+                inputMode="email"
+              />
+              <input
+                value={vendorForm.phone}
+                onChange={(e) => setVendorForm((p) => ({ ...p, phone: e.target.value }))}
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
+                placeholder="No HP"
+              />
+              <input
+                value={vendorForm.password}
+                onChange={(e) => setVendorForm((p) => ({ ...p, password: e.target.value }))}
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
+                placeholder="Password"
+                type="password"
+              />
+            </div>
+
+            <div className="mt-5 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setIsVendorModalOpen(false)}
+                className="px-5 py-3 rounded-2xl bg-white border border-slate-200 font-black text-slate-700 hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={createVendor}
+                disabled={loading}
+                className="px-5 py-3 rounded-2xl bg-rose-500 text-white font-black hover:bg-rose-600 disabled:opacity-60"
+              >
+                Buat Vendor
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
