@@ -3,6 +3,7 @@ export const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 export const availableMenus = [
   { key: 'dashboard', label: 'Dashboard Stats' },
   { key: 'booking', label: 'Data Pesanan (Booking)' },
+  { key: 'manual_entry', label: 'Input Manual (User & Booking)' },
   { key: 'logistics', label: 'Jadwal Antar/Kembali (View)' },
   { key: 'logistics_manage', label: 'Jadwal Antar/Kembali (Manage)' },
   { key: 'manning', label: 'Manning Tim (Karyawan & Libur)' },

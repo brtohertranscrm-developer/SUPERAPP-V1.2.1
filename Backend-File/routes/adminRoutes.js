@@ -6,6 +6,8 @@ const ImageKit = require('imagekit');
 const db = require('../db');
 const { verifyAdmin, requirePermission, requireAnyPermission, requireAdminRole } = require('../middlewares/authMiddleware');
 const { issueTicketVouchersForOrder } = require('../utils/ticketing');
+const { calculateLockerPrice, MIN_HOURS: LOCKER_MIN_HOURS } = require('../utils/lockerPricing');
+const { notifyNewBooking } = require('../utils/telegram');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -181,6 +183,30 @@ const normalizeToSqliteDateTime = (value) => {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
   }
   return raw.slice(0, 19).replace('T', ' ');
+};
+
+const hasPermissionKey = (req, key) => {
+  let perms = [];
+  try {
+    perms = typeof req.user?.permissions === 'string'
+      ? JSON.parse(req.user.permissions)
+      : (req.user?.permissions || []);
+  } catch {
+    perms = [];
+  }
+  return Array.isArray(perms) && perms.includes(key);
+};
+
+// Manual-entry gate:
+// - Superadmin selalu boleh
+// - Admin/Subadmin hanya jika checklist permission "manual_entry" aktif
+const requireManualEntry = (req, res, next) => {
+  if (req.user?.role === 'superadmin') return next();
+  if (hasPermissionKey(req, 'manual_entry')) return next();
+  return res.status(403).json({
+    success: false,
+    error: 'Akses ditolak. Fitur input manual hanya untuk Superadmin atau admin yang diberi akses.',
+  });
 };
 
 const hasUnitConflict = async ({ unitId, orderId, startDate, endDate, bufferMinutes = 0 }) => {
@@ -1589,6 +1615,517 @@ router.get('/bookings', requireAnyPermission(['booking', 'armada', 'logistics'])
   } catch (err) {
     console.error('GET /admin/bookings error:', err.message);
     res.status(500).json({ success: false, error: 'Gagal mengambil data transaksi.' });
+  }
+});
+
+// ==========================================
+// MANUAL ENTRY (Akses: booking/users)
+// - Buat user manual (email_verified + KYC settled)
+// - Buat booking manual (motor/mobil/loker)
+// ==========================================
+const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+const normalizePhone = (phone) => String(phone || '').trim();
+const makeUserId = () => `USR-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+
+const makeTempPassword = () =>
+  crypto.randomBytes(6).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 10) || 'TempPass123';
+
+const makeOrderId = (prefix) => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const rand = crypto.randomBytes(2).toString('hex').toUpperCase();
+  return `${prefix}-${y}${m}${d}-${rand}`;
+};
+
+router.get('/manual/catalogs', requireManualEntry, async (req, res) => {
+  try {
+    const motors = await dbAll(
+      `SELECT id, name, COALESCE(display_name, name) as display_name, location, base_price, price_12h
+       FROM motors
+       ORDER BY id DESC`
+    );
+    const cars = await dbAll(
+      `SELECT id, name, COALESCE(display_name, name) as display_name, base_price
+       FROM cars
+       ORDER BY id DESC`
+    );
+    const lockers = await dbAll(
+      `SELECT id, type, location, stock, price_1h, price_12h, price_24h
+       FROM lockers
+       ORDER BY id DESC`
+    );
+    res.json({ success: true, data: { motors, cars, lockers, locker_min_hours: LOCKER_MIN_HOURS } });
+  } catch (err) {
+    console.error('GET /admin/manual/catalogs error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal mengambil data katalog.' });
+  }
+});
+
+router.post('/manual/users', requireManualEntry, async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const name = String(raw.name || '').trim();
+    const phone = normalizePhone(raw.phone || '');
+    const location = String(raw.location || 'Lainnya').trim() || 'Lainnya';
+    const ktpId = raw.ktp_id ? String(raw.ktp_id).trim() : null;
+    const resetPassword = raw.reset_password !== false;
+
+    if (!name || name.length < 2) {
+      return res.status(400).json({ success: false, error: 'Nama wajib diisi (min 2 karakter).' });
+    }
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'No HP wajib diisi.' });
+    }
+
+    let email = raw.email ? String(raw.email).trim().toLowerCase() : '';
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: 'Format email tidak valid.' });
+    }
+    if (!email) {
+      const digits = String(phone).replace(/\D/g, '') || crypto.randomBytes(3).toString('hex');
+      email = `guest.${digits}@brothertrans.local`;
+    }
+
+    const existing = await dbGet(`SELECT id, email, role FROM users WHERE lower(email) = lower(?) LIMIT 1`, [email]).catch(() => null);
+    const tempPassword = resetPassword ? makeTempPassword() : null;
+    const hashedPassword = resetPassword ? await bcrypt.hash(tempPassword, 10) : null;
+
+    if (existing) {
+      // Update existing customer (keep role if already admin/vendor)
+      const isCustomerRole = !existing.role || String(existing.role).toLowerCase() === 'user';
+      const fields = [];
+      const params = [];
+
+      fields.push('name = ?'); params.push(name);
+      fields.push('phone = ?'); params.push(phone);
+      fields.push('location = ?'); params.push(location);
+      if (ktpId) { fields.push('ktp_id = ?'); params.push(ktpId); }
+      if (hashedPassword) { fields.push('password = ?'); params.push(hashedPassword); }
+      fields.push('email_verified = 1');
+      // user manual = KYC settled
+      fields.push(`kyc_status = 'verified'`);
+
+      if (isCustomerRole) {
+        await dbRun(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, [...params, existing.id]);
+      } else {
+        // Jangan downgrade admin/vendor, tapi tetap set email_verified + profile.
+        await dbRun(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, [...params, existing.id]);
+      }
+
+      const user = await dbGet(
+        `SELECT id, name, email, phone, role, kyc_status, email_verified FROM users WHERE id = ? LIMIT 1`,
+        [existing.id]
+      );
+      return res.json({
+        success: true,
+        message: 'User berhasil diperbarui.',
+        data: { user, temp_password: tempPassword },
+      });
+    }
+
+    const userId = makeUserId();
+    const passwordToUse = hashedPassword || (await bcrypt.hash(makeTempPassword(), 10));
+    await dbRun(
+      `INSERT INTO users (id, name, email, password, phone, role, permissions, kyc_status, email_verified, location, ktp_id, join_date)
+       VALUES (?, ?, ?, ?, ?, 'user', '[]', 'verified', 1, ?, ?, ?)`,
+      [userId, name, email, passwordToUse, phone, location, ktpId, new Date().toISOString()]
+    );
+
+    const user = await dbGet(
+      `SELECT id, name, email, phone, role, kyc_status, email_verified FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    return res.status(201).json({
+      success: true,
+      message: 'User berhasil dibuat.',
+      data: { user, temp_password: tempPassword },
+    });
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE constraint') || String(err.message || '').includes('unique')) {
+      return res.status(409).json({ success: false, error: 'Email sudah digunakan.' });
+    }
+    console.error('POST /admin/manual/users error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal membuat user.' });
+  }
+});
+
+router.post('/manual/bookings', requireManualEntry, async (req, res) => {
+  try {
+    const raw = req.body || {};
+    const itemType = String(raw.item_type || '').trim().toLowerCase();
+    const userId = String(raw.user_id || '').trim();
+    const location = raw.location ? String(raw.location).trim() : null;
+    const paymentStatus = String(raw.payment_status || 'paid').trim().toLowerCase();
+    const paymentMethod = String(raw.payment_method || 'transfer').trim().toLowerCase();
+
+    if (!userId) return res.status(400).json({ success: false, error: 'user_id wajib diisi.' });
+    if (!['motor', 'car', 'locker'].includes(itemType)) {
+      return res.status(400).json({ success: false, error: 'item_type tidak valid.' });
+    }
+    if (!['paid', 'unpaid'].includes(paymentStatus)) {
+      return res.status(400).json({ success: false, error: 'payment_status tidak valid.' });
+    }
+
+    const userRow = await dbGet(`SELECT id, name, phone FROM users WHERE id = ? LIMIT 1`, [userId]).catch(() => null);
+    if (!userRow) return res.status(404).json({ success: false, error: 'User tidak ditemukan.' });
+
+    let orderId = raw.order_id ? String(raw.order_id).trim() : '';
+    if (!orderId) {
+      orderId = makeOrderId(itemType === 'motor' ? 'BTM' : itemType === 'car' ? 'BTC' : 'BTL');
+    }
+
+    const existing = await dbGet(`SELECT order_id FROM bookings WHERE order_id = ? LIMIT 1`, [orderId]).catch(() => null);
+    if (existing) return res.status(409).json({ success: false, error: 'Order ID sudah digunakan.' });
+
+    const ttlMinRaw = parseInt(process.env.BOOKING_PENDING_TTL_MINUTES || '180', 10);
+    const ttlMin = Number.isFinite(ttlMinRaw) ? Math.max(5, Math.min(24 * 60, ttlMinRaw)) : 180;
+
+    if (itemType === 'locker') {
+      // NOTE: Untuk loker manual, disarankan payment_status=paid agar stok tidak "menggantung".
+      const lockerId = parseInt(raw.locker_id, 10);
+      const durationHours = parseInt(raw.duration_hours, 10);
+      const startDateRaw = raw.start_date ? String(raw.start_date).trim() : '';
+      if (!lockerId || !durationHours || !startDateRaw) {
+        return res.status(400).json({ success: false, error: 'locker_id, duration_hours, start_date wajib diisi.' });
+      }
+      if (!location) {
+        return res.status(400).json({ success: false, error: 'Lokasi loker wajib diisi.' });
+      }
+
+      const locker = await dbGet(
+        `SELECT id, type, location, stock, price_1h, price_12h, price_24h FROM lockers WHERE id = ? LIMIT 1`,
+        [lockerId]
+      ).catch(() => null);
+      if (!locker) return res.status(404).json({ success: false, error: 'Loker tidak ditemukan.' });
+      if (Number(locker.stock) <= 0) return res.status(409).json({ success: false, error: 'Stok loker habis.' });
+
+      const pricing = calculateLockerPrice(durationHours, locker.price_1h, locker.price_12h, locker.price_24h);
+      if (!pricing.isValid) return res.status(400).json({ success: false, error: pricing.error });
+
+      const pickupFee = Math.max(0, parseInt(raw.pickup_fee, 10) || 0);
+      const dropFee = Math.max(0, parseInt(raw.drop_fee, 10) || 0);
+      const totalPrice = pricing.total + pickupFee + dropFee;
+
+      const startMs = new Date(startDateRaw).getTime();
+      if (Number.isNaN(startMs)) return res.status(400).json({ success: false, error: 'Tanggal mulai tidak valid.' });
+      const endDateIso = new Date(startMs + durationHours * 60 * 60 * 1000).toISOString();
+      const itemName = raw.item_name ? String(raw.item_name).trim() : `Loker ${String(locker.type || '').trim()}`;
+
+      await dbRun('BEGIN IMMEDIATE');
+      try {
+        const stockResult = await dbRun(
+          `UPDATE lockers SET stock = stock - 1 WHERE id = ? AND stock > 0`,
+          [lockerId]
+        );
+        if (!stockResult || stockResult.changes === 0) {
+          const e = new Error('Stok loker habis. Silakan pilih loker lain.');
+          e.statusCode = 409;
+          throw e;
+        }
+
+        await dbRun(
+          `INSERT INTO bookings (order_id, user_id, item_type, item_name, location, start_date, end_date,
+           base_price, total_price, status, payment_status, payment_method, paid_amount, duration_hours, pickup_fee, drop_fee)
+           VALUES (?, ?, 'locker', ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+          [
+            orderId,
+            userId,
+            itemName,
+            location,
+            startDateRaw,
+            endDateIso,
+            pricing.total,
+            totalPrice,
+            paymentStatus,
+            paymentMethod,
+            paymentStatus === 'paid' ? totalPrice : 0,
+            durationHours,
+            pickupFee,
+            dropFee,
+          ]
+        );
+
+        if (paymentStatus === 'unpaid') {
+          await dbRun(
+            `UPDATE bookings
+             SET expires_at = datetime('now', ?)
+             WHERE order_id = ? AND status = 'pending' AND payment_status = 'unpaid'`,
+            [`+${ttlMin} minutes`, orderId]
+          ).catch(() => {});
+        }
+
+        await dbRun('COMMIT');
+      } catch (e) {
+        try { await dbRun('ROLLBACK'); } catch {}
+        // best-effort revert stock
+        await dbRun(`UPDATE lockers SET stock = stock + 1 WHERE id = ?`, [lockerId]).catch(() => {});
+        throw e;
+      }
+
+      notifyNewBooking(
+        {
+          order_id: orderId,
+          item_type: 'locker',
+          item_name: itemName,
+          location,
+          start_date: startDateRaw,
+          end_date: endDateIso,
+          total_price: totalPrice,
+          payment_method: paymentMethod,
+        },
+        userRow
+      ).catch(() => {});
+
+      return res.status(201).json({ success: true, message: 'Booking loker manual dibuat.', data: { order_id: orderId } });
+    }
+
+    // Motor / Car manual booking
+    const startDateRaw = raw.start_date ? String(raw.start_date).trim() : '';
+    const endDateRaw = raw.end_date ? String(raw.end_date).trim() : '';
+    const totalPrice = Math.max(0, parseInt(raw.total_price, 10) || 0);
+    const basePrice = Math.max(0, parseInt(raw.base_price, 10) || totalPrice);
+    const serviceFee = Math.max(0, parseInt(raw.service_fee, 10) || 0);
+    const addonFee = Math.max(0, parseInt(raw.addon_fee, 10) || 0);
+    const deliveryFee = Math.max(0, parseInt(raw.delivery_fee, 10) || 0);
+    const discountAmount = Math.max(0, parseInt(raw.discount_amount, 10) || 0);
+    const durationHours = Math.max(1, parseInt(raw.duration_hours, 10) || 1);
+    const tripScope = raw.trip_scope ? String(raw.trip_scope).trim() : 'local';
+    const tripDestination = raw.trip_destination ? String(raw.trip_destination).trim().slice(0, 140) : null;
+
+    if (!startDateRaw || !endDateRaw) {
+      return res.status(400).json({ success: false, error: 'start_date dan end_date wajib diisi.' });
+    }
+    if (!location) {
+      return res.status(400).json({ success: false, error: 'Lokasi wajib diisi.' });
+    }
+    if (!tripDestination) {
+      return res.status(400).json({ success: false, error: 'Tujuan pemakaian wajib diisi.' });
+    }
+    if (totalPrice <= 0) {
+      return res.status(400).json({ success: false, error: 'total_price wajib diisi.' });
+    }
+
+    const startNorm = normalizeToSqliteDateTime(startDateRaw);
+    const endNorm = normalizeToSqliteDateTime(endDateRaw);
+    if (!startNorm || !endNorm) {
+      return res.status(400).json({ success: false, error: 'Tanggal booking tidak valid.' });
+    }
+
+    const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
+    const bufPlus = bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes';
+    const bufMinus = bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes';
+
+    let resolvedItemName = raw.item_name ? String(raw.item_name).trim() : null;
+    let assignedUnitId = null;
+    let assignedPlateNumber = null;
+
+    await dbRun('BEGIN IMMEDIATE');
+    try {
+      if (itemType === 'motor') {
+        const motorId = parseInt(raw.motor_id, 10);
+        if (!motorId) {
+          const e = new Error('motor_id wajib dipilih.');
+          e.statusCode = 400;
+          throw e;
+        }
+
+        const motor = await dbGet(
+          `SELECT id, name, COALESCE(display_name, name) as display_name FROM motors WHERE id = ? LIMIT 1`,
+          [motorId]
+        );
+        if (!motor) {
+          const e = new Error('Motor tidak ditemukan.');
+          e.statusCode = 400;
+          throw e;
+        }
+        resolvedItemName = resolvedItemName || motor.display_name || motor.name;
+
+        const unit = await dbGet(
+          `
+          SELECT mu.id, mu.plate_number
+          FROM motor_units mu
+          WHERE mu.motor_id = ?
+            AND mu.status = 'RDY'
+            AND mu.id NOT IN (
+              SELECT b.unit_id
+              FROM bookings b
+              WHERE b.item_type = 'motor'
+                AND b.unit_id IS NOT NULL
+                AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+            )
+            AND mu.id NOT IN (
+              SELECT ub.unit_id
+              FROM unit_blocks ub
+              WHERE datetime(ub.start_at) < datetime(?, ?)
+                AND datetime(ub.end_at)   > datetime(?, ?)
+            )
+          ORDER BY mu.id ASC
+          LIMIT 1
+          `,
+          [
+            motorId,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+          ]
+        );
+        if (!unit) {
+          const e = new Error('Motor tidak tersedia untuk rentang tanggal tersebut.');
+          e.statusCode = 409;
+          throw e;
+        }
+        assignedUnitId = unit.id;
+        assignedPlateNumber = unit.plate_number || null;
+      }
+
+      if (itemType === 'car') {
+        const carId = parseInt(raw.car_id, 10);
+        if (!carId) {
+          const e = new Error('car_id wajib dipilih.');
+          e.statusCode = 400;
+          throw e;
+        }
+
+        const car = await dbGet(
+          `SELECT id, name, COALESCE(display_name, name) as display_name FROM cars WHERE id = ? LIMIT 1`,
+          [carId]
+        );
+        if (!car) {
+          const e = new Error('Mobil tidak ditemukan.');
+          e.statusCode = 400;
+          throw e;
+        }
+        resolvedItemName = resolvedItemName || car.display_name || car.name;
+
+        const preferLike = String(location || '').toLowerCase().includes('solo') ? '%solo%' : '%yogya%';
+        const unit = await dbGet(
+          `
+          SELECT cu.id, cu.plate_number
+          FROM car_units cu
+          WHERE cu.car_id = ?
+            AND cu.status = 'RDY'
+            AND cu.id NOT IN (
+              SELECT b.unit_id
+              FROM bookings b
+              WHERE b.item_type = 'car'
+                AND b.unit_id IS NOT NULL
+                AND b.status NOT IN ('cancelled', 'completed', 'selesai')
+                AND ${dtExpr('b.start_date')} < datetime(?, ?)
+                AND ${dtExpr('b.end_date')}   > datetime(?, ?)
+            )
+            AND cu.id NOT IN (
+              SELECT cub.car_unit_id
+              FROM car_unit_blocks cub
+              WHERE datetime(cub.start_at) < datetime(?, ?)
+                AND datetime(cub.end_at)   > datetime(?, ?)
+            )
+          ORDER BY
+            CASE WHEN lower(COALESCE(cu.current_location, '')) LIKE ? THEN 0 ELSE 1 END,
+            cu.id ASC
+          LIMIT 1
+          `,
+          [
+            carId,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            endNorm, bufPlus,
+            startNorm, bufMinus,
+            preferLike,
+          ]
+        );
+        if (!unit) {
+          const e = new Error('Mobil tidak tersedia untuk rentang tanggal tersebut.');
+          e.statusCode = 409;
+          throw e;
+        }
+        assignedUnitId = unit.id;
+        assignedPlateNumber = unit.plate_number || null;
+      }
+
+      const paidAmount = paymentStatus === 'paid' ? totalPrice : 0;
+      const promoCode = raw.promo_code ? String(raw.promo_code).trim().toUpperCase() : null;
+      const priceNotes = raw.price_notes ? String(raw.price_notes).trim().slice(0, 240) : null;
+
+      await dbRun(
+        `INSERT INTO bookings (
+           order_id, user_id, item_type, item_name, location,
+           trip_scope, trip_destination,
+           start_date, end_date,
+           base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
+           paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
+           unit_id, plate_number
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          userId,
+          itemType,
+          resolvedItemName,
+          location,
+          tripScope,
+          tripDestination,
+          startDateRaw,
+          endDateRaw,
+          basePrice,
+          discountAmount,
+          promoCode,
+          serviceFee,
+          addonFee,
+          deliveryFee,
+          paidAmount,
+          totalPrice,
+          paymentStatus,
+          paymentMethod,
+          durationHours,
+          priceNotes,
+          assignedUnitId,
+          assignedPlateNumber,
+        ]
+      );
+
+      if (paymentStatus === 'unpaid') {
+        await dbRun(
+          `UPDATE bookings
+           SET expires_at = datetime('now', ?)
+           WHERE order_id = ? AND status = 'pending' AND payment_status = 'unpaid'`,
+          [`+${ttlMin} minutes`, orderId]
+        ).catch(() => {});
+      }
+
+      await dbRun('COMMIT');
+    } catch (e) {
+      try { await dbRun('ROLLBACK'); } catch {}
+      throw e;
+    }
+
+    notifyNewBooking(
+      {
+        order_id: orderId,
+        item_type: itemType,
+        item_name: resolvedItemName,
+        location,
+        start_date: startDateRaw,
+        end_date: endDateRaw,
+        total_price: totalPrice,
+        payment_method: paymentMethod,
+        plate_number: assignedPlateNumber,
+        trip_scope: tripScope,
+        trip_destination: tripDestination,
+      },
+      userRow
+    ).catch(() => {});
+
+    return res.status(201).json({ success: true, message: 'Booking manual dibuat.', data: { order_id: orderId } });
+  } catch (err) {
+    const status = err?.statusCode || 500;
+    if (status !== 500) return res.status(status).json({ success: false, error: err.message || 'Gagal membuat booking.' });
+    console.error('POST /admin/manual/bookings error:', err.message);
+    res.status(500).json({ success: false, error: 'Gagal membuat booking.' });
   }
 });
 

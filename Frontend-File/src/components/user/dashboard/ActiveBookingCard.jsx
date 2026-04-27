@@ -41,8 +41,9 @@ const getDaysRemaining = (endDateStr) => {
 };
 
 // ─── Resolver: 5 state tiket dari kombinasi status + payment_status ──────────
-const resolveTicketState = (status, paymentStatus, reconStatus, endDateStr) => {
+const resolveTicketState = (status, paymentStatus, reconStatus, startDateStr, endDateStr) => {
   const daysLeft = getDaysRemaining(endDateStr);
+  const startDateTime = parseDateTime(startDateStr);
   const endDateTime = parseDateTime(endDateStr);
   const now = new Date();
   const isOverdue = !!endDateTime && now.getTime() > endDateTime.getTime();
@@ -101,6 +102,24 @@ const resolveTicketState = (status, paymentStatus, reconStatus, endDateStr) => {
       pulse:     true,
       showQr:    false,
     };
+  }
+
+  // Prioritas 2 — jadwal masih jauh (contoh: minggu depan), tampil "menunggu jadwal"
+  if (status === 'pending' && paymentStatus === 'paid') {
+    const msToStart = startDateTime ? (startDateTime.getTime() - now.getTime()) : null;
+    const isFarFuture = msToStart !== null && msToStart > (48 * 60 * 60 * 1000);
+    if (isFarFuture) {
+      return {
+        key:       'schedule_pending',
+        label:     'Menunggu Jadwal',
+        desc:      'Pesanan sudah tercatat. Jadwal pengambilan/antar unit akan kami konfirmasi mendekati hari H.',
+        color:     'text-slate-300',
+        icon:      Clock,
+        bannerBg:  'bg-white/10 border-white/10',
+        pulse:     false,
+        showQr:    false,
+      };
+    }
   }
 
   // Prioritas 2 — menunggu konfirmasi admin
@@ -258,6 +277,7 @@ const ActiveBookingCard = ({
     data.status,
     data.payment_status,
     data.recon_status,
+    data.startDate,
     data.endDate
   );
 
