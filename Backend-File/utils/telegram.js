@@ -72,7 +72,19 @@ const sendMessage = (payload) => new Promise((resolve) => {
     res.on('end', () => {
       try {
         const r = JSON.parse(raw);
-        if (!r.ok) console.error('⚠️  Telegram API error:', r.description);
+        if (!r.ok) {
+          const desc = r.description || 'Unknown error';
+          const migrated = r?.parameters?.migrate_to_chat_id;
+          if (migrated) {
+            console.error('⚠️  Telegram API error:', desc);
+            console.error('➡️  Telegram chat upgraded. Update TELEGRAM_CHAT_ID to:', migrated);
+          } else if (String(desc).toLowerCase().includes('upgraded to a supergroup')) {
+            console.error('⚠️  Telegram API error:', desc);
+            console.error('➡️  Update TELEGRAM_CHAT_ID (biasanya jadi -100xxxxxxxxxx untuk supergroup).');
+          } else {
+            console.error('⚠️  Telegram API error:', desc);
+          }
+        }
       } catch (_) {}
       resolve(null);
     });

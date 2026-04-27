@@ -21,6 +21,27 @@ Kalau backend kamu jalan di domain/port berbeda (tanpa reverse proxy), kamu bisa
 
 Contoh environment ada di `.env.example`.
 
+## SEO Pages (Admin Content)
+
+Ada mini CMS untuk landing page SEO (Jogja/Solo, lokasi, dll):
+
+- Admin route: `/admin/content`
+- Permission untuk subadmin: `content` (bisa di-set dari menu `/admin/settings` → Admin Accounts)
+- Public pages saat ini dipetakan ke route:
+  - `/jogja`, `/jogja/sewa-motor`, `/jogja/sewa-mobil`
+  - `/solo`, `/solo/sewa-motor`, `/solo/sewa-mobil`, `/solo/sewa-loker`
+  - `/lokasi/jogja-lempuyangan`, `/lokasi/solo-kestalan-banjarsari`
+
+Catatan: konten halaman disanitize di backend sebelum dipublish.
+
+## Google Sign-In (optional)
+
+- Frontend: set `VITE_GOOGLE_CLIENT_ID` (lihat `Frontend-File/.env.example`)
+- Backend: set `GOOGLE_CLIENT_ID` (lihat `Backend-File/.env.example`)
+- Google Cloud Console: Authorized JavaScript origins minimal:
+  - `http://localhost:5173` (dev)
+  - `https://beta.brotherstrans.id` dan `https://brotherstrans.id` (production)
+
 ## React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).

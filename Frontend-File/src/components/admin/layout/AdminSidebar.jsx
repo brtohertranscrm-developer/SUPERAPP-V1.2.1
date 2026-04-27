@@ -41,6 +41,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Partnership',     path: '/admin/partners',   key: 'partners',  icon: <Handshake size={20} /> },
         { name: 'Add-ons & Paket', path: '/admin/addons',     key: 'booking',   icon: <PackagePlus size={20} /> },
         { name: 'Konten Artikel',  path: '/admin/artikel',    key: 'artikel',   icon: <FileText size={20} /> },
+        { name: 'SEO Pages',       path: '/admin/content',    key: 'content',   icon: <FileText size={20} /> },
         { name: 'Referral',        path: '/admin/referral',   key: 'settings',  icon: <Gift size={20} /> },
       ],
     },

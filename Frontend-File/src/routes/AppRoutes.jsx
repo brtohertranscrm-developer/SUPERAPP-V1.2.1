@@ -21,6 +21,7 @@ import GoogleCompleteProfilePage from '../pages/public/GoogleCompleteProfilePage
 import ResetPasswordPage from '../pages/public/ResetPasswordPage';
 import TermsPage from '../pages/public/TermsPage';
 import PrivacyPage from '../pages/public/PrivacyPage';
+import SeoPage from '../pages/public/SeoPage';
 
 // 3. USER PAGES (PROTECTED)
 import Dashboard from '../pages/user/Dashboard';
@@ -59,6 +60,7 @@ import AdminManning from '../pages/admin/AdminManning';
 import AdminStaffDashboard from '../pages/admin/AdminStaffDashboard';
 import AdminGmapsReview from '../pages/admin/AdminGmapsReview';
 import AdminMilesRewards from '../pages/admin/AdminMilesRewards';
+import AdminContent from '../pages/admin/AdminContent';
 import BodyScrollReset from '../components/common/BodyScrollReset';
 import { useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
@@ -100,6 +102,26 @@ const AppRoutes = () => {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+
+          {/* SEO aliases (keep canonical under /{city}/{service}) */}
+          <Route path="/sewa-motor-jogja" element={<Navigate to="/jogja/sewa-motor" replace />} />
+          <Route path="/sewa-mobil-jogja" element={<Navigate to="/jogja/sewa-mobil" replace />} />
+          <Route path="/sewa-motor-solo" element={<Navigate to="/solo/sewa-motor" replace />} />
+          <Route path="/sewa-mobil-solo" element={<Navigate to="/solo/sewa-mobil" replace />} />
+          <Route path="/sewa-loker-solo" element={<Navigate to="/solo/sewa-loker" replace />} />
+          <Route path="/lokasi-jogja-lempuyangan" element={<Navigate to="/lokasi/jogja-lempuyangan" replace />} />
+          <Route path="/lokasi-solo-kestalan-banjarsari" element={<Navigate to="/lokasi/solo-kestalan-banjarsari" replace />} />
+
+          {/* SEO landing pages (editable via Admin Content dashboard) */}
+          <Route path="/jogja" element={<SeoPage slug="jogja" />} />
+          <Route path="/jogja/sewa-motor" element={<SeoPage slug="jogja/sewa-motor" />} />
+          <Route path="/jogja/sewa-mobil" element={<SeoPage slug="jogja/sewa-mobil" />} />
+          <Route path="/solo" element={<SeoPage slug="solo" />} />
+          <Route path="/solo/sewa-motor" element={<SeoPage slug="solo/sewa-motor" />} />
+          <Route path="/solo/sewa-mobil" element={<SeoPage slug="solo/sewa-mobil" />} />
+          <Route path="/solo/sewa-loker" element={<SeoPage slug="solo/sewa-loker" />} />
+          <Route path="/lokasi/jogja-lempuyangan" element={<SeoPage slug="lokasi/jogja-lempuyangan" />} />
+          <Route path="/lokasi/solo-kestalan-banjarsari" element={<SeoPage slug="lokasi/solo-kestalan-banjarsari" />} />
           
           {/* User Routes */}
           <Route path="/dashboard" element={<Dashboard />} />
@@ -142,6 +164,7 @@ const AppRoutes = () => {
           <Route path="manning" element={<AdminManning />} />
           <Route path="gmaps-review" element={<AdminGmapsReview />} />
           <Route path="miles-rewards" element={<AdminMilesRewards />} />
+          <Route path="content" element={<AdminContent />} />
 
         </Route>
 

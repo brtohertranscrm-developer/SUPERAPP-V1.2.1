@@ -23,6 +23,7 @@ export const getAdminLandingPath = (user) => {
   if (perms.includes('dashboard') && perms.includes('booking')) return '/admin/dashboard';
   if (perms.includes('partners')) return '/admin/partners';
   if (perms.includes('artikel')) return '/admin/artikel';
+  if (perms.includes('content')) return '/admin/content';
   if (perms.includes('armada')) return '/admin/armada';
   if (perms.includes('booking')) return '/admin/booking';
   if (perms.includes('logistics')) return '/admin/logistics';

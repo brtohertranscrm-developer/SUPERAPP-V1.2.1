@@ -12,6 +12,7 @@ export const availableMenus = [
   { key: 'pricing', label: 'Dynamic Pricing & Promo' },
   { key: 'partners', label: 'Partnership (Homepage Partner)' },
   { key: 'artikel', label: 'Konten Artikel' },
+  { key: 'content', label: 'SEO Pages (Landing Pages)' },
   { key: 'users', label: 'Data Pelanggan & KYC' },
   { key: 'settings', label: 'Pengaturan & Akses' },
 ];
@@ -25,6 +26,5 @@ export const permissionPresets = [
     permissions: ['logistics', 'manning', 'armada'],
   },
   { key: 'finance', label: 'Finance', permissions: ['finance', 'settings'] },
-  { key: 'konten', label: 'Konten', permissions: ['artikel', 'partners', 'pricing'] },
+  { key: 'konten', label: 'Konten', permissions: ['artikel', 'partners', 'pricing', 'content'] },
 ];
-
