@@ -693,20 +693,25 @@ router.post('/google', googleLimiter, async (req, res) => {
 
     // If user exists and already complete → issue JWT
     if (user) {
-      const hasPhone = !!String(user.phone || '').trim();
-      const hasKtp = String(user.ktp_id || '').replace(/\D/g, '').length === 16;
-      if (!hasPhone || !hasKtp) {
-        const tempExpSec = Math.floor(Date.now() / 1000) + (15 * 60);
-        const tempToken = jwt.sign(
-          { scope: 'google_complete', sub: g.sub, email: g.email, name: g.name, picture: g.picture, exp: tempExpSec },
-          JWT_SECRET
-        );
-        return res.json({
-          success: true,
-          needs_profile: true,
-          temp_token: tempToken,
-          profile: { email: g.email, name: g.name, picture: g.picture },
-        });
+      // Staff/admin accounts don't require phone/NIK completion.
+      // Completion flow is only for regular users to ensure booking data completeness.
+      const isPrivileged = user.role && user.role !== 'user';
+      if (!isPrivileged) {
+        const hasPhone = !!String(user.phone || '').trim();
+        const hasKtp = String(user.ktp_id || '').replace(/\D/g, '').length === 16;
+        if (!hasPhone || !hasKtp) {
+          const tempExpSec = Math.floor(Date.now() / 1000) + (15 * 60);
+          const tempToken = jwt.sign(
+            { scope: 'google_complete', sub: g.sub, email: g.email, name: g.name, picture: g.picture, exp: tempExpSec },
+            JWT_SECRET
+          );
+          return res.json({
+            success: true,
+            needs_profile: true,
+            temp_token: tempToken,
+            profile: { email: g.email, name: g.name, picture: g.picture },
+          });
+        }
       }
 
       // Mark email as verified (trusted by Google)

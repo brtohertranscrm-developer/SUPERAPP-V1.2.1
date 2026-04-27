@@ -1,5 +1,12 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const crypto = require('crypto');
+let bcrypt = null;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = null;
+}
 
 // ==========================================
 // 1. KONEKSI DATABASE
@@ -1106,6 +1113,53 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'login_attempts', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'locked_until',   'INTEGER DEFAULT NULL');
   addColumnIfNotExists('users', 'last_login',      'TEXT DEFAULT NULL');
+
+  // ==========================================
+  // 4b. SEED — Admin Content (Google login, no OTP)
+  // ==========================================
+  // Tujuan: admin konten bisa login via Google tanpa perlu OTP/email verify flow.
+  // Catatan: password tetap wajib oleh schema, tapi tidak dipakai untuk login Google.
+  const CONTENT_ADMIN_EMAIL = String(process.env.SEED_CONTENT_ADMIN_EMAIL || 'brtohertranscrm@gmail.com')
+    .trim()
+    .toLowerCase();
+  const seedContentAdmin = () => {
+    if (!CONTENT_ADMIN_EMAIL) return;
+    const nowIso = new Date().toISOString();
+
+    const id = crypto.randomUUID();
+    const plain = crypto.randomBytes(18).toString('hex');
+    const hashed = bcrypt ? bcrypt.hashSync(plain, 12) : plain;
+    const seedName = 'Brothers Trans CRM';
+    const seedPhone = '080000000000';
+    const seedRole = 'subadmin';
+    const seedPerms = JSON.stringify(['content']);
+
+    db.run(
+      `INSERT INTO users
+        (id, name, email, password, phone, ktp_id, role, permissions, kyc_status, miles, location, join_date, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unverified', 0, 'Lainnya', ?, 1)
+       ON CONFLICT(email) DO UPDATE SET
+         role = CASE
+           WHEN users.role IN ('admin','superadmin','subadmin') THEN users.role
+           ELSE excluded.role
+         END,
+         permissions = excluded.permissions,
+         email_verified = 1,
+         name = CASE
+           WHEN users.name IS NULL OR trim(users.name) = '' THEN excluded.name
+           ELSE users.name
+         END,
+         phone = CASE
+           WHEN users.phone IS NULL OR trim(users.phone) = '' THEN excluded.phone
+           ELSE users.phone
+         END`,
+      [id, seedName, CONTENT_ADMIN_EMAIL, hashed, seedPhone, null, seedRole, seedPerms, nowIso],
+      (e) => {
+        if (e) console.error('⚠️  Seed content admin gagal:', e.message);
+      }
+    );
+  };
+  seedContentAdmin();
 
   // Bookings — kolom lama
   addColumnIfNotExists('bookings', 'payment_status',  'TEXT DEFAULT "paid"');

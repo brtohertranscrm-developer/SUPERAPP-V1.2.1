@@ -42,6 +42,11 @@ Catatan: konten halaman disanitize di backend sebelum dipublish.
   - `http://localhost:5173` (dev)
   - `https://beta.brotherstrans.id` dan `https://brotherstrans.id` (production)
 
+## Seed akun admin konten
+
+Backend otomatis men-seed akun `subadmin` + permission `content` untuk email di `SEED_CONTENT_ADMIN_EMAIL`
+(default: `brtohertranscrm@gmail.com`). Akun ini bisa login via Google tanpa flow OTP/email verify.
+
 ## React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
