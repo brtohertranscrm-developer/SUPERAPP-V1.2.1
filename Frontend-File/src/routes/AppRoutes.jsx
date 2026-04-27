@@ -102,6 +102,16 @@ const AppRoutes = () => {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+
+          {/* SEO aliases (keep canonical under /{city}/{service}) */}
+          <Route path="/sewa-motor-jogja" element={<Navigate to="/jogja/sewa-motor" replace />} />
+          <Route path="/sewa-mobil-jogja" element={<Navigate to="/jogja/sewa-mobil" replace />} />
+          <Route path="/sewa-motor-solo" element={<Navigate to="/solo/sewa-motor" replace />} />
+          <Route path="/sewa-mobil-solo" element={<Navigate to="/solo/sewa-mobil" replace />} />
+          <Route path="/sewa-loker-solo" element={<Navigate to="/solo/sewa-loker" replace />} />
+          <Route path="/lokasi-jogja-lempuyangan" element={<Navigate to="/lokasi/jogja-lempuyangan" replace />} />
+          <Route path="/lokasi-solo-kestalan-banjarsari" element={<Navigate to="/lokasi/solo-kestalan-banjarsari" replace />} />
+
           {/* SEO landing pages (editable via Admin Content dashboard) */}
           <Route path="/jogja" element={<SeoPage slug="jogja" />} />
           <Route path="/jogja/sewa-motor" element={<SeoPage slug="jogja/sewa-motor" />} />
