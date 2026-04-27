@@ -6,6 +6,10 @@ const db = require('../db');
 const { verifyAdmin, requirePermission } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const ImageKit = require('imagekit');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 router.use(verifyAdmin);
 router.use(requirePermission('tickets'));
@@ -28,6 +32,91 @@ const sanitize = (v, max = 500) =>
 
 const sanitizeHtmlLoose = (v, max = 20000) =>
   typeof v === 'string' ? v.trim().slice(0, max) : '';
+
+const imagekit = (
+  process.env.IMAGEKIT_PUBLIC_KEY &&
+  process.env.IMAGEKIT_PRIVATE_KEY &&
+  process.env.IMAGEKIT_URL_ENDPOINT
+) ? new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+}) : null;
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
+const getSafeExtension = (originalname) => {
+  const ext = path.extname(originalname).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) return null;
+  return ext;
+};
+
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    const mimeOk = ALLOWED_IMAGE_TYPES.includes(file.mimetype);
+    const extOk = getSafeExtension(file.originalname) !== null;
+    if (mimeOk && extOk) return cb(null, true);
+    return cb(new Error('Tipe file tidak diizinkan. Gunakan JPG, PNG, WebP, atau GIF.'));
+  },
+});
+
+const ensureUploadsDir = () => {
+  try {
+    const dir = path.join(__dirname, '..', 'uploads');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  } catch {}
+};
+
+const saveBufferToLocalUploads = ({ buffer, filename }) => {
+  ensureUploadsDir();
+  const fullPath = path.join(__dirname, '..', 'uploads', filename);
+  fs.writeFileSync(fullPath, buffer);
+  return `/uploads/${filename}`;
+};
+
+const uploadBufferToStorage = async ({ buffer, filename, folder }) => {
+  if (imagekit) {
+    const uploaded = await imagekit.upload({
+      file: Buffer.from(buffer).toString('base64'),
+      fileName: filename,
+      folder,
+      useUniqueFileName: true,
+    });
+    return { provider: 'imagekit', url: uploaded.url };
+  }
+  const url = saveBufferToLocalUploads({ buffer, filename });
+  return { provider: 'local', url };
+};
+
+// POST /api/admin/tickets/uploads/cover
+router.post('/uploads/cover', (req, res) => {
+  memoryUpload.single('file')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Ukuran file terlalu besar. Maks 5MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+    try {
+      if (!req.file?.buffer) return res.status(400).json({ success: false, error: 'File tidak ditemukan.' });
+      const ext = getSafeExtension(req.file.originalname);
+      if (!ext) return res.status(400).json({ success: false, error: 'Ekstensi file tidak valid.' });
+      const filename = `ticket-cover-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const uploaded = await uploadBufferToStorage({
+        buffer: req.file.buffer,
+        filename,
+        folder: '/tickets/covers',
+      });
+      res.status(201).json({ success: true, url: uploaded.url, provider: uploaded.provider });
+    } catch (e) {
+      console.error('POST /admin/tickets/uploads/cover error:', e.message);
+      res.status(500).json({ success: false, error: 'Gagal upload cover.' });
+    }
+  });
+});
 
 // GET /api/admin/tickets/vendors
 router.get('/vendors', async (req, res) => {

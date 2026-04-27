@@ -962,6 +962,8 @@ router.post('/bookings', async (req, res) => {
     let ticketVariantId = null;
     let ticketQty = null;
     let ticketVendorUserId = null;
+    let ticketQuotaPerDay = null;
+    let ticketVisitYmd = null;
 
     if (itemType === 'motor') {
       const pickupKey = normalizeCityKey(resolvedLocation);
@@ -1051,6 +1053,7 @@ router.post('/bookings', async (req, res) => {
       const variant = await dbGet(
         `
         SELECT v.id as variant_id, v.name as variant_name, v.price as variant_price,
+               v.quota_per_day as quota_per_day,
                p.id as product_id, p.title as product_title, p.city as product_city, p.vendor_id as vendor_id, p.is_active as product_active,
                v.is_active as variant_active
         FROM ticket_variants v
@@ -1071,6 +1074,7 @@ router.post('/bookings', async (req, res) => {
         return res.status(400).json({ success: false, error: 'Harga tiket tidak valid.' });
       }
       ticketVendorUserId = variant.vendor_id || null;
+      ticketQuotaPerDay = Math.max(0, parseInt(variant.quota_per_day, 10) || 0);
 
       // Hitung total di server (anti-manipulasi)
       finalPrice = refPrice * ticketQty;
@@ -1081,6 +1085,7 @@ router.post('/bookings', async (req, res) => {
       // Normalize end_date = +1 hari (00:00) supaya validasi "end > start" lolos.
       const pad = (n) => String(n).padStart(2, '0');
       const visitYmd = `${visitDt.getFullYear()}-${pad(visitDt.getMonth() + 1)}-${pad(visitDt.getDate())}`;
+      ticketVisitYmd = visitYmd;
       startDateRaw = `${visitYmd}T00:00:00`;
       const next = new Date(`${visitYmd}T00:00:00`);
       next.setDate(next.getDate() + 1);
@@ -1295,8 +1300,53 @@ router.post('/bookings', async (req, res) => {
       : 180;
 
     // Atomic: booking + addon lines (+ car unit assign)
-    await dbRun((itemType === 'car' || itemType === 'motor') ? 'BEGIN IMMEDIATE' : 'BEGIN');
+    await dbRun((itemType === 'car' || itemType === 'motor' || itemType === 'ticket') ? 'BEGIN IMMEDIATE' : 'BEGIN');
     try {
+      // Ticketing: quota check per hari (berdasarkan visit_date = start_date ymd)
+      if (itemType === 'ticket' && ticketQuotaPerDay && ticketQuotaPerDay > 0) {
+        if (!ticketVisitYmd || !ticketVariantId) {
+          const e = new Error('Tanggal kunjungan tidak valid.');
+          e.statusCode = 400;
+          throw e;
+        }
+
+        const soldRow = await dbGet(
+          `
+          SELECT COUNT(*) as c
+          FROM ticket_vouchers
+          WHERE variant_id = ?
+            AND visit_date = ?
+            AND status IN ('active','used')
+          `,
+          [ticketVariantId, ticketVisitYmd]
+        ).catch(() => ({ c: 0 }));
+        const sold = parseInt(soldRow?.c, 10) || 0;
+
+        // Hold sementara dari booking pending/unpaid yang belum expired.
+        const holdRow = await dbGet(
+          `
+          SELECT IFNULL(SUM(COALESCE(ticket_qty, 1)), 0) as q
+          FROM bookings
+          WHERE item_type = 'ticket'
+            AND ticket_variant_id = ?
+            AND status = 'pending'
+            AND payment_status = 'unpaid'
+            AND expires_at IS NOT NULL
+            AND datetime(expires_at) > datetime('now')
+            AND date(start_date) = date(?)
+          `,
+          [ticketVariantId, ticketVisitYmd]
+        ).catch(() => ({ q: 0 }));
+        const held = parseInt(holdRow?.q, 10) || 0;
+
+        if (sold + held + (ticketQty || 1) > ticketQuotaPerDay) {
+          const remaining = Math.max(0, ticketQuotaPerDay - (sold + held));
+          const e = new Error(`Kuota tiket untuk tanggal ${ticketVisitYmd} sudah penuh. Sisa kuota: ${remaining}.`);
+          e.statusCode = 409;
+          throw e;
+        }
+      }
+
       // Auto-assign unit for motor booking (to prevent double-booking)
       if (itemType === 'motor') {
         if (!motorId) {

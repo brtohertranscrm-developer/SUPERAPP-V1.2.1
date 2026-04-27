@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import { Plus, RefreshCcw, Save, XCircle, UserPlus } from 'lucide-react';
+import { Plus, RefreshCcw, Save, XCircle, UserPlus, UploadCloud } from 'lucide-react';
 import { API_URL } from '../../components/admin/settings/settingsConstants';
 
 const authHeaders = () => {
@@ -19,7 +19,9 @@ const slugify = (s) =>
     .slice(0, 120);
 
 export default function AdminTickets() {
+  const coverFileRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
   const [error, setError] = useState('');
   const [products, setProducts] = useState([]);
   const [vendors, setVendors] = useState([]);
@@ -164,6 +166,29 @@ export default function AdminTickets() {
       setError(e?.message || 'Gagal menyimpan.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const uploadCover = async (file) => {
+    if (!file) return;
+    setCoverUploading(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_URL}/api/admin/tickets/uploads/cover`, {
+        method: 'POST',
+        headers: { ...authHeaders() },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) throw new Error(data?.error || 'Gagal upload cover.');
+      setForm((p) => ({ ...p, cover_image_url: data.url || '' }));
+    } catch (e) {
+      setError(e?.message || 'Gagal upload cover.');
+    } finally {
+      setCoverUploading(false);
+      if (coverFileRef.current) coverFileRef.current.value = '';
     }
   };
 
@@ -399,12 +424,47 @@ export default function AdminTickets() {
 
               <label className="block md:col-span-2">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Cover Image URL</div>
-                <input
-                  value={form.cover_image_url}
-                  onChange={(e) => setForm((p) => ({ ...p, cover_image_url: e.target.value }))}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
-                  placeholder="https://..."
-                />
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    value={form.cover_image_url}
+                    onChange={(e) => setForm((p) => ({ ...p, cover_image_url: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
+                    placeholder="https://... (atau upload via tombol)"
+                  />
+                  <input
+                    ref={coverFileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => uploadCover(e.target.files?.[0])}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => coverFileRef.current?.click()}
+                    disabled={coverUploading}
+                    className="px-4 py-3 rounded-2xl bg-white border border-slate-200 font-black text-slate-800 hover:bg-slate-50 disabled:opacity-60 flex items-center justify-center gap-2"
+                    title="Upload ke ImageKit (jika dikonfigurasi)"
+                  >
+                    <UploadCloud size={18} /> {coverUploading ? 'Uploading…' : 'Upload'}
+                  </button>
+                </div>
+                {form.cover_image_url ? (
+                  <div className="mt-3">
+                    <img
+                      src={form.cover_image_url}
+                      alt="Cover preview"
+                      className="w-full h-40 object-cover rounded-2xl border border-slate-100"
+                      loading="lazy"
+                    />
+                    <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                      Disimpan sebagai URL (ImageKit jika env tersedia di backend).
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                    Upload akan otomatis pakai ImageKit kalau `IMAGEKIT_*` sudah diset di backend.
+                  </div>
+                )}
               </label>
 
               <label className="block md:col-span-2">
@@ -482,7 +542,7 @@ export default function AdminTickets() {
                 value={variantForm.quota_per_day}
                 onChange={(e) => setVariantForm((p) => ({ ...p, quota_per_day: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
-                placeholder="Kuota/hari (0=unlimited)"
+                placeholder="Kuota jual/hari (0=unlimited)"
                 inputMode="numeric"
               />
               <select
