@@ -27,6 +27,7 @@ export default function AdminTickets() {
   const [variants, setVariants] = useState([]);
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
   const [vendorForm, setVendorForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [vendorModalKey, setVendorModalKey] = useState(1);
 
   const selected = useMemo(
     () => products.find((p) => p.id === selectedId) || null,
@@ -128,6 +129,13 @@ export default function AdminTickets() {
     setForm(emptyProduct);
     setVariantForm({ id: null, product_id: null, name: '', price: '', quota_per_day: '0', is_active: 1 });
     setVariants([]);
+  };
+
+  const openVendorModal = () => {
+    setError('');
+    setVendorForm({ name: '', email: '', phone: '', password: '' });
+    setVendorModalKey((k) => k + 1); // helps avoid browser autofill caching
+    setIsVendorModalOpen(true);
   };
 
   const saveProduct = async () => {
@@ -366,7 +374,7 @@ export default function AdminTickets() {
                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendor</div>
                   <button
                     type="button"
-                    onClick={() => setIsVendorModalOpen(true)}
+                    onClick={openVendorModal}
                     className="text-[10px] font-black uppercase tracking-widest text-rose-600 hover:text-rose-700 flex items-center gap-1"
                   >
                     <UserPlus size={14} /> Tambah Vendor
@@ -385,7 +393,7 @@ export default function AdminTickets() {
                   ))}
                 </select>
                 <div className="mt-2 text-[11px] text-slate-500 font-semibold">
-                  Vendor dipakai untuk akses redeem + rekonsiliasi.
+                  Vendor dipakai untuk akses portal redeem + rekap di <span className="font-black text-slate-700">/vendor</span>.
                 </div>
               </label>
 
@@ -540,11 +548,16 @@ export default function AdminTickets() {
       {/* Vendor modal */}
       {isVendorModalOpen ? (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-6">
+          <div key={vendorModalKey} className="w-full max-w-lg bg-white rounded-[2rem] border border-slate-100 shadow-2xl p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-lg font-black text-slate-900">Tambah Vendor</div>
-                <div className="text-sm font-bold text-slate-500 mt-1">Buat akun vendor untuk akses portal redeem & rekap.</div>
+                <div className="text-sm font-bold text-slate-500 mt-1">
+                  Buat akun vendor untuk akses portal <span className="font-black text-slate-700">/vendor</span> (redeem & rekap).
+                </div>
+                <div className="mt-2 text-[11px] text-slate-500 font-semibold">
+                  Kalau muncul email “admin brothers” otomatis, itu biasanya <span className="font-black text-slate-700">autofill browser</span>. Silakan hapus dan isi email vendor.
+                </div>
               </div>
               <button
                 type="button"
@@ -558,12 +571,19 @@ export default function AdminTickets() {
 
             <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
               <input
+                name="vendor_name"
+                autoComplete="off"
                 value={vendorForm.name}
                 onChange={(e) => setVendorForm((p) => ({ ...p, name: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
                 placeholder="Nama vendor"
               />
               <input
+                name="vendor_email"
+                type="email"
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
                 value={vendorForm.email}
                 onChange={(e) => setVendorForm((p) => ({ ...p, email: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
@@ -571,12 +591,17 @@ export default function AdminTickets() {
                 inputMode="email"
               />
               <input
+                name="vendor_phone"
+                type="tel"
+                autoComplete="off"
                 value={vendorForm.phone}
                 onChange={(e) => setVendorForm((p) => ({ ...p, phone: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
                 placeholder="No HP"
               />
               <input
+                name="vendor_password"
+                autoComplete="new-password"
                 value={vendorForm.password}
                 onChange={(e) => setVendorForm((p) => ({ ...p, password: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
