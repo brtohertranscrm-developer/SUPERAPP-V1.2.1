@@ -11,7 +11,7 @@ const rupiah = (v) => {
   }
 };
 
-export default function CarCard({ car, pickupCity, search }) {
+export default function CarCard({ car, pickupCity, search, mode = 'availability', onCheckAvailability }) {
   const navigate = useNavigate();
   const title = car?.display_name || car?.name || 'Mobil';
   const seats = Number(car?.seats) || 4;
@@ -85,6 +85,10 @@ export default function CarCard({ car, pickupCity, search }) {
           type="button"
           className="mt-4 w-full px-6 py-4 rounded-2xl bg-slate-900 text-white font-black hover:bg-slate-800 transition"
           onClick={() => {
+            if (mode === 'catalog') {
+              onCheckAvailability?.(car);
+              return;
+            }
             const startDate = search?.startDate;
             const endDate = search?.endDate;
             if (!startDate || !endDate) {
@@ -110,7 +114,7 @@ export default function CarCard({ car, pickupCity, search }) {
             });
           }}
         >
-          Pilih Mobil Ini
+          {mode === 'catalog' ? 'Cek Ketersediaan' : 'Pilih Mobil Ini'}
         </button>
       </div>
     </div>

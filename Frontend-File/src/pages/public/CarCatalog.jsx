@@ -1,5 +1,5 @@
-import React from 'react';
-import { Loader2, XCircle } from 'lucide-react';
+import React, { useRef } from 'react';
+import { ArrowLeft, Loader2, XCircle } from 'lucide-react';
 import { useCarCatalog } from '../../hooks/useCarCatalog';
 import CarHero from '../../components/public/catalog/CarHero';
 import CarAvailabilitySearch from '../../components/public/catalog/CarAvailabilitySearch';
@@ -9,6 +9,7 @@ import FaqSection from '../../components/public/common/FaqSection';
 import TwoButtonCta from '../../components/public/common/TwoButtonCta';
 
 export default function CarCatalog() {
+  const availabilityRef = useRef(null);
   const {
     searchRef,
     form,
@@ -18,6 +19,8 @@ export default function CarCatalog() {
     isLoading,
     error,
     handleSubmit,
+    mode,
+    backToCatalog,
   } = useCarCatalog();
 
   const cityKey = String(form?.pickupCity || '').toLowerCase().includes('solo') ? 'solo' : 'jogja';
@@ -27,7 +30,9 @@ export default function CarCatalog() {
       <CarHero />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <CarAvailabilitySearch form={form} setForm={setForm} onSubmit={handleSubmit} isLoading={isLoading} />
+        <div ref={availabilityRef}>
+          <CarAvailabilitySearch form={form} setForm={setForm} onSubmit={handleSubmit} isLoading={isLoading} />
+        </div>
 
         <div ref={searchRef} className="pt-10">
           {error ? (
@@ -39,7 +44,9 @@ export default function CarCatalog() {
           {isLoading && !error ? (
             <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[2rem] shadow-sm border border-slate-100">
               <Loader2 size={48} className="text-rose-500 animate-spin mb-4" />
-              <p className="font-bold text-slate-400 animate-pulse">Memeriksa ketersediaan mobil...</p>
+              <p className="font-bold text-slate-400 animate-pulse">
+                {mode === 'catalog' ? 'Memuat katalog mobil...' : 'Memeriksa ketersediaan mobil...'}
+              </p>
             </div>
           ) : null}
 
@@ -47,27 +54,62 @@ export default function CarCatalog() {
             <>
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-7">
                 <div className="text-sm font-bold text-slate-600 bg-white px-5 py-3 rounded-2xl border border-slate-200 shadow-sm">
-                  Menampilkan <span className="font-black text-slate-900">{cars.length}</span> mobil tersedia
-                  <span className="text-slate-400"> • </span>
-                  Pickup: <span className="font-black text-rose-600">{activeSearch.pickupCity}</span>
+                  {mode === 'catalog' ? (
+                    <>
+                      Menampilkan <span className="font-black text-slate-900">{cars.length}</span> tipe mobil
+                      <span className="text-slate-400"> • </span>
+                      Klik mobil untuk <span className="font-black text-rose-600">cek ketersediaan</span>
+                    </>
+                  ) : (
+                    <>
+                      Menampilkan <span className="font-black text-slate-900">{cars.length}</span> mobil tersedia
+                      <span className="text-slate-400"> • </span>
+                      Pickup: <span className="font-black text-rose-600">{activeSearch.pickupCity}</span>
+                    </>
+                  )}
                 </div>
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white px-5 py-3 rounded-2xl border border-slate-200 shadow-sm">
-                  Availability First
+                  {mode === 'catalog' ? 'Katalog' : 'Availability'}
                 </div>
               </div>
+
+              {mode === 'availability' ? (
+                <div className="mb-6 flex justify-center sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={backToCatalog}
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm font-black text-slate-700 hover:bg-slate-50 transition"
+                  >
+                    <ArrowLeft size={16} /> Kembali ke Katalog
+                  </button>
+                </div>
+              ) : null}
 
               {cars.length === 0 ? (
                 <div className="bg-white p-12 rounded-[2rem] shadow-sm border border-slate-100 text-center">
                   <XCircle size={48} className="text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-2xl font-black text-slate-900 mb-2">Mobil Habis</h3>
+                  <h3 className="text-2xl font-black text-slate-900 mb-2">
+                    {mode === 'catalog' ? 'Katalog Kosong' : 'Mobil Habis'}
+                  </h3>
                   <p className="text-slate-500 font-medium">
-                    Coba ubah jam atau tanggal. Karena unit terbatas, ketersediaan mobil sangat bergantung pada jadwal.
+                    {mode === 'catalog'
+                      ? 'Belum ada data mobil. Coba refresh atau cek koneksi backend.'
+                      : 'Coba ubah jam atau tanggal. Karena unit terbatas, ketersediaan mobil sangat bergantung pada jadwal.'}
                   </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
                   {cars.map((car) => (
-                    <CarCard key={car.id} car={car} pickupCity={activeSearch.pickupCity} search={activeSearch} />
+                    <CarCard
+                      key={car.id}
+                      car={car}
+                      pickupCity={activeSearch.pickupCity}
+                      search={activeSearch}
+                      mode={mode}
+                      onCheckAvailability={() => {
+                        availabilityRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                    />
                   ))}
                 </div>
               )}

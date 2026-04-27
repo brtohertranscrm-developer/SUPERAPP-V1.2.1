@@ -26,7 +26,7 @@ export const useCarCatalog = () => {
   const searchRef = useRef(null);
   const API_URL = import.meta.env.VITE_API_URL?.trim() || '';
 
-  // Availability-first: kita kasih default 1 hari supaya user langsung lihat contoh hasil.
+  // Form tetap diisi default agar user tinggal klik "Cek Ketersediaan".
   const [form, setForm] = useState({
     pickupCity: 'Yogyakarta',
     startDate: todayYmd(),
@@ -35,14 +35,35 @@ export const useCarCatalog = () => {
     endTime: DEFAULT_RETURN_TIME,
   });
 
+  const [mode, setMode] = useState('catalog'); // 'catalog' | 'availability'
   const [activeSearch, setActiveSearch] = useState({ ...form });
   const [cars, setCars] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const canSearch = !!activeSearch.startDate && !!activeSearch.endDate;
+  const canSearch = !!form.startDate && !!form.endDate;
 
-  const fetchCars = async (search) => {
+  const fetchCatalog = async () => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/cars`);
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Gagal mengambil data mobil.');
+      }
+      const list = Array.isArray(data.data) ? data.data : [];
+      list.sort((a, b) => (Number(a?.base_price) || 0) - (Number(b?.base_price) || 0));
+      setCars(list);
+    } catch (e) {
+      setCars([]);
+      setError(e?.message || 'Gagal memuat mobil.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchAvailability = async (search) => {
     setIsLoading(true);
     setError('');
     try {
@@ -89,15 +110,23 @@ export const useCarCatalog = () => {
       alert('Tentukan tanggal booking dulu ya.');
       return;
     }
+    setMode('availability');
     setActiveSearch({ ...form });
-    await fetchCars({ ...form });
+    await fetchAvailability({ ...form });
     searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Auto-load once (default dates) supaya user langsung lihat hasil.
+  const backToCatalog = async () => {
+    setMode('catalog');
+    setError('');
+    await fetchCatalog();
+    searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Auto-load catalog once
   useEffect(() => {
     // eslint-disable-next-line no-void
-    void fetchCars(activeSearch);
+    void fetchCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -111,5 +140,7 @@ export const useCarCatalog = () => {
     error,
     canSearch,
     handleSubmit,
+    mode,
+    backToCatalog,
   };
 };
