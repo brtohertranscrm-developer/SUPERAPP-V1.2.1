@@ -5,6 +5,9 @@ import { useMotorCatalog } from '../../hooks/useMotorCatalog';
 import MotorHero from '../../components/public/catalog/MotorHero';
 import CatalogFilter from '../../components/public/catalog/CatalogFilter';
 import MotorCard from '../../components/public/catalog/MotorCard';
+import TrustBadges from '../../components/public/common/TrustBadges';
+import FaqSection from '../../components/public/common/FaqSection';
+import TwoButtonCta from '../../components/public/common/TwoButtonCta';
 
 export default function MotorCatalog() {
   const navigate = useNavigate();
@@ -14,6 +17,8 @@ export default function MotorCatalog() {
     isLoading, error, displayedMotors, 
     handleSearchSubmit, handleCardClick, searchRef 
   } = useMotorCatalog();
+
+  const cityKey = String(searchParams?.location || '').toLowerCase().includes('solo') ? 'solo' : 'jogja';
 
   return (
     <div className="bg-slate-50 min-h-screen pb-20 text-slate-900 font-sans">
@@ -91,6 +96,28 @@ export default function MotorCatalog() {
 
         <div className="text-center text-xs text-slate-500 font-semibold leading-relaxed max-w-2xl mx-auto">
           Unit dan warna kendaraan akan disesuaikan dengan stok yang tersedia. Foto di katalog adalah ilustrasi, kami akan berikan unit terbaik yang tersedia.
+        </div>
+
+        <div className="mt-12 space-y-10">
+          <TrustBadges />
+
+          <FaqSection
+            title="FAQ Sewa Motor"
+            faqs={[
+              { q: 'Apakah bisa booking motor 24 jam?', a: 'Bisa. Operasional 24 jam, ketersediaan unit mengikuti stok dan jadwal.' },
+              { q: 'Bisa pilih cabang Jogja atau Solo?', a: 'Bisa. Pilih “Cabang Brother Trans” pada form di atas.' },
+              { q: 'Kalau belum tahu tanggal, bisa lihat katalog dulu?', a: 'Bisa. Kamu bisa browsing katalog, lalu tentukan jadwal untuk cek ketersediaan.' },
+              { q: 'Apakah motor yang diterima selalu sama seperti foto?', a: 'Foto di katalog ilustrasi. Unit disesuaikan stok, kami siapkan unit terbaik yang tersedia.' },
+              { q: 'Kalau butuh bantuan cepat gimana?', a: 'Klik WhatsApp untuk chat admin cabang yang kamu pilih.' },
+            ]}
+          />
+
+          <TwoButtonCta
+            city={cityKey}
+            serviceLabel="sewa motor"
+            primaryLabel="Mulai Booking"
+            onPrimaryClick={() => searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+          />
         </div>
 
       </div>

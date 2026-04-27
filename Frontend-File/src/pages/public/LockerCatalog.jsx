@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { useLockerCatalog } from '../../hooks/useLockerCatalog';
 import LockerCard from '../../components/public/catalog/LockerCard';
 import LockerHero from '../../components/public/catalog/LockerHero';
+import TrustBadges from '../../components/public/common/TrustBadges';
+import FaqSection from '../../components/public/common/FaqSection';
+import TwoButtonCta from '../../components/public/common/TwoButtonCta';
 
 const FILTER_TYPES = [
   { value: 'all',      label: 'Semua Tipe' },
@@ -27,6 +30,12 @@ const LockerCatalog = () => {
     acc[l.location].push(l);
     return acc;
   }, {});
+
+  const locationKeys = Object.keys(byLocation || {});
+  const inferredCity =
+    locationKeys.some((k) => String(k).toLowerCase().includes('yogya') || String(k).toLowerCase().includes('jogja'))
+      ? 'jogja'
+      : 'solo';
 
   // [FIX] Gunakan navigate() dari React Router — bukan window.location.href
   // Pass data loker via state agar checkout bisa baca tanpa query string
@@ -96,6 +105,33 @@ const LockerCatalog = () => {
             </div>
           ))
         )}
+
+        <div className="pt-6 space-y-10">
+          <TrustBadges
+            items={[
+              { icon: MapPin, title: 'Lokasi Strategis', desc: 'Cocok untuk transit dan aktivitas harian.' },
+              { icon: Lock, title: 'Penyimpanan Aman', desc: 'Titip barang lebih tenang selama perjalanan.' },
+              { icon: Package, title: 'Beragam Tipe', desc: 'Pilih rak terbuka atau tertutup sesuai kebutuhan.' },
+            ]}
+          />
+
+          <FaqSection
+            title="FAQ Sewa Loker"
+            faqs={[
+              { q: 'Apakah loker tersedia 24 jam?', a: 'Operasional 24 jam. Ketersediaan mengikuti slot yang tersedia.' },
+              { q: 'Bagaimana cara booking loker?', a: 'Pilih loker di katalog ini lalu lanjutkan ke checkout.' },
+              { q: 'Minimal durasi sewa berapa?', a: 'Ikuti opsi durasi yang tersedia saat checkout.' },
+              { q: 'Kalau butuh bantuan cepat?', a: 'Klik WhatsApp untuk chat admin cabang.' },
+            ]}
+          />
+
+          <TwoButtonCta
+            city={inferredCity}
+            serviceLabel="sewa loker"
+            primaryLabel="Mulai Booking"
+            onPrimaryClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          />
+        </div>
 
       </div>
     </div>

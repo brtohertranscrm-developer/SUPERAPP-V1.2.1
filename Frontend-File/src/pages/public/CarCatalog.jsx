@@ -4,6 +4,9 @@ import { useCarCatalog } from '../../hooks/useCarCatalog';
 import CarHero from '../../components/public/catalog/CarHero';
 import CarAvailabilitySearch from '../../components/public/catalog/CarAvailabilitySearch';
 import CarCard from '../../components/public/catalog/CarCard';
+import TrustBadges from '../../components/public/common/TrustBadges';
+import FaqSection from '../../components/public/common/FaqSection';
+import TwoButtonCta from '../../components/public/common/TwoButtonCta';
 
 export default function CarCatalog() {
   const {
@@ -16,6 +19,8 @@ export default function CarCatalog() {
     error,
     handleSubmit,
   } = useCarCatalog();
+
+  const cityKey = String(form?.pickupCity || '').toLowerCase().includes('solo') ? 'solo' : 'jogja';
 
   return (
     <div className="bg-slate-50 min-h-screen pb-20 text-slate-900 font-sans">
@@ -69,6 +74,28 @@ export default function CarCatalog() {
 
               <div className="text-center text-xs text-slate-500 font-semibold leading-relaxed max-w-2xl mx-auto">
                 Unit dan warna kendaraan akan disesuaikan dengan stok yang tersedia. Foto di katalog adalah ilustrasi, kami akan berikan unit terbaik yang tersedia.
+              </div>
+
+              <div className="mt-12 space-y-10">
+                <TrustBadges />
+
+                <FaqSection
+                  title="FAQ Sewa Mobil"
+                  faqs={[
+                    { q: 'Kenapa harus pilih jadwal dulu?', a: 'Karena unit mobil terbatas dan bisa antar lintas kota, ketersediaan tergantung jam pickup dan durasi sewa.' },
+                    { q: 'Bisa pilih kota pickup?', a: 'Bisa. Pilih “Kota Pickup” pada form.' },
+                    { q: 'Kalau mobilnya ada di kota lain bagaimana?', a: 'Admin akan atur reposisi setelah booking (sesuai kebijakan dan ketersediaan).' },
+                    { q: 'Kalau tidak ada hasil mobil tersedia?', a: 'Coba ubah tanggal/jam. Ketersediaan sangat bergantung pada jadwal.' },
+                    { q: 'Butuh bantuan cepat?', a: 'Klik WhatsApp untuk chat admin cabang.' },
+                  ]}
+                />
+
+                <TwoButtonCta
+                  city={cityKey}
+                  serviceLabel="sewa mobil"
+                  primaryLabel="Mulai Booking"
+                  onPrimaryClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                />
               </div>
             </>
           )}
