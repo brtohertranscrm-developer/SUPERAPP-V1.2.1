@@ -63,23 +63,13 @@ const SeoCta = ({ page }) => {
   const contact = CITY_CONTACTS[cityKey] || null;
   const service = String(page?.service || '').toLowerCase();
 
-  const actions = [];
-  const push = (a) => actions.push(a);
-
-  // Primary action based on service
-  if (service === 'motor') push({ label: 'Booking Motor', href: '/motor', kind: 'primary' });
-  else if (service === 'mobil') push({ label: 'Booking Mobil', href: '/mobil', kind: 'primary' });
-  else if (service === 'loker') push({ label: 'Booking Loker', href: '/loker', kind: 'primary' });
-  else push({ label: 'Mulai Booking', href: '/search-page', kind: 'primary' });
-
-  // City-specific quick links
-  push({ label: 'Motor', href: '/motor', kind: 'secondary' });
-  push({ label: 'Mobil', href: '/mobil', kind: 'secondary' });
-  if (cityKey === 'solo') push({ label: 'Loker', href: '/loker', kind: 'secondary' });
+  const actions = [
+    { label: 'Mulai Booking', href: '/search-page', kind: 'primary' },
+  ];
 
   if (contact?.wa) {
     const waText = `Halo Brothers Trans ${contact.label}, saya mau tanya/booking ${service || 'layanan'}.`;
-    push({ label: `WhatsApp ${contact.label}`, href: buildWaLink({ wa: contact.wa, text: waText }), kind: 'wa' });
+    actions.push({ label: 'WhatsApp', href: buildWaLink({ wa: contact.wa, text: waText }), kind: 'wa' });
   }
 
   return (
@@ -89,11 +79,6 @@ const SeoCta = ({ page }) => {
       <div className="mt-2 text-sm text-white/70 font-medium leading-relaxed">
         Pilih layanan dan lanjutkan booking via website. Kalau butuh bantuan cepat, chat WhatsApp cabang {contact?.label || 'terdekat'}.
       </div>
-      {contact?.address && (
-        <div className="mt-3 text-[11px] text-white/60 font-bold">
-          {contact.address}
-        </div>
-      )}
       <div className="mt-5 flex flex-wrap gap-2">
         {actions.map((a) => (
           <a
