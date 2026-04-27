@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { BadgePercent, ChevronRight, MapPinned, Store, X, Ticket, Phone, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '../../../utils/api';
@@ -192,7 +193,7 @@ const PartnerPromoModal = ({ partner, claimResult, isClaiming, onClaim, onClose,
     };
   }, []);
 
-  return (
+  const modal = (
     <div className="fixed inset-0 z-[1000]">
       <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative h-full w-full overflow-y-auto overscroll-contain px-4 py-6">
@@ -333,6 +334,12 @@ const PartnerPromoModal = ({ partner, claimResult, isClaiming, onClaim, onClose,
       </div>
     </div>
   );
+
+  // Render via portal to escape stacking contexts (prevents being covered by other homepage banners)
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modal, document.body);
+  }
+  return modal;
 };
 
 const InfoBox = ({ label, value }) => (
