@@ -995,6 +995,161 @@ db.serialize(() => {
     stmt.finalize();
   });
 
+  // Seed default Places — Objek Wisata (hanya jika belum ada data attraction sama sekali).
+  // Aman untuk production karena tidak menimpa data admin.
+  db.get(`SELECT COUNT(*) AS cnt FROM places WHERE place_type = 'attraction'`, (err, row) => {
+    if (err) return;
+    if ((row?.cnt || 0) > 0) return;
+
+    const now = new Date().toISOString();
+    const gmapsSearch = (q) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(q || '').trim())}`;
+
+    const attractionsSeed = [
+      // =========================
+      // JOGJA — ATTRACTION
+      // =========================
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Malioboro',
+        address: 'Jl. Malioboro, Yogyakarta',
+        maps_url: gmapsSearch('Malioboro Yogyakarta'),
+        description: 'Ikon Jogja untuk kuliner, belanja, dan suasana malam.',
+        sort_order: 10,
+      },
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Keraton Yogyakarta',
+        address: 'Kompleks Keraton, Yogyakarta',
+        maps_url: gmapsSearch('Keraton Yogyakarta'),
+        description: 'Wisata budaya & sejarah pusat kota.',
+        sort_order: 20,
+      },
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Taman Sari',
+        address: 'Patehan, Kraton, Yogyakarta',
+        maps_url: gmapsSearch('Taman Sari Yogyakarta'),
+        description: 'Bekas pemandian kerajaan, spot foto populer.',
+        sort_order: 30,
+      },
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Alun-Alun Kidul',
+        address: 'Patehan, Kraton, Yogyakarta',
+        maps_url: gmapsSearch('Alun Alun Kidul Yogyakarta'),
+        description: 'Aktivitas malam, odong-odong, suasana santai.',
+        sort_order: 40,
+      },
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Tebing Breksi',
+        address: 'Sambirejo, Prambanan (Sleman)',
+        maps_url: gmapsSearch('Tebing Breksi'),
+        description: 'Pemandangan sunset, amphitheater, dan spot foto.',
+        sort_order: 50,
+      },
+      {
+        place_type: 'attraction',
+        city: 'jogja',
+        name: 'Candi Prambanan',
+        address: 'Prambanan, Sleman',
+        maps_url: gmapsSearch('Candi Prambanan'),
+        description: 'Kompleks candi besar, cocok untuk day trip.',
+        sort_order: 60,
+      },
+
+      // =========================
+      // SOLO — ATTRACTION
+      // =========================
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Pura Mangkunegaran',
+        address: 'Surakarta',
+        maps_url: gmapsSearch('Pura Mangkunegaran'),
+        description: 'Wisata budaya, museum, dan arsitektur keraton.',
+        sort_order: 10,
+      },
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Keraton Surakarta Hadiningrat',
+        address: 'Surakarta',
+        maps_url: gmapsSearch('Keraton Surakarta Hadiningrat'),
+        description: 'Sejarah & budaya Jawa di pusat kota Solo.',
+        sort_order: 20,
+      },
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Pasar Gede Hardjonagoro',
+        address: 'Surakarta',
+        maps_url: gmapsSearch('Pasar Gede Hardjonagoro'),
+        description: 'Jajanan dan kuliner khas Solo.',
+        sort_order: 30,
+      },
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Kampung Batik Laweyan',
+        address: 'Laweyan, Surakarta',
+        maps_url: gmapsSearch('Kampung Batik Laweyan'),
+        description: 'Belanja batik dan wisata kampung heritage.',
+        sort_order: 40,
+      },
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Museum Batik Danar Hadi',
+        address: 'Surakarta',
+        maps_url: gmapsSearch('Museum Batik Danar Hadi'),
+        description: 'Koleksi batik lengkap, cocok untuk keluarga.',
+        sort_order: 50,
+      },
+      {
+        place_type: 'attraction',
+        city: 'solo',
+        name: 'Taman Balekambang',
+        address: 'Manahan, Surakarta',
+        maps_url: gmapsSearch('Taman Balekambang Solo'),
+        description: 'Taman kota untuk jalan santai & piknik.',
+        sort_order: 60,
+      },
+    ];
+
+    const stmt = db.prepare(
+      `
+      INSERT INTO places
+        (place_type, city, name, address, maps_url, description, is_active, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `
+    );
+
+    for (const p of attractionsSeed) {
+      try {
+        stmt.run(
+          p.place_type,
+          p.city,
+          p.name,
+          p.address || null,
+          p.maps_url || null,
+          p.description || null,
+          Number.isFinite(Number(p.sort_order)) ? Number(p.sort_order) : 0,
+          now,
+          now
+        );
+      } catch {
+        // ignore seed failures
+      }
+    }
+    stmt.finalize();
+  });
+
   // Seed default SEO pages (hanya jika tabel kosong) agar admin tinggal refine.
   db.get(`SELECT COUNT(*) AS cnt FROM seo_pages`, (err, row) => {
     if (err) return;
