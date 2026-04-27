@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BadgePercent, ChevronRight, MapPinned, Store, X, Ticket, Phone, CheckCircle2 } from 'lucide-react';
 import { API_BASE_URL } from '../../../utils/api';
@@ -179,28 +179,43 @@ const PartnerPromoModal = ({ partner, claimResult, isClaiming, onClaim, onClose,
     window.open(url, '_blank', 'noreferrer');
   };
 
-  return (
-    <div className="fixed inset-0 z-[70] px-4 py-6 flex items-center justify-center">
-      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
-        <div className="relative h-48 sm:h-56 bg-slate-100">
-          {partner?.image_url ? (
-            <img src={partner.image_url} alt={partner.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-300">
-              <Store size={40} />
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 right-4 w-11 h-11 rounded-2xl bg-white/90 border border-white/60 flex items-center justify-center text-slate-700"
-          >
-            <X size={18} />
-          </button>
-        </div>
+  // Lock background scroll while modal open (fix mobile scrolling/tabrakan)
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const prevOverflow = document.body.style.overflow;
+    const prevTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.touchAction = prevTouchAction;
+    };
+  }, []);
 
-        <div className="p-6 sm:p-8 space-y-5">
+  return (
+    <div className="fixed inset-0 z-[1000]">
+      <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative h-full w-full overflow-y-auto overscroll-contain px-4 py-6">
+        <div className="mx-auto w-full max-w-2xl">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div className="relative h-48 sm:h-56 bg-slate-100">
+              {partner?.image_url ? (
+                <img src={partner.image_url} alt={partner.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                  <Store size={40} />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="absolute top-4 right-4 w-11 h-11 rounded-2xl bg-white/90 border border-white/60 flex items-center justify-center text-slate-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-5">
           <div className="flex flex-wrap gap-2">
             <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-[0.2em]">
               {partner?.category || 'Partner'}
@@ -310,6 +325,8 @@ const PartnerPromoModal = ({ partner, claimResult, isClaiming, onClaim, onClose,
                   Klaim dulu di website, buka kembali di dashboard user, lalu tunjukkan kode voucher saat datang ke partner. Admin/partner akan memvalidasi kode tersebut saat penukaran.
                 </p>
               </div>
+            </div>
+          </div>
             </div>
           </div>
         </div>
