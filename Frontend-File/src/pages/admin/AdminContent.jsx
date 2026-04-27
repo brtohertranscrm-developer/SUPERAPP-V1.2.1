@@ -12,7 +12,7 @@ const DEFAULT_PAGE = {
   title: '',
   meta_description: '',
   h1: '',
-  sections: [{ key: 'intro', title: 'Intro', body_html: '' }],
+  sections: [{ key: 'intro', title: 'Intro', body_html: '', embed: null }],
   faqs: [],
   is_published: 0,
 };
@@ -26,6 +26,14 @@ const quillModules = {
     ['clean'],
   ],
 };
+
+const EMBED_PROVIDERS = [
+  { value: '', label: 'Tidak ada' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'maps', label: 'Google Maps (embed link)' },
+];
 
 const normalizeSlug = (slug) =>
   String(slug || '')
@@ -114,10 +122,21 @@ export default function AdminContent() {
     });
   };
 
+  const updateSectionEmbed = (idx, patch) => {
+    const current = (draft.sections || [])[idx] || {};
+    const nextEmbed = current.embed && typeof current.embed === 'object' ? { ...current.embed, ...patch } : { ...patch };
+    updateSection(idx, { embed: nextEmbed });
+  };
+
+  const clearSectionEmbed = (idx) => updateSection(idx, { embed: null });
+
   const addSection = () => {
     const nextIdx = (draft.sections || []).length + 1;
     updateDraft({
-      sections: [...(draft.sections || []), { key: `section-${nextIdx}`, title: `Section ${nextIdx}`, body_html: '' }],
+      sections: [
+        ...(draft.sections || []),
+        { key: `section-${nextIdx}`, title: `Section ${nextIdx}`, body_html: '', embed: null },
+      ],
     });
   };
 
@@ -411,6 +430,50 @@ export default function AdminContent() {
                         <Trash2 size={16} /> Hapus
                       </button>
                     </div>
+                    <div className="px-3 pb-3 bg-slate-50">
+                      <div className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                        <div className="md:col-span-4">
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                            Embed
+                          </label>
+                          <select
+                            value={s?.embed?.provider || ''}
+                            onChange={(e) => {
+                              const provider = e.target.value;
+                              if (!provider) {
+                                clearSectionEmbed(idx);
+                                return;
+                              }
+                              updateSectionEmbed(idx, { provider, url: s?.embed?.url || '' });
+                            }}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-black text-slate-700 outline-none"
+                          >
+                            {EMBED_PROVIDERS.map((p) => (
+                              <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-8">
+                          <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                            Embed URL
+                          </label>
+                          <input
+                            value={s?.embed?.url || ''}
+                            onChange={(e) => updateSectionEmbed(idx, { url: e.target.value })}
+                            disabled={!s?.embed?.provider}
+                            placeholder={
+                              s?.embed?.provider === 'maps'
+                                ? 'Paste link embed Google Maps (maps/embed?pb=...)'
+                                : 'Paste URL post/video'
+                            }
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 outline-none disabled:opacity-50"
+                          />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[10px] text-slate-400 font-bold">
+                        Embeds disimpan aman (tanpa script). Support: YouTube, Instagram, TikTok, dan Google Maps embed link.
+                      </p>
+                    </div>
                     <div className="p-3">
                       <ReactQuill
                         theme="snow"
@@ -475,4 +538,3 @@ export default function AdminContent() {
     </div>
   );
 }
-

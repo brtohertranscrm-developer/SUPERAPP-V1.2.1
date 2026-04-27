@@ -59,13 +59,80 @@ const sanitizeOptions = {
 
 const normalizeSlug = (slug) => String(slug || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
 
+const parseEmbedUrl = (provider, url) => {
+  const p = String(provider || '').trim().toLowerCase();
+  const raw = String(url || '').trim();
+  if (!p || !raw) return null;
+
+  let u = null;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (!/^https?:$/.test(u.protocol)) return null;
+
+  const host = u.hostname.toLowerCase();
+
+  const isHostAllowed = (allowedHosts) => allowedHosts.includes(host);
+
+  if (p === 'youtube') {
+    // Accept watch?v=ID, youtu.be/ID, youtube.com/shorts/ID
+    if (!isHostAllowed(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be'])) return null;
+    let id = '';
+    if (host.includes('youtu.be')) {
+      id = u.pathname.replace(/^\/+/, '').split('/')[0] || '';
+    } else if (u.pathname.startsWith('/shorts/')) {
+      id = u.pathname.split('/')[2] || '';
+    } else {
+      id = u.searchParams.get('v') || '';
+    }
+    if (!id) return null;
+    return { provider: 'youtube', url: `https://www.youtube.com/embed/${encodeURIComponent(id)}` };
+  }
+
+  if (p === 'instagram') {
+    if (!isHostAllowed(['instagram.com', 'www.instagram.com'])) return null;
+    const parts = u.pathname.split('/').filter(Boolean);
+    // /p/{code}/ or /reel/{code}/
+    const type = parts[0];
+    const code = parts[1];
+    if (!code || !['p', 'reel'].includes(type)) return null;
+    return { provider: 'instagram', url: `https://www.instagram.com/${type}/${encodeURIComponent(code)}/embed` };
+  }
+
+  if (p === 'tiktok') {
+    if (!isHostAllowed(['tiktok.com', 'www.tiktok.com'])) return null;
+    // Expect .../video/{id}
+    const match = u.pathname.match(/\/video\/(\d+)/);
+    const id = match?.[1] || '';
+    if (!id) return null;
+    return { provider: 'tiktok', url: `https://www.tiktok.com/embed/v2/${encodeURIComponent(id)}` };
+  }
+
+  if (p === 'maps') {
+    // Require a Google Maps embed URL (from "Share" → "Embed a map"), typically google.com/maps/embed?pb=...
+    if (!isHostAllowed(['www.google.com', 'google.com', 'maps.google.com', 'www.google.co.id', 'www.google.co'])) {
+      // keep strict: only allow Google hosts
+      return null;
+    }
+    if (!u.pathname.includes('/maps')) return null;
+    return { provider: 'maps', url: raw };
+  }
+
+  return null;
+};
+
 const sanitizeSections = (sectionsRaw) => {
   const sections = Array.isArray(sectionsRaw) ? sectionsRaw : [];
   return sections.map((s, idx) => {
     const key = String(s?.key || `section-${idx + 1}`).trim() || `section-${idx + 1}`;
     const title = String(s?.title || '').trim();
     const body_html = sanitizeHtml(String(s?.body_html || ''), sanitizeOptions);
-    return { key, title, body_html };
+    const embed = s?.embed && typeof s.embed === 'object'
+      ? parseEmbedUrl(s.embed.provider, s.embed.url)
+      : null;
+    return embed ? { key, title, body_html, embed } : { key, title, body_html };
   });
 };
 
@@ -264,4 +331,3 @@ router.patch('/:id/publish', async (req, res) => {
 });
 
 module.exports = router;
-

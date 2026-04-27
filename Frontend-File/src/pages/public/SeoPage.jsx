@@ -1,6 +1,122 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../utils/api';
 
+const CITY_CONTACTS = {
+  jogja: {
+    label: 'Jogja',
+    phone: '082137928331',
+    wa: '6282137928331',
+    address: 'Jl. Lempuyangan No.1A, Bausasran, Kec. Danurejan, Kota Yogyakarta, DI Yogyakarta 55211',
+  },
+  solo: {
+    label: 'Solo',
+    phone: '082313307400',
+    wa: '6282313307400',
+    address: 'Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133',
+  },
+};
+
+const buildWaLink = ({ wa, text }) => {
+  const msg = encodeURIComponent(text || '');
+  return `https://wa.me/${wa}${msg ? `?text=${msg}` : ''}`;
+};
+
+const SocialEmbed = ({ embed }) => {
+  const src = embed?.url ? String(embed.url) : '';
+  if (!src) return null;
+
+  const provider = String(embed.provider || '').toLowerCase();
+  const title =
+    provider === 'youtube' ? 'YouTube' :
+      provider === 'instagram' ? 'Instagram' :
+        provider === 'tiktok' ? 'TikTok' :
+          provider === 'maps' ? 'Google Maps' : 'Embed';
+
+  const isMaps = provider === 'maps';
+  const allow =
+    provider === 'youtube'
+      ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+      : undefined;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50">
+      <div className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 bg-white border-b border-slate-200">
+        {title}
+      </div>
+      <div className={`w-full ${isMaps ? 'aspect-[16/10]' : 'aspect-video'} bg-slate-100`}>
+        <iframe
+          title={title}
+          src={src}
+          className="w-full h-full"
+          loading="lazy"
+          allow={allow}
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+        />
+      </div>
+    </div>
+  );
+};
+
+const SeoCta = ({ page }) => {
+  const cityKey = String(page?.city || '').toLowerCase();
+  const contact = CITY_CONTACTS[cityKey] || null;
+  const service = String(page?.service || '').toLowerCase();
+
+  const actions = [];
+  const push = (a) => actions.push(a);
+
+  // Primary action based on service
+  if (service === 'motor') push({ label: 'Booking Motor', href: '/motor', kind: 'primary' });
+  else if (service === 'mobil') push({ label: 'Booking Mobil', href: '/mobil', kind: 'primary' });
+  else if (service === 'loker') push({ label: 'Booking Loker', href: '/loker', kind: 'primary' });
+  else push({ label: 'Mulai Booking', href: '/search-page', kind: 'primary' });
+
+  // City-specific quick links
+  push({ label: 'Motor', href: '/motor', kind: 'secondary' });
+  push({ label: 'Mobil', href: '/mobil', kind: 'secondary' });
+  if (cityKey === 'solo') push({ label: 'Loker', href: '/loker', kind: 'secondary' });
+
+  if (contact?.wa) {
+    const waText = `Halo Brothers Trans ${contact.label}, saya mau tanya/booking ${service || 'layanan'}.`;
+    push({ label: `WhatsApp ${contact.label}`, href: buildWaLink({ wa: contact.wa, text: waText }), kind: 'wa' });
+  }
+
+  return (
+    <div className="mt-10 rounded-3xl border border-slate-200 bg-slate-900 text-white p-5 md:p-6 shadow-xl">
+      <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/60">Booking</div>
+      <div className="mt-2 text-lg md:text-xl font-black">Siap booking sekarang?</div>
+      <div className="mt-2 text-sm text-white/70 font-medium leading-relaxed">
+        Pilih layanan dan lanjutkan booking via website. Kalau butuh bantuan cepat, chat WhatsApp cabang {contact?.label || 'terdekat'}.
+      </div>
+      {contact?.address && (
+        <div className="mt-3 text-[11px] text-white/60 font-bold">
+          {contact.address}
+        </div>
+      )}
+      <div className="mt-5 flex flex-wrap gap-2">
+        {actions.map((a) => (
+          <a
+            key={a.label}
+            href={a.href}
+            target={a.kind === 'wa' ? '_blank' : undefined}
+            rel={a.kind === 'wa' ? 'noopener noreferrer' : undefined}
+            className={
+              a.kind === 'primary'
+                ? 'px-4 py-2.5 rounded-2xl bg-white text-slate-900 font-black text-sm hover:bg-slate-100'
+                : a.kind === 'wa'
+                  ? 'px-4 py-2.5 rounded-2xl bg-emerald-500 text-white font-black text-sm hover:bg-emerald-600'
+                  : 'px-4 py-2.5 rounded-2xl bg-white/10 text-white font-black text-sm hover:bg-white/15 border border-white/10'
+            }
+          >
+            {a.label}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const ensureMetaTag = (name) => {
   let el = document.querySelector(`meta[name="${name}"]`);
   if (!el) {
@@ -120,6 +236,7 @@ export default function SeoPage({ slug }) {
                 {s.title ? (
                   <h2 className="text-lg md:text-xl font-black text-slate-900">{s.title}</h2>
                 ) : null}
+                {s.embed ? <SocialEmbed embed={s.embed} /> : null}
                 <div
                   className="prose prose-slate max-w-none prose-a:text-blue-600 prose-a:font-bold prose-strong:text-slate-900"
                   dangerouslySetInnerHTML={{ __html: String(s.body_html || '') }}
@@ -145,10 +262,11 @@ export default function SeoPage({ slug }) {
                 </div>
               </section>
             )}
+
+            <SeoCta page={page} />
           </div>
         </div>
       </div>
     </div>
   );
 }
-
