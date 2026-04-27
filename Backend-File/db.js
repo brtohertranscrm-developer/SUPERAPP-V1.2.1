@@ -1122,6 +1122,10 @@ db.serialize(() => {
   const CONTENT_ADMIN_EMAIL = String(process.env.SEED_CONTENT_ADMIN_EMAIL || 'brtohertranscrm@gmail.com')
     .trim()
     .toLowerCase();
+  const CONTENT_ADMIN_ROLE_RAW = String(process.env.SEED_CONTENT_ADMIN_ROLE || 'superadmin').trim().toLowerCase();
+  const CONTENT_ADMIN_ROLE = ['superadmin', 'admin', 'subadmin'].includes(CONTENT_ADMIN_ROLE_RAW)
+    ? CONTENT_ADMIN_ROLE_RAW
+    : 'superadmin';
   const seedContentAdmin = () => {
     if (!CONTENT_ADMIN_EMAIL) return;
     const nowIso = new Date().toISOString();
@@ -1131,18 +1135,17 @@ db.serialize(() => {
     const hashed = bcrypt ? bcrypt.hashSync(plain, 12) : plain;
     const seedName = 'Brothers Trans CRM';
     const seedPhone = '080000000000';
-    const seedRole = 'subadmin';
-    const seedPerms = JSON.stringify(['content']);
+    const seedRole = CONTENT_ADMIN_ROLE;
+    const seedPerms = seedRole === 'superadmin' || seedRole === 'admin'
+      ? JSON.stringify([])
+      : JSON.stringify(['content']);
 
     db.run(
       `INSERT INTO users
         (id, name, email, password, phone, ktp_id, role, permissions, kyc_status, miles, location, join_date, email_verified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'unverified', 0, 'Lainnya', ?, 1)
        ON CONFLICT(email) DO UPDATE SET
-         role = CASE
-           WHEN users.role IN ('admin','superadmin','subadmin') THEN users.role
-           ELSE excluded.role
-         END,
+         role = excluded.role,
          permissions = excluded.permissions,
          email_verified = 1,
          name = CASE
