@@ -34,6 +34,14 @@ Ada mini CMS untuk landing page SEO (Jogja/Solo, lokasi, dll):
 
 Catatan: konten halaman disanitize di backend sebelum dipublish.
 
+## Google Sign-In (optional)
+
+- Frontend: set `VITE_GOOGLE_CLIENT_ID` (lihat `Frontend-File/.env.example`)
+- Backend: set `GOOGLE_CLIENT_ID` (lihat `Backend-File/.env.example`)
+- Google Cloud Console: Authorized JavaScript origins minimal:
+  - `http://localhost:5173` (dev)
+  - `https://beta.brotherstrans.id` dan `https://brotherstrans.id` (production)
+
 ## React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
