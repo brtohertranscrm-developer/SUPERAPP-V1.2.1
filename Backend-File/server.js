@@ -236,6 +236,9 @@ const manningRoutes     = require('./routes/manningRoutes');
 const customOrderRoutes = require('./routes/customOrderRoutes');
 const seoPublicRoutes   = require('./routes/seoPublicRoutes');
 const seoAdminRoutes    = require('./routes/seoAdminRoutes');
+const ticketPublicRoutes = require('./routes/ticketPublicRoutes');
+const ticketUserRoutes = require('./routes/ticketUserRoutes');
+const ticketVendorRoutes = require('./routes/ticketVendorRoutes');
 
 // Urutan penting: spesifik dulu, wildcard belakang
 app.use('/api/admin/loker',   lokerAdminRoutes);
@@ -244,9 +247,12 @@ app.use('/api/admin/manning', manningRoutes);
 app.use('/api/admin/seo-pages', seoAdminRoutes);
 app.use('/api/loker',         lokerPublicRoutes);
 app.use('/api/auth',          authRoutes);
+app.use('/api/tickets',       ticketPublicRoutes);
+app.use('/api/vendor/tickets', ticketVendorRoutes);
 app.use('/api',               seoPublicRoutes);
 app.use('/api',               publicRoutes);
 app.use('/api',               userRoutes);
+app.use('/api',               ticketUserRoutes);
 app.use('/api',               referralRoutes);
 app.use('/api/admin',         adminRoutes);
 app.use('/api/admin/finance', financeRoutes);

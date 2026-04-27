@@ -925,21 +925,32 @@ router.post('/bookings', async (req, res) => {
       addon_items,
       delivery_type, delivery_station_id, delivery_address, delivery_lat, delivery_lng,
       trip_scope, trip_destination,
-      car_id
+      car_id,
+      ticket_product_id,
+      ticket_variant_id,
+      ticket_qty
     } = req.body || {};
+    const itemType = String(item_type || '').trim().toLowerCase();
 
-    if (!order_id || !item_type || !item_name || !start_date || !end_date || !total_price) {
+    if (!order_id || !itemType || !start_date) {
       return res.status(400).json({ success: false, error: 'Data booking tidak lengkap.' });
     }
 
-    if (!['motor', 'locker', 'car'].includes(item_type)) {
+    if (!['motor', 'locker', 'car', 'ticket'].includes(itemType)) {
       return res.status(400).json({ success: false, error: 'Tipe item tidak valid.' });
     }
 
-    let finalPrice = parseInt(total_price);
-    if (isNaN(finalPrice) || finalPrice <= 0) {
-      return res.status(400).json({ success: false, error: 'Total harga tidak valid.' });
+    // Untuk ticket, total akan dihitung di server (anti manipulasi).
+    if (itemType !== 'ticket') {
+      if (!item_name || !end_date || !total_price) {
+        return res.status(400).json({ success: false, error: 'Data booking tidak lengkap.' });
+      }
     }
+
+    let finalPrice = parseInt(total_price);
+    let resolvedLocation = location;
+    let startDateRaw = start_date;
+    let endDateRaw = end_date;
 
     let refPrice = null;
     let rentalBreakdown = null;
@@ -947,9 +958,13 @@ router.post('/bookings', async (req, res) => {
     let assignedUnitId = null;
     let assignedPlateNumber = null;
     let motorId = null;
+    let ticketProductId = null;
+    let ticketVariantId = null;
+    let ticketQty = null;
+    let ticketVendorUserId = null;
 
-    if (item_type === 'motor') {
-      const pickupKey = normalizeCityKey(location);
+    if (itemType === 'motor') {
+      const pickupKey = normalizeCityKey(resolvedLocation);
       const motor = await dbGet(
         `
         SELECT id, name, display_name, base_price, price_12h, location
@@ -980,8 +995,8 @@ router.post('/bookings', async (req, res) => {
 
         refPrice = motor.base_price;
         rentalBreakdown = calculateMotorRentalBreakdown({
-          startDate: start_date,
-          endDate: end_date,
+          startDate: startDateRaw,
+          endDate: endDateRaw,
           price24h: motor.base_price,
           price12h: motor.price_12h || 0,
           billingMode: settings?.motor_billing_mode || 'calendar',
@@ -995,13 +1010,13 @@ router.post('/bookings', async (req, res) => {
         // Tetap izinkan booking jika item_name tidak match (kompatibilitas data lama),
         // tapi auto-assign unit butuh motorId sehingga akan gagal dengan pesan yang jelas.
       }
-    } else if (item_type === 'locker') {
+    } else if (itemType === 'locker') {
       const locker = await dbGet(
         `SELECT base_price FROM lockers WHERE location = ? LIMIT 1`,
-        [location]
+        [resolvedLocation]
       );
       if (locker) refPrice = locker.base_price;
-    } else if (item_type === 'car') {
+    } else if (itemType === 'car') {
       const carId = parseInt(car_id, 10) || null;
       const car = carId
         ? await dbGet(`SELECT id, name, display_name, base_price FROM cars WHERE id = ? LIMIT 1`, [carId])
@@ -1019,11 +1034,67 @@ router.post('/bookings', async (req, res) => {
       }
       resolvedItemName = car.display_name || car.name;
       refPrice = car.base_price;
+    } else if (itemType === 'ticket') {
+      ticketProductId = parseInt(ticket_product_id, 10);
+      ticketVariantId = parseInt(ticket_variant_id, 10);
+      ticketQty = Math.max(1, Math.min(50, parseInt(ticket_qty, 10) || 1)); // safety cap
+
+      if (!ticketProductId || !ticketVariantId) {
+        return res.status(400).json({ success: false, error: 'Produk/varian tiket tidak valid.' });
+      }
+      // start_date wajib (tanggal kunjungan). end_date boleh kosong, akan dinormalisasi 1 hari.
+      const visitDt = new Date(startDateRaw);
+      if (isNaN(visitDt.getTime())) {
+        return res.status(400).json({ success: false, error: 'Tanggal kunjungan tidak valid.' });
+      }
+
+      const variant = await dbGet(
+        `
+        SELECT v.id as variant_id, v.name as variant_name, v.price as variant_price,
+               p.id as product_id, p.title as product_title, p.city as product_city, p.vendor_id as vendor_id, p.is_active as product_active,
+               v.is_active as variant_active
+        FROM ticket_variants v
+        JOIN ticket_products p ON p.id = v.product_id
+        WHERE v.id = ? AND p.id = ?
+        LIMIT 1
+        `,
+        [ticketVariantId, ticketProductId]
+      ).catch(() => null);
+
+      if (!variant || Number(variant.product_active) !== 1 || Number(variant.variant_active) !== 1) {
+        return res.status(400).json({ success: false, error: 'Tiket tidak tersedia.' });
+      }
+
+      resolvedItemName = `${variant.product_title} — ${variant.variant_name}`;
+      refPrice = parseInt(variant.variant_price, 10) || 0;
+      if (refPrice <= 0) {
+        return res.status(400).json({ success: false, error: 'Harga tiket tidak valid.' });
+      }
+      ticketVendorUserId = variant.vendor_id || null;
+
+      // Hitung total di server (anti-manipulasi)
+      finalPrice = refPrice * ticketQty;
+
+      // City sebagai location default jika tidak dikirim
+      resolvedLocation = resolvedLocation || variant.product_city || 'jogja';
+
+      // Normalize end_date = +1 hari (00:00) supaya validasi "end > start" lolos.
+      const pad = (n) => String(n).padStart(2, '0');
+      const visitYmd = `${visitDt.getFullYear()}-${pad(visitDt.getMonth() + 1)}-${pad(visitDt.getDate())}`;
+      startDateRaw = `${visitYmd}T00:00:00`;
+      const next = new Date(`${visitYmd}T00:00:00`);
+      next.setDate(next.getDate() + 1);
+      const nextYmd = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`;
+      endDateRaw = `${nextYmd}T00:00:00`;
+    }
+
+    if (isNaN(finalPrice) || finalPrice <= 0) {
+      return res.status(400).json({ success: false, error: 'Total harga tidak valid.' });
     }
 
     if (refPrice !== null) {
-      const startDt   = new Date(start_date);
-      const endDt     = new Date(end_date);
+      const startDt   = new Date(startDateRaw);
+      const endDt     = new Date(endDateRaw);
       const days      = Math.max(1, Math.ceil((endDt - startDt) / (1000 * 60 * 60 * 24)));
       const dayUnits  = rentalBreakdown?.billableDayUnits || days;
       const minPrice  = Math.floor(refPrice * dayUnits * 0.2); 
@@ -1036,8 +1107,8 @@ router.post('/bookings', async (req, res) => {
       }
     }
 
-    const startDt = new Date(start_date);
-    const endDt   = new Date(end_date);
+    const startDt = new Date(startDateRaw);
+    const endDt   = new Date(endDateRaw);
     if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
       return res.status(400).json({ success: false, error: 'Format tanggal tidak valid.' });
     }
@@ -1045,13 +1116,16 @@ router.post('/bookings', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Tanggal selesai harus setelah tanggal mulai.' });
     }
 
-    const user = await dbGet(`SELECT kyc_status FROM users WHERE id = ?`, [req.user.id]);
-    const kyc = String(user?.kyc_status || '').trim().toLowerCase();
-    if (!user || kyc !== 'verified') {
-      return res.status(403).json({
-        success: false,
-        error: 'Anda harus melakukan verifikasi data (KYC) terlebih dahulu sebelum membuat pesanan.'
-      });
+    // Ticket tidak mewajibkan KYC agar friction rendah.
+    if (itemType !== 'ticket') {
+      const user = await dbGet(`SELECT kyc_status FROM users WHERE id = ?`, [req.user.id]);
+      const kyc = String(user?.kyc_status || '').trim().toLowerCase();
+      if (!user || kyc !== 'verified') {
+        return res.status(403).json({
+          success: false,
+          error: 'Anda harus melakukan verifikasi data (KYC) terlebih dahulu sebelum membuat pesanan.'
+        });
+      }
     }
 
     const existing = await dbGet(`SELECT order_id FROM bookings WHERE order_id = ?`, [order_id]);
@@ -1130,7 +1204,7 @@ router.post('/bookings', async (req, res) => {
     const addonLines = [];
     const addonItems = Array.isArray(addon_items) ? addon_items : [];
 
-    if (item_type === 'motor' && addonItems.length > 0) {
+    if (itemType === 'motor' && addonItems.length > 0) {
       for (const raw of addonItems) {
         const addonId = parseInt(raw?.id, 10);
         if (!addonId) {
@@ -1176,9 +1250,9 @@ router.post('/bookings', async (req, res) => {
     let deliveryMethod = null;
     const delType = delivery_type ? String(delivery_type) : null;
 
-    if ((item_type === 'motor' || item_type === 'car') && delType && delType !== 'self') {
+    if ((itemType === 'motor' || itemType === 'car') && delType && delType !== 'self') {
       const q = await quoteDelivery({
-        city: location,
+        city: resolvedLocation,
         target: delType === 'station'
           ? { type: 'station', station_id: delivery_station_id || null }
           : { type: 'address', lat: delivery_lat, lng: delivery_lng, address: delivery_address || null },
@@ -1206,13 +1280,13 @@ router.post('/bookings', async (req, res) => {
 	    const tripDestinationNormalized = trip_destination
 	      ? String(trip_destination).trim().slice(0, 140)
 	      : null;
-	    if ((item_type === 'motor' || item_type === 'car') && !tripDestinationNormalized) {
+	    if ((itemType === 'motor' || itemType === 'car') && !tripDestinationNormalized) {
 	      return res.status(400).json({ success: false, error: 'Tujuan pemakaian wajib diisi.' });
 	    }
 
     const bufferMinutes = parseInt(process.env.UNIT_TURNAROUND_MINUTES || '0', 10) || 0;
-    const startNorm = normalizeToSqliteDateTime(start_date);
-    const endNorm = normalizeToSqliteDateTime(end_date);
+    const startNorm = normalizeToSqliteDateTime(startDateRaw);
+    const endNorm = normalizeToSqliteDateTime(endDateRaw);
     const bufPlus = bufferMinutes > 0 ? `+${bufferMinutes} minutes` : '+0 minutes';
     const bufMinus = bufferMinutes > 0 ? `-${bufferMinutes} minutes` : '+0 minutes';
     const pendingTtlMinRaw = parseInt(process.env.BOOKING_PENDING_TTL_MINUTES || '180', 10);
@@ -1221,10 +1295,10 @@ router.post('/bookings', async (req, res) => {
       : 180;
 
     // Atomic: booking + addon lines (+ car unit assign)
-    await dbRun((item_type === 'car' || item_type === 'motor') ? 'BEGIN IMMEDIATE' : 'BEGIN');
+    await dbRun((itemType === 'car' || itemType === 'motor') ? 'BEGIN IMMEDIATE' : 'BEGIN');
     try {
       // Auto-assign unit for motor booking (to prevent double-booking)
-      if (item_type === 'motor') {
+      if (itemType === 'motor') {
         if (!motorId) {
           const e = new Error('Motor tidak ditemukan. Silakan ulangi dari katalog.');
           e.statusCode = 400;
@@ -1280,7 +1354,7 @@ router.post('/bookings', async (req, res) => {
       }
 
       // Auto-assign unit for car booking (to prevent double-booking)
-      if (item_type === 'car') {
+      if (itemType === 'car') {
         const carId = parseInt(car_id, 10) || null;
         if (!carId) {
           const e = new Error('car_id wajib diisi untuk booking mobil.');
@@ -1293,7 +1367,7 @@ router.post('/bookings', async (req, res) => {
           throw e;
         }
 
-        const pickupKey = normalizeCityKey(location);
+        const pickupKey = normalizeCityKey(resolvedLocation);
         const preferLike = pickupKey === 'solo' ? '%solo%' : '%yogya%';
 
         const unit = await dbGet(
@@ -1350,11 +1424,12 @@ router.post('/bookings', async (req, res) => {
            start_date, end_date, 
            base_price, discount_amount, promo_code, service_fee, extend_fee, addon_fee, delivery_fee,
            paid_amount, total_price, status, payment_status, payment_method, duration_hours, price_notes,
-           unit_id, plate_number
+           unit_id, plate_number,
+           ticket_product_id, ticket_variant_id, ticket_qty, vendor_user_id
          ) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          order_id, req.user.id, item_type, resolvedItemName, location,
+          order_id, req.user.id, itemType, resolvedItemName, resolvedLocation,
           delType || null,
           delivery_station_id || null,
           delivery_address || null,
@@ -1364,10 +1439,12 @@ router.post('/bookings', async (req, res) => {
           deliveryMethod || null,
           tripScopeNormalized,
           tripDestinationNormalized,
-          start_date, end_date, 
-          bPrice, dAmount, pCode, sFee, aFee, delFee,
-          0, finalPrice, payMethod, billableHours, computedPriceNotes,
-          assignedUnitId, assignedPlateNumber
+          startDateRaw, endDateRaw, 
+          bPrice, dAmount, pCode, sFee, 0, aFee, delFee,
+          0, finalPrice,
+          payMethod, billableHours, computedPriceNotes,
+          assignedUnitId, assignedPlateNumber,
+          ticketProductId, ticketVariantId, ticketQty, ticketVendorUserId
         ]
       );
 
@@ -1394,7 +1471,7 @@ router.post('/bookings', async (req, res) => {
         }
       }
 
-      if (item_type === 'motor' && addonLines.length > 0) {
+      if (itemType === 'motor' && addonLines.length > 0) {
         for (const line of addonLines) {
           await dbRun(
             `INSERT INTO booking_motor_addons
@@ -1423,11 +1500,11 @@ router.post('/bookings', async (req, res) => {
       .then((userData) => notifyNewBooking(
         {
           order_id,
-          item_type,
+          item_type: itemType,
           item_name: resolvedItemName,
-          location,
-          start_date,
-          end_date,
+          location: resolvedLocation,
+          start_date: startDateRaw,
+          end_date: endDateRaw,
           total_price: finalPrice,
           payment_method: payMethod,
           plate_number: assignedPlateNumber,

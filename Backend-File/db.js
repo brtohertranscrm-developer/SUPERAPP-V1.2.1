@@ -71,6 +71,75 @@ db.serialize(() => {
     )
   `);
 
+  // --- TICKETING: PRODUCTS ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ticket_products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      category TEXT DEFAULT 'attraction',
+      city TEXT DEFAULT 'jogja',
+      venue_name TEXT,
+      address TEXT,
+      maps_url TEXT,
+      vendor_id TEXT, -- users.id (role vendor)
+      cover_image_url TEXT,
+      description_html TEXT,
+      terms_html TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // --- TICKETING: VARIANTS ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ticket_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      price INTEGER NOT NULL DEFAULT 0,
+      quota_per_day INTEGER DEFAULT 0, -- 0 = unlimited
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY(product_id) REFERENCES ticket_products(id) ON DELETE CASCADE
+    )
+  `);
+
+  // --- TICKETING: VOUCHERS (1 code per item) ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ticket_vouchers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_code TEXT UNIQUE NOT NULL,
+      order_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      vendor_id TEXT,
+      product_id INTEGER NOT NULL,
+      variant_id INTEGER NOT NULL,
+      visit_date TEXT NOT NULL, -- YYYY-MM-DD
+      status TEXT DEFAULT 'active', -- active | used | void | expired
+      used_at TEXT,
+      used_by_vendor_user_id TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY(product_id) REFERENCES ticket_products(id) ON DELETE RESTRICT,
+      FOREIGN KEY(variant_id) REFERENCES ticket_variants(id) ON DELETE RESTRICT
+    )
+  `);
+
+  // --- TICKETING: REDEMPTION LOG ---
+  db.run(`
+    CREATE TABLE IF NOT EXISTS ticket_redemptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_id INTEGER NOT NULL,
+      vendor_id TEXT,
+      vendor_user_id TEXT,
+      redeemed_at TEXT DEFAULT (datetime('now')),
+      notes TEXT,
+      FOREIGN KEY(voucher_id) REFERENCES ticket_vouchers(id) ON DELETE CASCADE
+    )
+  `);
+
   // --- KTP BLACKLIST ---
   // Dipakai untuk menolak registrasi berdasarkan ID KTP yang bermasalah.
   db.run(`
@@ -1197,6 +1266,12 @@ db.serialize(() => {
   addColumnIfNotExists('bookings', 'paid_amount',     'INTEGER DEFAULT 0');
   addColumnIfNotExists('bookings', 'price_notes',     'TEXT');
 
+  // Ticketing: metadata untuk issue voucher (1 code per item)
+  addColumnIfNotExists('bookings', 'ticket_product_id', 'INTEGER');
+  addColumnIfNotExists('bookings', 'ticket_variant_id', 'INTEGER');
+  addColumnIfNotExists('bookings', 'ticket_qty', 'INTEGER DEFAULT 1');
+  addColumnIfNotExists('bookings', 'vendor_user_id', 'TEXT');
+
   // Motors
   addColumnIfNotExists('motors', 'location',               'TEXT DEFAULT "Yogyakarta"');
   addColumnIfNotExists('motors', 'display_name',           'TEXT');
@@ -1312,6 +1387,14 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_users_email_verified ON users(email_verified)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email)`);
   db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)`);
+
+  // Ticketing indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_products_city_cat ON ticket_products(city, category)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_variants_product ON ticket_variants(product_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_order ON ticket_vouchers(order_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_user ON ticket_vouchers(user_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_vendor ON ticket_vouchers(vendor_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_visit ON ticket_vouchers(visit_date)`);
 
   // Finance indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);

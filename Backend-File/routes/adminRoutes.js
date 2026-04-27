@@ -5,6 +5,7 @@ const express = require('express');
 const ImageKit = require('imagekit');
 const db = require('../db');
 const { verifyAdmin, requirePermission, requireAnyPermission, requireAdminRole } = require('../middlewares/authMiddleware');
+const { issueTicketVouchersForOrder } = require('../utils/ticketing');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
@@ -1786,6 +1787,18 @@ router.put('/bookings/:orderId/status', requirePermission('booking'), async (req
     params.push(req.params.orderId);
 
     await dbRun(`UPDATE bookings SET ${setClauses.join(', ')} WHERE order_id = ?`, params);
+
+    // Ticketing: issue voucher(s) once payment marked paid (idempotent)
+    try {
+      const nextPay = payment_status ? String(payment_status).toLowerCase() : String(current.payment_status || '').toLowerCase();
+      const itemType = String(current.item_type || '').toLowerCase();
+      if (itemType === 'ticket' && nextPay === 'paid') {
+        const r = await issueTicketVouchersForOrder({ orderId: current.order_id });
+        if (!r.ok) console.error('⚠️  ticket voucher issue error:', r.error);
+      }
+    } catch (ticketErr) {
+      console.error('⚠️  ticket voucher issue error:', ticketErr.message);
+    }
 
     // AUTO-SYNC logistics tasks when payment is marked paid / booking cancelled
     try {
