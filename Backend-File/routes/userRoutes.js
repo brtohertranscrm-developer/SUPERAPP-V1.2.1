@@ -154,7 +154,7 @@ router.use(verifyUser);
 router.get('/dashboard/me', async (req, res) => {
   try {
     const user = await dbGet(
-      `SELECT id, name, email, phone, kyc_status, kyc_code, miles,
+      `SELECT id, vendor_name, name, email, phone, kyc_status, kyc_code, miles,
               profile_picture, profile_banner, referral_code, role, location,
               has_completed_tc_gamification,
               user_tier, season_trip_count, season_miles_earned, season_start_date

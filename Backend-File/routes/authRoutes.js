@@ -667,7 +667,7 @@ router.post('/google', googleLimiter, async (req, res) => {
 
     // Existing user by google_sub
     let user = await dbGet(
-      `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+      `SELECT id, vendor_name, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
               profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
        FROM users WHERE google_sub = ? LIMIT 1`,
       [g.sub]
@@ -676,7 +676,7 @@ router.post('/google', googleLimiter, async (req, res) => {
     // Existing user by email (link account)
     if (!user) {
       user = await dbGet(
-        `SELECT id, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
+        `SELECT id, vendor_name, name, email, phone, ktp_id, role, permissions, miles, kyc_status,
                 profile_picture, profile_banner, referral_code, join_date, email_verified, google_sub
          FROM users WHERE email = ? LIMIT 1`,
         [g.email]
@@ -872,7 +872,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const user = await dbGet(
-      `SELECT id, name, email, password, role, permissions, miles, kyc_status,
+      `SELECT id, vendor_name, name, email, password, role, permissions, miles, kyc_status,
               profile_picture, profile_banner, referral_code, phone, join_date,
               login_attempts, locked_until, last_login, email_verified
        FROM users WHERE email = ?`,

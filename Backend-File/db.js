@@ -45,6 +45,7 @@ db.serialize(() => {
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      vendor_name TEXT,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       phone TEXT NOT NULL,
@@ -1177,6 +1178,7 @@ db.serialize(() => {
   addColumnIfNotExists('users', 'referred_by', 'TEXT');
   addColumnIfNotExists('users', 'has_reviewed_gmaps', 'INTEGER DEFAULT 0');
   addColumnIfNotExists('users', 'ktp_id', 'TEXT');
+  addColumnIfNotExists('users', 'vendor_name', 'TEXT');
 
   // [FIX 3] Users — kolom auth yang sebelumnya hilang
   addColumnIfNotExists('users', 'login_attempts', 'INTEGER DEFAULT 0');

@@ -17,6 +17,7 @@ export default function VendorLayout() {
   };
 
   const initial = user?.name ? String(user.name).charAt(0).toUpperCase() : 'V';
+  const vendorName = user?.vendor_name ? String(user.vendor_name) : null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
@@ -30,8 +31,10 @@ export default function VendorLayout() {
             {initial}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-black truncate">{user?.name || 'Vendor'}</div>
-            <div className="text-[10px] text-slate-300 font-bold truncate">{user?.email || ''}</div>
+            <div className="text-sm font-black truncate">{vendorName || (user?.name || 'Vendor')}</div>
+            <div className="text-[10px] text-slate-300 font-bold truncate">
+              {vendorName ? `${user?.name || ''} • ${user?.email || ''}` : (user?.email || '')}
+            </div>
           </div>
         </div>
 
@@ -76,4 +79,3 @@ export default function VendorLayout() {
     </div>
   );
 }
-

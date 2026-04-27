@@ -26,7 +26,7 @@ export default function AdminTickets() {
   const [selectedId, setSelectedId] = useState(null);
   const [variants, setVariants] = useState([]);
   const [isVendorModalOpen, setIsVendorModalOpen] = useState(false);
-  const [vendorForm, setVendorForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [vendorForm, setVendorForm] = useState({ vendor_name: '', pic_name: '', email: '', phone: '', password: '' });
   const [vendorModalKey, setVendorModalKey] = useState(1);
 
   const selected = useMemo(
@@ -133,7 +133,7 @@ export default function AdminTickets() {
 
   const openVendorModal = () => {
     setError('');
-    setVendorForm({ name: '', email: '', phone: '', password: '' });
+    setVendorForm({ vendor_name: '', pic_name: '', email: '', phone: '', password: '' });
     setVendorModalKey((k) => k + 1); // helps avoid browser autofill caching
     setIsVendorModalOpen(true);
   };
@@ -179,7 +179,7 @@ export default function AdminTickets() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) throw new Error(data?.error || 'Gagal membuat vendor.');
       setIsVendorModalOpen(false);
-      setVendorForm({ name: '', email: '', phone: '', password: '' });
+      setVendorForm({ vendor_name: '', pic_name: '', email: '', phone: '', password: '' });
       await loadVendors();
     } catch (e) {
       setError(e?.message || 'Gagal membuat vendor.');
@@ -388,7 +388,7 @@ export default function AdminTickets() {
                   <option value="">(Belum di-set)</option>
                   {vendors.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.name || v.email} ({v.email})
+                      {(v.vendor_name || 'Vendor')} — {(v.name || v.email)} ({v.email})
                     </option>
                   ))}
                 </select>
@@ -571,12 +571,20 @@ export default function AdminTickets() {
 
             <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
               <input
-                name="vendor_name"
+                name="vendor_company"
                 autoComplete="off"
-                value={vendorForm.name}
-                onChange={(e) => setVendorForm((p) => ({ ...p, name: e.target.value }))}
+                value={vendorForm.vendor_name}
+                onChange={(e) => setVendorForm((p) => ({ ...p, vendor_name: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
                 placeholder="Nama vendor"
+              />
+              <input
+                name="vendor_pic"
+                autoComplete="off"
+                value={vendorForm.pic_name}
+                onChange={(e) => setVendorForm((p) => ({ ...p, pic_name: e.target.value }))}
+                className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
+                placeholder="Nama PIC vendor"
               />
               <input
                 name="vendor_email"
@@ -587,7 +595,7 @@ export default function AdminTickets() {
                 value={vendorForm.email}
                 onChange={(e) => setVendorForm((p) => ({ ...p, email: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none md:col-span-2"
-                placeholder="Email vendor"
+                placeholder="Email PIC vendor"
                 inputMode="email"
               />
               <input
@@ -597,7 +605,7 @@ export default function AdminTickets() {
                 value={vendorForm.phone}
                 onChange={(e) => setVendorForm((p) => ({ ...p, phone: e.target.value }))}
                 className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-black text-slate-800 outline-none"
-                placeholder="No HP"
+                placeholder="No HP PIC"
               />
               <input
                 name="vendor_password"

@@ -33,7 +33,7 @@ const sanitizeHtmlLoose = (v, max = 20000) =>
 router.get('/vendors', async (req, res) => {
   try {
     const rows = await dbAll(
-      `SELECT id, name, email, phone, role
+      `SELECT id, vendor_name, name, email, phone, role
        FROM users
        WHERE role = 'vendor'
        ORDER BY datetime(join_date) DESC`
@@ -49,12 +49,14 @@ router.get('/vendors', async (req, res) => {
 router.post('/vendors', async (req, res) => {
   try {
     const raw = req.body || {};
-    const name = sanitize(raw.name, 140);
+    const vendor_name = sanitize(raw.vendor_name, 180);
+    const pic_name = sanitize(raw.pic_name, 140);
     const email = sanitize(raw.email, 180).toLowerCase();
     const phone = sanitize(raw.phone, 40) || '080000000000';
     const password = typeof raw.password === 'string' ? raw.password : '';
 
-    if (!name) return res.status(400).json({ success: false, error: 'Nama wajib.' });
+    if (!vendor_name) return res.status(400).json({ success: false, error: 'Nama vendor wajib.' });
+    if (!pic_name) return res.status(400).json({ success: false, error: 'Nama PIC wajib.' });
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
       return res.status(400).json({ success: false, error: 'Email tidak valid.' });
     }
@@ -72,11 +74,11 @@ router.post('/vendors', async (req, res) => {
     await dbRun(
       `
       INSERT INTO users
-        (id, name, email, password, phone, ktp_id, role, permissions, kyc_status, miles, location, join_date, email_verified)
+        (id, vendor_name, name, email, password, phone, ktp_id, role, permissions, kyc_status, miles, location, join_date, email_verified)
       VALUES
-        (?, ?, ?, ?, ?, NULL, 'vendor', '[]', 'unverified', 0, 'Lainnya', ?, 1)
+        (?, ?, ?, ?, ?, ?, NULL, 'vendor', '[]', 'unverified', 0, 'Lainnya', ?, 1)
       `,
-      [id, name, email, hashed, phone, join_date]
+      [id, vendor_name, pic_name, email, hashed, phone, join_date]
     );
 
     res.status(201).json({ success: true, id });
