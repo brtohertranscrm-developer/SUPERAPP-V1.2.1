@@ -25,7 +25,6 @@ export default function CarAvailabilitySearch({
             >
               <option>Yogyakarta</option>
               <option>Solo</option>
-              <option>Semarang</option>
             </select>
           </label>
 
@@ -97,4 +96,3 @@ export default function CarAvailabilitySearch({
     </form>
   );
 }
-

@@ -83,7 +83,7 @@ export default function MotorCatalog() {
               <div>
                 <h3 className="text-2xl sm:text-3xl font-black leading-tight mb-2">Bawa Koper Besar?</h3>
                 <p className="text-slate-400 text-sm font-medium max-w-md">
-                  Jangan biarkan barang bawaan membatasi eksplorasi Anda. Titipkan dengan aman di Smart Loker stasiun mulai dari Rp 10.000/jam.
+                  Jangan biarkan barang bawaan membatasi eksplorasi Anda. Titipkan dengan aman di Smart Loker stasiun mulai dari Rp 5.000/jam.
                 </p>
               </div>
             </div>
