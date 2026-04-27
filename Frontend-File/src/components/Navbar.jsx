@@ -81,6 +81,7 @@ export default function Navbar() {
               <span onClick={() => navigate('/motor')} className="hover:text-brand-primary cursor-pointer transition-colors">Rental Motor</span>
               <span onClick={() => navigate('/mobil')} className="hover:text-brand-primary cursor-pointer transition-colors">Rental Mobil</span>
               <span onClick={() => navigate('/loker')} className="hover:text-brand-primary cursor-pointer transition-colors">Smart Loker</span>
+              <span onClick={() => navigate('/tiket')} className="hover:text-brand-primary cursor-pointer transition-colors">Tiket</span>
               <span onClick={() => navigate('/artikel')} className="hover:text-brand-primary cursor-pointer transition-colors">Artikel & Tips</span>
             </div>
 

@@ -24,6 +24,8 @@ import ResetPasswordPage from '../pages/public/ResetPasswordPage';
 import TermsPage from '../pages/public/TermsPage';
 import PrivacyPage from '../pages/public/PrivacyPage';
 import SeoPage from '../pages/public/SeoPage';
+import TicketsCatalog from '../pages/public/TicketsCatalog';
+import TicketDetail from '../pages/public/TicketDetail';
 import VendorTickets from '../pages/vendor/VendorTickets';
 import VendorReports from '../pages/vendor/VendorReports';
 
@@ -107,6 +109,8 @@ const AppRoutes = () => {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/tiket" element={<TicketsCatalog />} />
+          <Route path="/tiket/:slug" element={<TicketDetail />} />
 
           {/* SEO aliases (keep canonical under /{city}/{service}) */}
           <Route path="/sewa-motor-jogja" element={<Navigate to="/jogja/sewa-motor" replace />} />
