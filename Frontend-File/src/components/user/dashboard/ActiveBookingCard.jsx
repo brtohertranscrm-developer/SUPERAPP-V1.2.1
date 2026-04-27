@@ -7,10 +7,33 @@ import {
 import { apiFetch } from '../../../utils/api';
 import TripTicketModal from '../history/TripTicketModal';
 
+// ─── Helper: parse tanggal dari backend (support "YYYY-MM-DD HH:mm:ss") ───────
+const parseDateTime = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+
+  let raw = String(value || '').trim();
+  if (!raw) return null;
+
+  // SQLite sering format "YYYY-MM-DD HH:mm:ss" (bukan ISO)
+  if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) {
+    raw = raw.replace(/\s+/, 'T');
+  }
+  // "YYYY-MM-DDTHH:mm" -> jadikan valid ISO
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) {
+    raw = `${raw}:00`;
+  }
+
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+};
+
 // ─── Helper: hitung hari tersisa ─────────────────────────────────────────────
 const getDaysRemaining = (endDateStr) => {
   if (!endDateStr) return null;
-  const end = new Date(endDateStr);
+  const end = parseDateTime(endDateStr);
+  if (!end) return null;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
@@ -20,6 +43,11 @@ const getDaysRemaining = (endDateStr) => {
 // ─── Resolver: 5 state tiket dari kombinasi status + payment_status ──────────
 const resolveTicketState = (status, paymentStatus, reconStatus, endDateStr) => {
   const daysLeft = getDaysRemaining(endDateStr);
+  const endDateTime = parseDateTime(endDateStr);
+  const now = new Date();
+  const isOverdue = !!endDateTime && now.getTime() > endDateTime.getTime();
+  const lateMinutes = isOverdue ? Math.ceil((now.getTime() - endDateTime.getTime()) / (1000 * 60)) : 0;
+  const lateHours = isOverdue ? Math.max(1, Math.ceil(lateMinutes / 60)) : 0;
 
   // Prioritas 1 — tagihan extend belum dibayar
   if (status === 'active' && paymentStatus === 'unpaid') {
@@ -103,13 +131,30 @@ const resolveTicketState = (status, paymentStatus, reconStatus, endDateStr) => {
     };
   }
 
+  // Prioritas 4 — terlambat drop-off (overdue)
+  if (status === 'active' && paymentStatus === 'paid' && isOverdue) {
+    return {
+      key:       'overdue',
+      label:     `Terlambat · ${lateHours} jam`,
+      desc:      'Waktu drop-off sudah terlewat. Mohon segera kembalikan unit untuk menghindari biaya keterlambatan (per 12 jam) atau dihitung 1 hari penuh jika melewati batas yang ditentukan.',
+      color:     'text-rose-400',
+      icon:      AlertCircle,
+      bannerBg:  'bg-rose-500/20 border-rose-500/30',
+      pulse:     true,
+      showQr:    true,
+    };
+  }
+
   // Prioritas 4 — berakhir hari ini atau besok
   if (status === 'active' && paymentStatus === 'paid' && daysLeft !== null && daysLeft <= 1 && daysLeft >= 0) {
+    const dueTimeLabel = endDateTime
+      ? endDateTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      : null;
     return {
       key:       'ending_soon',
       label:     daysLeft === 0 ? 'Berakhir Hari Ini!' : 'Berakhir Besok',
       desc:      daysLeft === 0
-        ? 'Pastikan unit sudah dikembalikan hari ini sebelum waktu drop-off.'
+        ? `Pastikan unit dikembalikan hari ini${dueTimeLabel ? ` sebelum pukul ${dueTimeLabel}` : ''} untuk menghindari biaya keterlambatan.`
         : 'Pesanan berakhir besok. Extend sekarang jika perlu lebih lama.',
       color:     'text-orange-400',
       icon:      Flame,
@@ -198,8 +243,8 @@ const ActiveBookingCard = ({
 
   const fmtDateTime = (value) => {
     if (!value) return '—';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
+    const d = parseDateTime(value);
+    if (!d) return String(value);
     return d.toLocaleString('id-ID', {
       day: '2-digit',
       month: 'short',
