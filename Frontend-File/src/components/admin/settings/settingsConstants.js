@@ -10,6 +10,7 @@ export const availableMenus = [
   { key: 'armada', label: 'Manajemen Armada & Unit' },
   { key: 'loker', label: 'Manajemen Loker' },
   { key: 'pricing', label: 'Dynamic Pricing & Promo' },
+  { key: 'tickets', label: 'Ticketing (Produk Tiket & Event)' },
   { key: 'partners', label: 'Partnership (Homepage Partner)' },
   { key: 'artikel', label: 'Konten Artikel' },
   { key: 'content', label: 'SEO Pages (Landing Pages)' },
@@ -26,5 +27,5 @@ export const permissionPresets = [
     permissions: ['logistics', 'manning', 'armada'],
   },
   { key: 'finance', label: 'Finance', permissions: ['finance', 'settings'] },
-  { key: 'konten', label: 'Konten', permissions: ['artikel', 'partners', 'pricing', 'content'] },
+  { key: 'konten', label: 'Konten', permissions: ['artikel', 'partners', 'pricing', 'content', 'tickets'] },
 ];

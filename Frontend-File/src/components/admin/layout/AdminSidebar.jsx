@@ -38,6 +38,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Dynamic Pricing', path: '/admin/pricing',    key: 'pricing',   icon: <TrendingUp size={20} /> },
         { name: 'Banner Promo',    path: '/admin/promotions', key: 'pricing',   icon: <Ticket size={20} /> },
         { name: 'Miles Rewards',   path: '/admin/miles-rewards', key: 'pricing', icon: <Gift size={20} /> },
+        { name: 'Ticketing',       path: '/admin/tickets',    key: 'tickets',  icon: <Ticket size={20} /> },
         { name: 'Partnership',     path: '/admin/partners',   key: 'partners',  icon: <Handshake size={20} /> },
         { name: 'Add-ons & Paket', path: '/admin/addons',     key: 'booking',   icon: <PackagePlus size={20} /> },
         { name: 'Konten Artikel',  path: '/admin/artikel',    key: 'artikel',   icon: <FileText size={20} /> },
