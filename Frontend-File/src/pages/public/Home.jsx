@@ -23,56 +23,6 @@ export default function Home() {
       {/* 3. Benefit / How it works */}
       <HowItWorks />
 
-      {/* 3b. Ticketing teaser */}
-      <div className="max-w-6xl mx-auto px-4 pb-16 relative z-20">
-        <div className="bg-gradient-to-br from-rose-600 via-pink-600 to-rose-700 rounded-[3rem] p-8 sm:p-12 relative overflow-hidden shadow-2xl shadow-rose-900/25 flex flex-col md:flex-row items-center justify-between gap-8 border border-white/10">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none -ml-28 -mt-28" />
-
-          <div className="relative z-10 text-center md:text-left text-white md:w-1/2">
-            <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto md:mx-0 backdrop-blur-md border border-white/10 shadow-lg shadow-white/5">
-              <Ticket size={32} className="text-white"/>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-black mb-4 tracking-tight drop-shadow-lg">Tiket Wisata & Event</h2>
-            <p className="text-rose-100 mb-8 font-medium leading-relaxed max-w-sm mx-auto md:mx-0">
-              Beli voucher digital resmi partner. Pilih tanggal kunjungan, bayar, lalu redeem langsung di vendor.
-            </p>
-            <button
-              onClick={() => navigate('/tiket')}
-              className="bg-white text-rose-600 px-8 py-4 rounded-2xl font-black text-sm hover:scale-105 hover:shadow-2xl hover:shadow-white/20 transition-all shadow-xl w-full sm:w-auto active:scale-95 hover:-translate-y-1"
-            >
-              Lihat Tiket
-            </button>
-          </div>
-
-          <div className="relative z-10 md:w-5/12 hidden md:block">
-            <div className="rounded-3xl bg-white/10 border border-white/15 p-6 backdrop-blur-md">
-              <div className="text-[10px] font-black uppercase tracking-widest text-rose-100">Cara Kerja</div>
-              <div className="mt-4 space-y-3 text-sm font-black text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">1</div>
-                  Pilih tiket & tanggal
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">2</div>
-                  Bayar via website
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">3</div>
-                  Voucher muncul di dashboard
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">4</div>
-                  Redeem di vendor
-                </div>
-              </div>
-              <div className="mt-5 text-[11px] text-rose-100 font-semibold">
-                Vendor punya portal untuk konfirmasi & rekap.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* 4. Motor Pilihan */}
       <div className="max-w-6xl mx-auto px-4 pb-20 relative z-20">
         <div className="flex justify-between items-end mb-10">
@@ -160,6 +110,56 @@ export default function Home() {
 
       {/* 6. Partnership (dibawah, tidak ganggu booking) */}
       <PartnersSection partners={partners} />
+
+      {/* 7. Ticketing teaser (dibawah banner partner) */}
+      <div className="max-w-6xl mx-auto px-4 pb-24 relative z-10">
+        <div className="bg-gradient-to-br from-brand-primary via-brand-secondary to-rose-700 rounded-[3rem] p-8 sm:p-12 relative overflow-hidden shadow-2xl shadow-brand-primary/25 flex flex-col md:flex-row items-center justify-between gap-8 border border-white/10">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none -ml-28 -mt-28" />
+
+          <div className="relative z-10 text-center md:text-left text-white md:w-1/2">
+            <div className="bg-white/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto md:mx-0 backdrop-blur-md border border-white/10 shadow-lg shadow-white/5">
+              <Ticket size={32} className="text-white" />
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4 tracking-tight drop-shadow-lg">Tiket Wisata & Event</h2>
+            <p className="text-white/80 mb-8 font-medium leading-relaxed max-w-sm mx-auto md:mx-0">
+              Beli voucher digital resmi partner. Pilih tanggal kunjungan, bayar, lalu redeem langsung di vendor.
+            </p>
+            <button
+              onClick={() => navigate('/tiket')}
+              className="bg-white text-brand-primary px-8 py-4 rounded-2xl font-black text-sm hover:scale-105 hover:shadow-2xl hover:shadow-white/20 transition-all shadow-xl w-full sm:w-auto active:scale-95 hover:-translate-y-1"
+            >
+              Lihat Tiket
+            </button>
+          </div>
+
+          <div className="relative z-10 md:w-5/12 hidden md:block">
+            <div className="rounded-3xl bg-white/10 border border-white/15 p-6 backdrop-blur-md">
+              <div className="text-[10px] font-black uppercase tracking-widest text-white/70">Cara Kerja</div>
+              <div className="mt-4 space-y-3 text-sm font-black text-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">1</div>
+                  Pilih tiket & tanggal
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">2</div>
+                  Bayar via website
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">3</div>
+                  Voucher muncul di dashboard
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-xl bg-white/15 flex items-center justify-center">4</div>
+                  Redeem di vendor
+                </div>
+              </div>
+              <div className="mt-5 text-[11px] text-white/75 font-semibold">
+                Vendor punya portal untuk konfirmasi & rekap.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div>
   );
