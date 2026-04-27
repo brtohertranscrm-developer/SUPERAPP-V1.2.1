@@ -18,7 +18,9 @@ const safeJson = (value, fallback) => {
 
 // Public: fetch SEO page by slug (supports slashes via wildcard).
 // Example: GET /api/pages/jogja/sewa-motor
-router.get('/pages/*', async (req, res) => {
+// Express v5 router doesn't support the old wildcard syntax (`/pages/*`).
+// Use a RegExp route to support slugs with slashes.
+router.get(/^\/pages\/(.+)/, async (req, res) => {
   const slug = String(req.params[0] || '').replace(/^\/+/, '').trim();
   if (!slug) return res.status(400).json({ success: false, error: 'Slug wajib diisi.' });
 
@@ -49,10 +51,9 @@ router.get('/pages/*', async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('GET /pages/* error:', err.message);
+    console.error('GET /pages/<slug> error:', err.message);
     return res.status(500).json({ success: false, error: 'Gagal mengambil halaman.' });
   }
 });
 
 module.exports = router;
-
