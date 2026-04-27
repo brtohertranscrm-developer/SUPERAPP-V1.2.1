@@ -19,6 +19,7 @@ import TopTravellersCard from '../../components/user/dashboard/TopTravellersCard
 import QuickMenuCard from '../../components/user/dashboard/QuickMenuCard';
 import HelpCenterCard from '../../components/user/dashboard/HelpCenterCard';
 import EditProfileModal from '../../components/user/dashboard/EditProfileModal';
+import PlacesSection from '../../components/user/dashboard/PlacesSection';
 import { WA_CONTACTS, buildWaLink } from '../../config/contacts';
 
 export default function Dashboard() {
@@ -151,6 +152,8 @@ export default function Dashboard() {
             <InterCityOrderBanner onClick={() => setShowCustomOrder(true)} />
 
             <PartnerVouchersSection vouchers={partnerVouchers} claimedPromos={claimedPromos} />
+
+            <PlacesSection user={user} />
 
             <ReferralInviteCard referralCode={user?.referral_code} />
           </div>

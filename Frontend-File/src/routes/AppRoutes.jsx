@@ -68,6 +68,7 @@ import AdminGmapsReview from '../pages/admin/AdminGmapsReview';
 import AdminMilesRewards from '../pages/admin/AdminMilesRewards';
 import AdminContent from '../pages/admin/AdminContent';
 import AdminTickets from '../pages/admin/AdminTickets';
+import AdminPlaces from '../pages/admin/AdminPlaces';
 import BodyScrollReset from '../components/common/BodyScrollReset';
 import { useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext';
@@ -175,6 +176,7 @@ const AppRoutes = () => {
           <Route path="miles-rewards" element={<AdminMilesRewards />} />
           <Route path="tickets" element={<AdminTickets />} />
           <Route path="content" element={<AdminContent />} />
+          <Route path="places" element={<AdminPlaces />} />
 
         </Route>
 

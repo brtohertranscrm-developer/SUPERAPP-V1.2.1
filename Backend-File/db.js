@@ -872,6 +872,28 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_seo_pages_service ON seo_pages(service)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_seo_pages_published ON seo_pages(is_published)`);
 
+  // --- PLACES (curated list: objek wisata & charging station) ---
+  // Dipakai untuk menampilkan rekomendasi di Dashboard User tanpa API berbayar.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS places (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      place_type TEXT NOT NULL, -- attraction | charging
+      city TEXT NOT NULL,       -- jogja | solo
+      name TEXT NOT NULL,
+      address TEXT,
+      maps_url TEXT,
+      description TEXT,
+      is_active INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      created_by TEXT,
+      updated_by TEXT,
+      FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY(updated_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Seed default SEO pages (hanya jika tabel kosong) agar admin tinggal refine.
   db.get(`SELECT COUNT(*) AS cnt FROM seo_pages`, (err, row) => {
     if (err) return;
@@ -1397,6 +1419,10 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_user ON ticket_vouchers(user_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_vendor ON ticket_vouchers(vendor_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_ticket_vouchers_visit ON ticket_vouchers(visit_date)`);
+
+  // Places indexes
+  db.run(`CREATE INDEX IF NOT EXISTS idx_places_type_city_active_sort ON places(place_type, city, is_active, sort_order, id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_places_active ON places(is_active)`);
 
   // Finance indexes
   db.run(`CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date)`);

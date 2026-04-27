@@ -116,7 +116,7 @@ const SearchResultList = ({ motors, handleRent, pickupLocation }) => {
                     </div>
                     <div>
                       <h4 className="text-xl font-black leading-tight mb-1">Bawa Koper / Tas Besar?</h4>
-                      <p className="text-slate-400 text-xs font-medium">Titipkan aman di Smart Loker {pickupLocation}. Cuma 10rb/jam!</p>
+                      <p className="text-slate-400 text-xs font-medium">Titipkan aman di Smart Loker {pickupLocation}. Cuma 5rb/jam!</p>
                     </div>
                   </div>
                   <button 

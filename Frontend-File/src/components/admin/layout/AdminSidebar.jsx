@@ -5,6 +5,7 @@ import {
   Settings, LogOut, ClipboardList, Package, DollarSign,
   Calendar, Gift, Ticket, ShieldCheck, LifeBuoy, PackagePlus,
   Truck, Handshake, CarFront, Star,
+  MapPin,
 } from 'lucide-react';
 import { AuthContext } from '../../../context/AuthContext';
 
@@ -43,6 +44,7 @@ const AdminSidebar = ({ isMobileMenuOpen, setIsMobileMenuOpen, handleLogout }) =
         { name: 'Add-ons & Paket', path: '/admin/addons',     key: 'booking',   icon: <PackagePlus size={20} /> },
         { name: 'Konten Artikel',  path: '/admin/artikel',    key: 'artikel',   icon: <FileText size={20} /> },
         { name: 'SEO Pages',       path: '/admin/content',    key: 'content',   icon: <FileText size={20} /> },
+        { name: 'Peta & Lokasi',   path: '/admin/places',     key: 'content',   icon: <MapPin size={20} /> },
         { name: 'Referral',        path: '/admin/referral',   key: 'settings',  icon: <Gift size={20} /> },
       ],
     },
