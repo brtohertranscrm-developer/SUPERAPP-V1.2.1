@@ -770,6 +770,321 @@ db.serialize(() => {
     )
   `);
 
+  // --- SEO PAGES (CMS mini untuk landing pages) ---
+  // `sections_json` = [{ key, title, body_html }...]
+  // `faqs_json`     = [{ q, a }...]
+  db.run(`
+    CREATE TABLE IF NOT EXISTS seo_pages (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug             TEXT NOT NULL UNIQUE,
+      city             TEXT,
+      service          TEXT,
+      title            TEXT,
+      meta_description TEXT,
+      h1               TEXT,
+      sections_json    TEXT DEFAULT '[]',
+      faqs_json        TEXT DEFAULT '[]',
+      is_published     INTEGER DEFAULT 0,
+      created_at       TEXT DEFAULT (datetime('now')),
+      updated_at       TEXT DEFAULT (datetime('now')),
+      updated_by       TEXT
+    )
+  `);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_seo_pages_city ON seo_pages(city)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_seo_pages_service ON seo_pages(service)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_seo_pages_published ON seo_pages(is_published)`);
+
+  // Seed default SEO pages (hanya jika tabel kosong) agar admin tinggal refine.
+  db.get(`SELECT COUNT(*) AS cnt FROM seo_pages`, (err, row) => {
+    if (err) return;
+    if ((row?.cnt || 0) > 0) return;
+
+    const now = new Date().toISOString();
+    const pages = [
+      {
+        slug: 'jogja',
+        city: 'jogja',
+        service: 'city_hub',
+        title: 'Sewa Motor & Mobil Jogja 24 Jam | Brothers Trans',
+        meta_description:
+          'Booking sewa motor dan sewa mobil di Jogja 24 jam. Lokasi dekat Stasiun Lempuyangan. Chat WhatsApp Jogja 082137928331.',
+        h1: 'Brothers Trans Jogja — Sewa Motor & Mobil 24 Jam',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Motor & Mobil di Jogja',
+            body_html:
+              '<p>Butuh sewa motor atau sewa mobil di Jogja yang mudah dan cepat? Brothers Trans melayani booking 24 jam dengan lokasi strategis dekat Stasiun Lempuyangan. Pilih layanan, tentukan jadwal, lalu booking langsung via website.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Jogja)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Lempuyangan No.1A, Bausasran, Kec. Danurejan, Kota Yogyakarta, Daerah Istimewa Yogyakarta 55211</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082137928331">082137928331</a></li></ul>',
+          },
+          {
+            key: 'links',
+            title: 'Pilih Layanan',
+            body_html:
+              '<ul><li><a href="/jogja/sewa-motor">Sewa Motor Jogja</a></li><li><a href="/jogja/sewa-mobil">Sewa Mobil Jogja</a></li><li><a href="/lokasi/jogja-lempuyangan">Lokasi Jogja (Lempuyangan)</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Bisa booking mendadak?', a: 'Bisa, tergantung ketersediaan unit saat itu.' },
+          { q: 'Ambil unit di mana?', a: 'Silakan cek detail lokasi di halaman Lokasi Jogja (Lempuyangan).' },
+        ],
+      },
+      {
+        slug: 'solo',
+        city: 'solo',
+        service: 'city_hub',
+        title: 'Sewa Motor, Mobil & Loker Solo 24 Jam | Brothers Trans',
+        meta_description:
+          'Sewa motor, sewa mobil, dan loker di Solo 24 jam. Lokasi Kestalan, Banjarsari. WhatsApp Solo 082313307400.',
+        h1: 'Brothers Trans Solo — Sewa Motor, Mobil & Loker 24 Jam',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Layanan di Solo',
+            body_html:
+              '<p>Brothers Trans Solo melayani sewa motor, sewa mobil, dan loker (khusus Solo) selama 24 jam. Booking via website, konfirmasi cepat via WhatsApp, dan pilih layanan sesuai kebutuhan perjalananmu di Solo dan sekitarnya.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Solo)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082313307400">082313307400</a></li></ul>',
+          },
+          {
+            key: 'links',
+            title: 'Pilih Layanan',
+            body_html:
+              '<ul><li><a href="/solo/sewa-motor">Sewa Motor Solo</a></li><li><a href="/solo/sewa-mobil">Sewa Mobil Solo</a></li><li><a href="/solo/sewa-loker">Sewa Loker Solo</a></li><li><a href="/lokasi/solo-kestalan-banjarsari">Lokasi Solo (Kestalan)</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Apakah loker tersedia di Jogja?', a: 'Saat ini layanan loker tersedia di Solo.' },
+          { q: 'Bisa booking 24 jam?', a: 'Bisa, operasional 24 jam (ketersediaan mengikuti unit/slot).' },
+        ],
+      },
+      {
+        slug: 'jogja/sewa-motor',
+        city: 'jogja',
+        service: 'motor',
+        title: 'Sewa Motor Jogja 24 Jam Dekat Lempuyangan | Brothers Trans',
+        meta_description:
+          'Sewa motor di Jogja 24 jam. Lokasi dekat Stasiun Lempuyangan. Booking online, konfirmasi cepat via WA Jogja 082137928331.',
+        h1: 'Sewa Motor Jogja 24 Jam — Brothers Trans',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Motor Jogja',
+            body_html:
+              '<p>Cari sewa motor di Jogja yang praktis untuk wisata, kerja, atau perjalanan singkat? Brothers Trans Jogja buka 24 jam dan siap bantu kamu booking dengan proses yang jelas dan cepat.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Jogja)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Lempuyangan No.1A, Bausasran, Kec. Danurejan, Kota Yogyakarta, Daerah Istimewa Yogyakarta 55211</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082137928331">082137928331</a></li></ul>',
+          },
+          {
+            key: 'howto',
+            title: 'Cara Booking',
+            body_html:
+              '<ol><li>Pilih tanggal & durasi sewa di website</li><li>Pilih unit/paket (sesuai ketersediaan)</li><li>Lengkapi data yang dibutuhkan</li><li>Konfirmasi pembayaran sesuai metode di sistem</li><li>Ambil unit di lokasi atau ikuti arahan admin</li></ol>',
+          },
+        ],
+        faqs: [
+          { q: 'Apakah bisa sewa motor 24 jam?', a: 'Bisa, operasional 24 jam. Ketersediaan unit mengikuti stok.' },
+          { q: 'Lokasi Brothers Trans Jogja di mana?', a: 'Jl. Lempuyangan No.1A, dekat Stasiun Lempuyangan.' },
+          { q: 'Minimal durasi sewa berapa?', a: 'Tergantung paket/unit. Silakan cek di halaman booking.' },
+        ],
+      },
+      {
+        slug: 'jogja/sewa-mobil',
+        city: 'jogja',
+        service: 'mobil',
+        title: 'Sewa Mobil Jogja 24 Jam | Brothers Trans',
+        meta_description:
+          'Sewa mobil di Jogja 24 jam untuk perjalanan dalam/luar kota (sesuai kebijakan). Booking online, WA Jogja 082137928331.',
+        h1: 'Sewa Mobil Jogja 24 Jam — Brothers Trans',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Mobil Jogja',
+            body_html:
+              '<p>Untuk perjalanan keluarga, kerja, atau rute harian di Jogja, sewa mobil bisa lebih nyaman. Brothers Trans Jogja buka 24 jam dan proses booking dibuat sederhana lewat website.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Jogja)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Lempuyangan No.1A, Bausasran, Kec. Danurejan, Kota Yogyakarta, Daerah Istimewa Yogyakarta 55211</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082137928331">082137928331</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Sewa mobil bisa lepas kunci atau dengan driver?', a: 'Ikuti opsi layanan yang tersedia di halaman booking.' },
+          { q: 'Bisa untuk luar kota?', a: 'Bisa sesuai kebijakan dan ketersediaan unit.' },
+        ],
+      },
+      {
+        slug: 'solo/sewa-motor',
+        city: 'solo',
+        service: 'motor',
+        title: 'Sewa Motor Solo 24 Jam | Brothers Trans Kestalan',
+        meta_description:
+          'Sewa motor di Solo 24 jam. Lokasi Kestalan, Banjarsari. Booking online, WhatsApp Solo 082313307400.',
+        h1: 'Sewa Motor Solo 24 Jam — Brothers Trans',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Motor Solo',
+            body_html:
+              '<p>Sewa motor di Solo untuk mobilitas harian dan perjalanan singkat. Brothers Trans Solo buka 24 jam dan booking bisa dilakukan via website.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Solo)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082313307400">082313307400</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Apakah bisa booking hari ini?', a: 'Bisa, tergantung ketersediaan unit.' },
+        ],
+      },
+      {
+        slug: 'solo/sewa-mobil',
+        city: 'solo',
+        service: 'mobil',
+        title: 'Sewa Mobil Solo 24 Jam | Brothers Trans',
+        meta_description:
+          'Sewa mobil di Solo 24 jam. Booking via website, konfirmasi cepat via WA Solo 082313307400.',
+        h1: 'Sewa Mobil Solo 24 Jam — Brothers Trans',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Mobil Solo',
+            body_html:
+              '<p>Sewa mobil di Solo untuk kebutuhan keluarga, kerja, dan perjalanan harian. Operasional 24 jam dan booking via website.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Solo)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082313307400">082313307400</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Bisa untuk luar kota?', a: 'Bisa sesuai kebijakan dan ketersediaan unit.' },
+        ],
+      },
+      {
+        slug: 'solo/sewa-loker',
+        city: 'solo',
+        service: 'loker',
+        title: 'Sewa Loker Solo 24 Jam | Brothers Trans',
+        meta_description:
+          'Sewa loker di Solo 24 jam untuk titip barang. Lokasi Kestalan, Banjarsari. Booking online, WA Solo 082313307400.',
+        h1: 'Sewa Loker Solo 24 Jam — Brothers Trans',
+        sections: [
+          {
+            key: 'intro',
+            title: 'Sewa Loker Solo',
+            body_html:
+              '<p>Butuh tempat aman untuk titip barang saat transit atau aktivitas di Solo? Loker Brothers Trans Solo tersedia 24 jam. Booking via website, lalu ikuti instruksi akses sesuai order.</p>',
+          },
+          {
+            key: 'nap',
+            title: 'Lokasi & Kontak (Solo)',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082313307400">082313307400</a></li></ul>',
+          },
+        ],
+        faqs: [
+          { q: 'Minimal durasi sewa berapa jam?', a: 'Ikuti opsi durasi yang tersedia di halaman booking loker.' },
+          { q: 'Cara akses loker bagaimana?', a: 'Simpan Order ID dan ikuti instruksi pada halaman pembayaran/konfirmasi.' },
+        ],
+      },
+      {
+        slug: 'lokasi/jogja-lempuyangan',
+        city: 'jogja',
+        service: 'location',
+        title: 'Lokasi Brothers Trans Jogja (Lempuyangan) 24 Jam',
+        meta_description:
+          'Alamat Brothers Trans Jogja dekat Stasiun Lempuyangan, buka 24 jam. WA 082137928331.',
+        h1: 'Lokasi Brothers Trans Jogja — Lempuyangan (24 Jam)',
+        sections: [
+          {
+            key: 'nap',
+            title: 'Alamat & Kontak',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Lempuyangan No.1A, Bausasran, Kec. Danurejan, Kota Yogyakarta, Daerah Istimewa Yogyakarta 55211</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082137928331">082137928331</a></li></ul>',
+          },
+          {
+            key: 'links',
+            title: 'Layanan di Jogja',
+            body_html:
+              '<ul><li><a href="/jogja/sewa-motor">Sewa Motor Jogja</a></li><li><a href="/jogja/sewa-mobil">Sewa Mobil Jogja</a></li></ul>',
+          },
+        ],
+        faqs: [],
+      },
+      {
+        slug: 'lokasi/solo-kestalan-banjarsari',
+        city: 'solo',
+        service: 'location',
+        title: 'Lokasi Brothers Trans Solo (Kestalan, Banjarsari) 24 Jam',
+        meta_description:
+          'Alamat Brothers Trans Solo 24 jam di Kestalan, Banjarsari. WA 082313307400. Link Google Maps tersedia.',
+        h1: 'Lokasi Brothers Trans Solo — Kestalan, Banjarsari (24 Jam)',
+        sections: [
+          {
+            key: 'nap',
+            title: 'Alamat & Kontak',
+            body_html:
+              '<ul><li><strong>Alamat:</strong> Jl. Mayang No.14 A, Kestalan, Kec. Banjarsari, Kota Surakarta, Jawa Tengah 57133</li><li><strong>Operasional:</strong> 24 jam</li><li><strong>WhatsApp/Telepon:</strong> <a href="tel:082313307400">082313307400</a></li></ul><p><a href="https://maps.app.goo.gl/V1vMTZ87K8ar3r6n6" target="_blank" rel="noopener noreferrer">Buka Google Maps</a></p>',
+          },
+          {
+            key: 'links',
+            title: 'Layanan di Solo',
+            body_html:
+              '<ul><li><a href="/solo/sewa-motor">Sewa Motor Solo</a></li><li><a href="/solo/sewa-mobil">Sewa Mobil Solo</a></li><li><a href="/solo/sewa-loker">Sewa Loker Solo</a></li></ul>',
+          },
+        ],
+        faqs: [],
+      },
+    ];
+
+    const stmt = db.prepare(
+      `INSERT INTO seo_pages
+        (slug, city, service, title, meta_description, h1, sections_json, faqs_json, is_published, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
+    );
+
+    for (const p of pages) {
+      try {
+        stmt.run(
+          p.slug,
+          p.city,
+          p.service,
+          p.title,
+          p.meta_description,
+          p.h1,
+          JSON.stringify(p.sections || []),
+          JSON.stringify(p.faqs || []),
+          now,
+          now
+        );
+      } catch {
+        // ignore seed failures (unique constraint, etc)
+      }
+    }
+    stmt.finalize();
+  });
+
   // ==========================================
   // 4. MIGRASI — Tambah kolom baru (aman diulang)
   // ==========================================
